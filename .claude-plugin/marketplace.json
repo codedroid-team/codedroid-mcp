@@ -1,0 +1,14 @@
+{
+  "name": "codedroid",
+  "description": "CodeDroid's plugins for coding agents.",
+  "owner": {
+    "name": "CodeDroid"
+  },
+  "plugins": [
+    {
+      "name": "codedroid",
+      "source": "./",
+      "description": "The Android phone attached to this computer, through CodeDroid: drive it, run adb, and verify app changes on the device."
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "codedroid": {
+      "command": "npx",
+      "args": ["-y", "@codedroid/mcp@latest"]
+    }
+  }
+}

@@ -1,0 +1,339 @@
+{"tools": [
+  {
+    "inputSchema": {
+      "type": "object",
+      "properties": {"screenshot": {
+        "description": "Also return a screenshot",
+        "type": "boolean"
+      }}
+    },
+    "name": "get_screen",
+    "description": "The phone's screen as numbered elements (node), with the app in front and what has focus. Read it before tapping by node.",
+    "annotations": {
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "title": "Read the screen",
+      "destructiveHint": false,
+      "readOnlyHint": true
+    },
+    "title": "Read the screen"
+  },
+  {
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    },
+    "name": "take_screenshot",
+    "description": "A picture of the screen (JPEG). For what the element list cannot show: images, colours, layout.",
+    "annotations": {
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "title": "Take a screenshot",
+      "destructiveHint": false,
+      "readOnlyHint": true
+    },
+    "title": "Take a screenshot"
+  },
+  {
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "node": {
+          "description": "Number from the last get_screen",
+          "type": "integer"
+        },
+        "x": {"type": "integer"},
+        "resource_id": {"type": "string"},
+        "y": {"type": "integer"},
+        "text": {
+          "description": "Visible text or label",
+          "type": "string"
+        },
+        "content_description": {"type": "string"}
+      }
+    },
+    "name": "tap",
+    "description": "Tap an element by node, text, resource_id or content_description (re-found on the live screen), or at x,y. Returns what changed.",
+    "annotations": {
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "title": "Tap",
+      "destructiveHint": false,
+      "readOnlyHint": false
+    },
+    "title": "Tap"
+  },
+  {
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "duration_ms": {
+          "default": 1000,
+          "type": "integer"
+        },
+        "node": {
+          "description": "Number from the last get_screen",
+          "type": "integer"
+        },
+        "x": {"type": "integer"},
+        "resource_id": {"type": "string"},
+        "y": {"type": "integer"},
+        "text": {
+          "description": "Visible text or label",
+          "type": "string"
+        },
+        "content_description": {"type": "string"}
+      }
+    },
+    "name": "long_press",
+    "description": "Press and hold an element (same selectors as tap) or a point.",
+    "annotations": {
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "title": "Long press",
+      "destructiveHint": false,
+      "readOnlyHint": false
+    },
+    "title": "Long press"
+  },
+  {
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "duration_ms": {
+          "default": 300,
+          "type": "integer"
+        },
+        "y1": {"type": "integer"},
+        "x1": {"type": "integer"},
+        "y2": {"type": "integer"},
+        "x2": {"type": "integer"}
+      },
+      "required": [
+        "x1",
+        "y1",
+        "x2",
+        "y2"
+      ]
+    },
+    "name": "swipe",
+    "description": "Swipe from x1,y1 to x2,y2 in screen pixels; also how to scroll (swipe up to scroll down).",
+    "annotations": {
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "title": "Swipe",
+      "destructiveHint": false,
+      "readOnlyHint": false
+    },
+    "title": "Swipe"
+  },
+  {
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "submit": {
+          "default": false,
+          "type": "boolean"
+        },
+        "clear": {
+          "default": true,
+          "type": "boolean"
+        },
+        "text": {"type": "string"}
+      },
+      "required": ["text"]
+    },
+    "name": "type_text",
+    "description": "Type into the focused field (tap it first). clear replaces what is there; submit presses Enter after.",
+    "annotations": {
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "title": "Type text",
+      "destructiveHint": false,
+      "readOnlyHint": false
+    },
+    "title": "Type text"
+  },
+  {
+    "inputSchema": {
+      "type": "object",
+      "properties": {"key": {
+        "type": "string",
+        "enum": [
+          "back",
+          "home",
+          "enter",
+          "recents"
+        ]
+      }},
+      "required": ["key"]
+    },
+    "name": "press_key",
+    "description": "Press back, home, enter or recents.",
+    "annotations": {
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "title": "Press a key",
+      "destructiveHint": false,
+      "readOnlyHint": false
+    },
+    "title": "Press a key"
+  },
+  {
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "package": {"type": "string"},
+        "activity": {"type": "string"}
+      },
+      "required": ["package"]
+    },
+    "name": "open_app",
+    "description": "Open an app by package name, optionally at an activity (.Name or full class).",
+    "annotations": {
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "title": "Open an app",
+      "destructiveHint": false,
+      "readOnlyHint": false
+    },
+    "title": "Open an app"
+  },
+  {
+    "inputSchema": {
+      "type": "object",
+      "properties": {"query": {"type": "string"}}
+    },
+    "name": "list_apps",
+    "description": "Launchable apps with their package names, filtered by query.",
+    "annotations": {
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "title": "List apps",
+      "destructiveHint": false,
+      "readOnlyHint": true
+    },
+    "title": "List apps"
+  },
+  {
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "package": {"type": "string"},
+        "text": {"type": "string"},
+        "timeout_ms": {
+          "default": 10000,
+          "maximum": 30000,
+          "type": "integer"
+        },
+        "gone_text": {"type": "string"}
+      }
+    },
+    "name": "wait_for",
+    "description": "Wait until text appears, gone_text disappears, or package is in front. Instead of sleeping.",
+    "annotations": {
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "title": "Wait for the screen",
+      "destructiveHint": false,
+      "readOnlyHint": true
+    },
+    "title": "Wait for the screen"
+  },
+  {
+    "inputSchema": {
+      "type": "object",
+      "properties": {"text": {
+        "description": "Set the clipboard to this",
+        "type": "string"
+      }}
+    },
+    "name": "clipboard",
+    "description": "Read the clipboard, or set it to text.",
+    "annotations": {
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "title": "Clipboard",
+      "destructiveHint": false,
+      "readOnlyHint": false
+    },
+    "title": "Clipboard"
+  },
+  {
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    },
+    "name": "device_info",
+    "description": "The phone: model, Android version, user, screen, locked, and whether CodeDroid is set up and signed in.",
+    "annotations": {
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "title": "Device info",
+      "destructiveHint": false,
+      "readOnlyHint": true
+    },
+    "title": "Device info"
+  },
+  {
+    "inputSchema": {
+      "type": "object",
+      "properties": {"goal": {
+        "description": "What to do, as you would ask a person",
+        "type": "string"
+      }},
+      "required": ["goal"]
+    },
+    "name": "run_task",
+    "description": "CodeDroid's own phone agent does goal on the phone, across apps, and replies. Returns task_id at once; wait with get_task.",
+    "annotations": {
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "title": "Hand CodeDroid a task",
+      "destructiveHint": false,
+      "readOnlyHint": false
+    },
+    "title": "Hand CodeDroid a task"
+  },
+  {
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "wait_s": {
+          "default": 50,
+          "maximum": 55,
+          "type": "number"
+        },
+        "task_id": {"type": "string"}
+      },
+      "required": ["task_id"]
+    },
+    "name": "get_task",
+    "description": "Where a run_task task stands, waiting up to wait_s for it to finish: its steps, then its reply.",
+    "annotations": {
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "title": "Wait for a task",
+      "destructiveHint": false,
+      "readOnlyHint": true
+    },
+    "title": "Wait for a task"
+  },
+  {
+    "inputSchema": {
+      "type": "object",
+      "properties": {"task_id": {"type": "string"}},
+      "required": ["task_id"]
+    },
+    "name": "cancel_task",
+    "description": "Stop a run_task task.",
+    "annotations": {
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "title": "Stop a task",
+      "destructiveHint": false,
+      "readOnlyHint": false
+    },
+    "title": "Stop a task"
+  }
+]}

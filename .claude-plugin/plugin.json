@@ -1,0 +1,10 @@
+{
+  "name": "codedroid",
+  "version": "0.1.0",
+  "description": "The Android phone attached to this computer, through CodeDroid: read the screen, tap and type, hand CodeDroid a whole task, run adb, and verify app changes on the device.",
+  "author": {
+    "name": "CodeDroid"
+  },
+  "homepage": "https://get.codedroid.com",
+  "keywords": ["android", "adb", "mobile", "testing", "device"]
+}
