@@ -42,6 +42,12 @@ import {
 const CALL_TOOL_TIMEOUT_MS = 120_000;
 const DEFAULT_TIMEOUT_MS = 30_000;
 
+/**
+ * Phone tools that never touch the screen, so need not wait behind the calls that do: get_task
+ * alone can wait 55 s for a task, and holding cancel_task behind it would defeat the point.
+ */
+const UNQUEUED_TOOLS = new Set(["get_task", "cancel_task", "device_info"]);
+
 /** The request never reached the phone: the link was already down when it was sent. */
 const NEVER_SENT = /not open|not connected/i;
 /** The link dropped with the request in flight: it may or may not have run. */
@@ -230,10 +236,11 @@ export async function buildProxyServer({
         );
       };
       const name = request.params.name;
+      const run = UNQUEUED_TOOLS.has(name) ? call : () => runExclusive(call);
       let result;
       for (let attempt = 0; ; attempt++) {
         try {
-          result = await runExclusive(call);
+          result = await run();
           break;
         } catch (e) {
           const message = e?.message ?? String(e);

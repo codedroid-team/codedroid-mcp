@@ -45,6 +45,11 @@ function makeFakePhoneTransport() {
     ],
   }));
   phone.setRequestHandler(CallToolRequestSchema, async (req) => {
+    if (req.params.name === "get_task") {
+      // A task still running: get_task waits on it, off the screen.
+      await new Promise((r) => setTimeout(r, 300));
+      return { content: [{ type: "text", text: "task done" }] };
+    }
     inFlightCalls++;
     maxInFlightCalls = Math.max(maxInFlightCalls, inFlightCalls);
     await new Promise((r) => setTimeout(r, 50)); // simulate a slow screen action
@@ -111,6 +116,16 @@ try {
     1,
     "tool calls must be serialized onto the single screen",
   );
+
+  // ── A get_task waiting on a task holds up nobody's screen calls ────
+  const order = [];
+  await Promise.all([
+    a.client.callTool({ name: "get_task", arguments: { task_id: "t1" } }).then(() => order.push("get_task")),
+    new Promise((r) => setTimeout(r, 20))
+      .then(() => b.client.callTool({ name: "echo", arguments: { text: "meanwhile" } }))
+      .then(() => order.push("echo")),
+  ]);
+  assert.deepEqual(order, ["echo", "get_task"], "get_task must not queue screen calls behind it");
 
   // ── /health reflects reality ────────────────────────────────────────
   const health = await fetch(`http://127.0.0.1:${daemon.port}/health`).then((r) =>
