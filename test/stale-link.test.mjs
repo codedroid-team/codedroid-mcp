@@ -74,7 +74,9 @@ function makeFakePhoneTransport() {
 
 const manager = new PhoneManager({
   transportFactory: makeFakePhoneTransport,
-  livenessMaxAgeMs: 0, // always verify — simulates "link idle past trust window"
+  // Always verify — simulates "link idle past trust window". Not 0: within the same millisecond
+  // as the last round-trip, an age of 0 still counts as fresh.
+  livenessMaxAgeMs: -1,
   pingTimeoutMs: 1_000,
   log: () => {},
 });

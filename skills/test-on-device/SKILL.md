@@ -1,18 +1,21 @@
 ---
 name: test-on-device
-description: Verify an Android app change on the real phone attached to this computer - build, install, open, drive the changed screens with CodeDroid, check logcat for crashes, run instrumentation tests, and report what was seen. Use after changing Android app code, when asked to test, reproduce or verify something on a device, or before saying an Android change works.
+description: Verify an Android app change on the user's real Android phone - build, install, open, drive the changed screens with CodeDroid, check logcat for crashes, run instrumentation tests, and report what was seen. Use after changing Android app code, when asked to test, reproduce or verify something on a device, or before saying an Android change works.
 ---
 
 # Testing an Android change on the phone
 
-You have two kinds of tools on the same phone: CodeDroid's (`get_screen`, `tap`, `type_text`,
-`wait_for`, `take_screenshot`, ...), which see and drive the screen exactly as it is, and `adb`,
-which runs this computer's adb. Use adb to build, install, start and inspect; use CodeDroid to
-look and act. The codedroid-phone skill covers driving the screen.
+You have two kinds of tools: CodeDroid's (`get_screen`, `tap`, `type_text`, `wait_for`,
+`take_screenshot`, ...), which see and drive the screen exactly as it is, and `adb`, which runs
+this computer's adb. Use adb to build, install, start and inspect; use CodeDroid to look and act.
+The codedroid-phone skill covers driving the screen.
 
 ## 1. Know the phone
 
-Call `codedroid_status`: it gives the device `serial` and Android `user`. On a phone with
+CodeDroid reaches the phone through the CodeDroid server; adb needs it on this computer, over USB
+or Wireless debugging. Call `codedroid_status` and `device_info` for the phone's model and
+Android `user`, and `adb` `devices -l` to find the same model there. If adb lists none, ask the
+user to connect it; if it lists several, pass `-s <serial>` to each adb command. On a phone with
 several users (a Googlebook runs as user 10), adb's `settings`, `content`, `pm grant` and
 `appops` default to user 0: add `--user <user>` to them. `adb install` covers every user.
 

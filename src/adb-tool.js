@@ -1,11 +1,11 @@
 /**
- * adb — a single generic MCP tool that runs an adb command against the phone
+ * adb — a single generic MCP tool that runs an adb command against a phone
  * attached to THIS computer (USB, or Wireless Debugging).
  *
  * Forked from aura-mcp-connect's `aura-adb` (MIT, Copyright (c) 2026 Dinesh Kumar C;
- * see LICENSE.aura-mcp-connect). Changed: on by default, since the link to the phone
- * is adb already and the user is a developer (CODEDROID_MCP_ADB=0 turns it off);
- * marked destructive so clients ask before running it; a per-call timeout.
+ * see LICENSE.aura-mcp-connect). Changed: on by default, since the user is a developer
+ * (CODEDROID_MCP_ADB=0 turns it off); marked destructive so clients ask before running
+ * it; a per-call timeout.
  *
  * It never touches the connection to CodeDroid: it shells out to this machine's
  * own `adb`, exactly like a developer typing `adb install app.apk` themselves.
@@ -21,7 +21,7 @@ const MAX_TIMEOUT_S = 900;
 
 // adb's global options that take a value: `-s SERIAL`, `-t ID`, `-H host`, `-P port`, `-L socket`.
 const VALUE_OPTIONS = new Set(["-s", "-t", "-H", "-P", "-L"]);
-// Global options that pick the device, after which the phone's serial must not be added.
+// Global options that pick the device, after which CODEDROID_SERIAL must not be added.
 const DEVICE_OPTIONS = new Set(["-s", "-t", "-d", "-e"]);
 // Subcommands whose rest is a command line for the phone's shell.
 const SHELLS = new Set(["shell", "exec-out"]);
@@ -85,13 +85,14 @@ function truncate(text) {
  * Claude Code keeps about 2 KB of a server's instructions and the phone's take up to 1,600.
  */
 const INSTRUCTIONS =
-  "You also have `adb`: this computer's adb against the same phone. Use it to install builds, read " +
-  "logs (logcat -d), inspect state (dumpsys), start activities, and run instrumentation tests; use " +
-  "CodeDroid's tools to see and drive the screen. Never force-stop or instrument com.codedroid.app.";
+  "You also have `adb`: this computer's adb, for the phone when it is on USB or Wireless debugging. Use " +
+  "it to install builds, read logs (logcat -d), inspect state (dumpsys), start activities, and run " +
+  "instrumentation tests; use CodeDroid's tools to see and drive the screen. Never force-stop or " +
+  "instrument com.codedroid.app.";
 
 /** The tool's full guidance: read right before calling it. */
 const DESCRIPTION = `
-Run an adb command against the phone attached to this computer. Pass what you would type after \`adb\`, e.g. \`install -r -g app/build/outputs/apk/debug/app-debug.apk\`, \`logcat -d -t 300 *:E\`, \`shell dumpsys activity activities\`. Runs this machine's adb against the phone CodeDroid is on (CODEDROID_SERIAL, or -s in the command, picks another).
+Run an adb command against the phone attached to this computer. Pass what you would type after \`adb\`, e.g. \`install -r -g app/build/outputs/apk/debug/app-debug.apk\`, \`logcat -d -t 300 *:E\`, \`shell dumpsys activity activities\`. Runs this machine's adb, so the phone must be on it (USB or Wireless debugging): CODEDROID_SERIAL or ANDROID_SERIAL, or -s in the command, picks it when several devices are; otherwise adb's own default.
 
 USEFUL:
 - Install and start: \`install -r -g <apk>\`, \`shell am start -W -n <pkg>/<activity>\`, \`shell am force-stop <pkg>\`, \`shell pm clear <pkg>\`.
@@ -120,10 +121,9 @@ RULES:
  * @param {{
  *   run?: (file: string, args: string[], opts: object) => Promise<{stdout: string, stderr: string}>,
  *   env?: Record<string, string | undefined>,
- *   serial?: () => string | undefined,
- * }} [deps] `serial`: the phone CodeDroid is connected on, used when the env names none.
+ * }} [deps]
  */
-export function createAdbTool({ run = execFileAsync, env = process.env, serial: phoneSerial = () => undefined } = {}) {
+export function createAdbTool({ run = execFileAsync, env = process.env } = {}) {
   return {
     /** Merged into the handshake instructions by buildProxyServer. */
     instructions: INSTRUCTIONS,
@@ -169,7 +169,7 @@ export function createAdbTool({ run = execFileAsync, env = process.env, serial: 
       // file). That is inherent to `adb shell` and expected for a dev tool; the
       // boundary this protects is the host, not the phone.
       const argv = adbArgv(command);
-      const serial = namesDevice(argv) ? null : env.CODEDROID_SERIAL || env.ANDROID_SERIAL || phoneSerial();
+      const serial = namesDevice(argv) ? null : env.CODEDROID_SERIAL || env.ANDROID_SERIAL;
       const timeoutS = Math.min(Math.max(Number(args?.timeout_s) || DEFAULT_TIMEOUT_S, 1), MAX_TIMEOUT_S);
       const fullArgv = serial ? ["-s", serial, ...argv] : argv;
 
@@ -183,7 +183,11 @@ export function createAdbTool({ run = execFileAsync, env = process.env, serial: 
       } catch (e) {
         // Never let a failed adb invocation escape past the MCP boundary — the
         // model can act on "device unauthorized" text, but not on a dead session.
-        const text = [e.stdout, e.stderr, e.message].filter(Boolean).join("\n").trim();
+        const text =
+          e?.code === "ENOENT"
+            ? "adb was not found on this computer. Install Android platform-tools " +
+              "(https://developer.android.com/tools/releases/platform-tools) or set ADB to its path."
+            : [e.stdout, e.stderr, e.message].filter(Boolean).join("\n").trim();
         return {
           content: [{ type: "text", text: truncate(text || String(e)) }],
           isError: true,

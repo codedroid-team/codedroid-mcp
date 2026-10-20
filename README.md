@@ -1,20 +1,21 @@
 # CodeDroid MCP
 
-Gives Claude Code, Codex or any MCP client the Android phone attached to your computer, through
-the CodeDroid app on it: read the screen as numbered elements, tap and type, wait for things to
-appear, hand CodeDroid's own agent a whole task, and run adb. The app reads the screen through
-Android's accessibility service, so what the agent gets back is what is really on screen, not a
-guess from a screenshot or a `uiautomator` dump.
+Gives Claude Code, Codex or any MCP client your Android phone, through the CodeDroid app on it:
+read the screen as numbered elements, tap and type, wait for things to appear, hand CodeDroid's
+own agent a whole task, and run adb. The app reads the screen through Android's accessibility
+service, so what the agent gets back is what is really on screen, not a guess from a screenshot
+or a `uiautomator` dump.
 
 It ships as a Claude Code plugin: this MCP server plus two skills, `codedroid-phone` (how to drive
 the phone) and `test-on-device` (build, install, drive, check logcat, report).
 
 ## What you need
 
-- Node.js 18 or newer, and adb (Android platform-tools) on this computer.
-- The phone on adb: USB debugging on and this computer allowed, or Wireless debugging
-  (`adb pair <ip:port>`, then `adb connect <ip:port>`).
-- CodeDroid installed from https://get.codedroid.com, with its accessibility service on.
+- Node.js 18 or newer on this computer.
+- CodeDroid installed from https://get.codedroid.com, signed in, with its accessibility service on.
+  The phone only needs to be online: no cable, no USB debugging, no shared network.
+- For the `adb` tool only: adb (Android platform-tools) on this computer, and the phone on it
+  (USB debugging, or Wireless debugging: `adb pair <ip:port>`, then `adb connect <ip:port>`).
 
 ## Install
 
@@ -52,18 +53,23 @@ tool_timeout_sec = 300
 Any other client: `{"mcpServers": {"codedroid": {"command": "npx", "args": ["-y", "@codedroid/mcp"]}}}`,
 or, with the daemon running, the streamable HTTP URL `http://127.0.0.1:4826/mcp`.
 
-## The first connection
+## Pair this computer
 
-The first time a computer connects, CodeDroid asks on the phone whether to allow it. Do that once
-before starting your agent, so its MCP client is not left waiting:
+On the phone, open CodeDroid > Settings > Computers > **Pair a computer**. It shows a code and the
+command to run here, valid for 10 minutes:
 
 ```bash
-npx @codedroid/mcp connect     # tap Allow on the phone
+npx -y @codedroid/mcp pair ABCD-EFGH     # then tap Allow on the phone
 ```
 
-The phone remembers the computer (Settings > Computers lists and removes them). While an agent
-acts on the phone, CodeDroid shows "<computer> is using this phone" with a Stop button; Stop cuts
-the computer off for a minute. "Allow computers to connect" in the same place turns it all off.
+Development builds add `--server=<url>`; run the command as the phone shows it. It saves this
+computer's key in `~/.codedroid/host.json` (readable by you only) and connects once, so the phone
+asks whether to allow the computer while you are still there. `npx @codedroid/mcp connect`
+connects again by hand.
+
+Settings > Computers lists the paired computers; Remove revokes one's key, so it has to pair
+again. While an agent acts on the phone, CodeDroid shows "<computer> is using this phone" with a
+Stop button, which cuts the computer off for a minute. "Allow computers to connect" turns it all off.
 
 ## Tools
 
@@ -80,7 +86,7 @@ the computer off for a minute. "Allow computers to connect" in the same place tu
 | `clipboard` | Read or set it |
 | `device_info` | Model, Android version and user, screen, locked, whether CodeDroid is ready |
 | `run_task`, `get_task`, `cancel_task` | CodeDroid's own agent does a goal on the phone and replies (needs CodeDroid signed in) |
-| `adb` | This computer's adb against the same phone (`CODEDROID_MCP_ADB=0` leaves it out) |
+| `adb` | This computer's adb, for the phone when it is on USB or Wireless debugging (`CODEDROID_MCP_ADB=0` leaves it out) |
 | `codedroid_status` | Whether the phone is connected, and if not, exactly why |
 
 Every action answers with `after`: whether the screen changed, the app in front, the keyboard,
@@ -89,6 +95,8 @@ and the first things to tap now. Every failure is JSON with `error`, `message` a
 ## Command line
 
 ```bash
+npx @codedroid/mcp pair ABCD-EFGH                # pair with the phone showing the code
+npx @codedroid/mcp connect                       # connect now; tap Allow the first time
 npx @codedroid/mcp status                        # what the daemon sees
 npx @codedroid/mcp call get_screen               # one tool call, for scripts and CI
 npx @codedroid/mcp call tap '{"text": "Display"}'
@@ -97,7 +105,7 @@ npx @codedroid/mcp stop                          # stop the daemon
 
 | Environment | |
 |---|---|
-| `CODEDROID_SERIAL` | The phone to use when several devices are on adb (`ANDROID_SERIAL` works too) |
+| `CODEDROID_SERIAL` | The device the `adb` tool uses when several are on adb (`ANDROID_SERIAL` works too) |
 | `CODEDROID_MCP_PORT` | The daemon's port (default 4826) |
 | `CODEDROID_MCP_ADB=0` | Leave out the `adb` tool |
 | `CODEDROID_MCP_CLIENT` | How the phone names your agent ("Claude Code on borna-mbp") |
@@ -109,18 +117,18 @@ npx @codedroid/mcp stop                          # stop the daemon
 ```
  MCP client ── stdio ── codedroid-mcp ── HTTP ── daemon (one per computer, 127.0.0.1:4826)
                                                    ├── adb tool: this computer's adb
-                                                   └── adb forward tcp:N localabstract:codedroid-mcp-<user>
-                                                         └── CodeDroid on the phone (MCP over the socket)
+                                                   └── wss://<CodeDroid server>/v1/mcp/connect
+                                                         └── relay ── CodeDroid on the phone (its own WebSocket)
 ```
 
 - Each client's `codedroid-mcp` starts the shared daemon if it is not running and proxies to it,
   so every client on the computer shares one connection to the phone, and tool calls run one at
   a time. The daemon logs to `~/.codedroid/daemon.log`.
-- The daemon reaches the app through `adb forward` to an abstract socket in the app, named for
-  the Android user in front (a Googlebook runs as user 10). Nothing listens on the network: only
-  adb reaches the socket, and the app accepts only adb's shell user and refuses other apps.
-- It sends a hello line with this computer's id (`~/.codedroid/host.json`) and name, waits for
-  the phone's answer (Allow, the first time), then speaks newline-delimited JSON-RPC.
+- The phone keeps a WebSocket open to the CodeDroid server and opens it again by itself after a
+  reboot or a network change. The daemon opens one too, with this computer's key from pairing,
+  and the server relays between them. Nothing listens on the phone or on this computer's network.
+- The server tells the phone which computer is connecting; the phone answers (Allow, the first
+  time), then each WebSocket message is one JSON-RPC message.
 - A call whose link drops mid-way is not retried: a tap whose answer was lost still happened.
   The agent is told so, and reads the screen before trying again.
 
@@ -128,9 +136,9 @@ npx @codedroid/mcp stop                          # stop the daemon
 
 Call `codedroid_status` (or `npx @codedroid/mcp status`): it says which of these it is.
 
-- No device, or `unauthorized`: plug in and tap Allow on "Allow USB debugging?", or reconnect
-  Wireless debugging (it switches itself off when the Wi-Fi network changes).
-- CodeDroid not installed, or its accessibility service off: it prints the commands that fix it.
+- "Not paired", or "pairing was removed": pair again from Settings > Computers > Pair a computer.
+- "The phone is not connected to CodeDroid": open CodeDroid on the phone, and check it is online,
+  signed in, and "Allow computers to connect" is on in Settings > Computers.
 - "Not allowed on the phone" or "Stopped on the phone": the phone said no; wait a minute.
 - `am force-stop com.codedroid.app`, or `am instrument` against it, switches its accessibility
   off; turn it on again in Settings > Accessibility. (`pm clear` also signs it out.)
@@ -141,14 +149,14 @@ Call `codedroid_status` (or `npx @codedroid/mcp status`): it says which of these
 
 ```bash
 npm install
-npm test                                         # no phone or adb needed
+npm test                                         # no phone, server or adb needed
 claude mcp add codedroid -- node "$PWD/src/index.js"
 ```
 
 The app's JVM tests (`./gradlew :app:testDebugUnitTest --tests 'com.codedroid.app.mcp.*'` in
 `CodeDroid-app/`) write `test/fixtures/phone-tools.json`, the phone's tool list the skill test
 checks the skills against, and run `test/phone-contract.mjs`: the bridge against the app's real
-MCP server code over TCP. Run `npm install` here first or that test is skipped.
+MCP server code, through a stand-in relay. Run `npm install` here first or that test is skipped.
 
 `src/daemon.js`, `stdio-shim.js`, `proxy-core.js`, `adb-tool.js` and `skill.js` are derived from
 [aura-mcp-connect](https://github.com/Dinesh210805/aura-android-use/tree/main/aura-mcp-connect)

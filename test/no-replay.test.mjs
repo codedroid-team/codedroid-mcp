@@ -51,19 +51,19 @@ async function connect(port) {
 // ── No phone: the session still opens, and a phone tool says why ──────
 {
   const factory = () => {
-    throw new Error("No Android device on adb. Plug the phone in with USB debugging on.");
+    throw new Error("This computer is not paired with a phone.");
   };
   const daemon = await startDaemon({ port: 0, phoneTransportFactory: factory, enableAdbTool: false });
   try {
     const client = await connect(daemon.port);
-    assert.match(client.getInstructions(), /not connected yet: No Android device on adb/);
+    assert.match(client.getInstructions(), /not connected yet: This computer is not paired/);
     assert.deepEqual((await client.listTools()).tools.map((t) => t.name), ["codedroid_status"]);
     const call = await client.callTool({ name: "get_screen", arguments: {} });
     assert.equal(call.isError, true);
-    assert.match(call.content[0].text, /not connected: No Android device on adb/);
+    assert.match(call.content[0].text, /not connected: This computer is not paired/);
     const status = JSON.parse((await client.callTool({ name: "codedroid_status", arguments: {} })).content[0].text);
     assert.equal(status.connected, false);
-    assert.match(status.problem, /No Android device/);
+    assert.match(status.problem, /not paired/);
     await client.close();
   } finally {
     await daemon.close();

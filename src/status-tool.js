@@ -2,18 +2,22 @@
  * codedroid_status — whether CodeDroid on the phone is connected, and if not, what to do about it.
  *
  * Served by the daemon itself, so it answers when the phone cannot: the one tool an agent can
- * call to learn that the app is not installed, its accessibility service is off, or the user
- * has not tapped Allow yet. Calling it also tries to connect again.
+ * call to learn that this computer is not paired, the phone is offline, or the user has not
+ * tapped Allow yet. Calling it also tries to connect again.
  */
+import { pairedDevice, readHost } from "./host.js";
 import { VERSION } from "./version.js";
 
 const DESCRIPTION =
-  "Whether CodeDroid on the Android phone is connected to this computer (device serial, Android user), " +
-  "and if not, why and how to fix it. Also retries the connection. Once connected it returns the phone's " +
-  "instructions for driving it.";
+  "Whether CodeDroid on the Android phone is connected to this computer (the phone's device id and model, " +
+  "the CodeDroid server), and if not, why and how to fix it. Also retries the connection. Once connected " +
+  "it returns the phone's instructions for driving it.";
 
-/** @param {import("./daemon.js").PhoneManager} phoneManager */
-export function createStatusTool(phoneManager) {
+/**
+ * @param {import("./daemon.js").PhoneManager} phoneManager
+ * @param {{host?: () => object | null}} [deps] this computer's pairing, for the phone it points at
+ */
+export function createStatusTool(phoneManager, { host = readHost } = {}) {
   return {
     definition: {
       name: "codedroid_status",
@@ -33,7 +37,8 @@ export function createStatusTool(phoneManager) {
       const status = {
         connected: !error,
         bridge: VERSION,
-        device: phoneManager.device,
+        // Not connected: the phone this computer is paired with now, which a new pairing may have changed.
+        device: client ? phoneManager.device : pairedDevice(host()),
         ...(error ? { problem: error } : {}),
         // A session that opened before the phone connected never got these at its handshake.
         ...(client?.getInstructions() ? { instructions: client.getInstructions() } : {}),

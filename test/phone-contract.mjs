@@ -1,32 +1,60 @@
 /**
  * The bridge against CodeDroid's real MCP server code — run by the app's JVM test
  * (CodeDroid-app/.../mcp/McpBridgeContractTest), which serves mcp/McpProtocol and mcp/McpTools over
- * a scripted screen on 127.0.0.1:<port>, and checks this script exits 0.
+ * a scripted screen on 127.0.0.1:<port>, one line per message, and checks this script exits 0.
  *
- * Everything between an MCP client and the phone is real: the daemon, the proxy, AdbPhoneTransport
- * and the TypeScript SDK's schema checks on every reply. Only adb is faked, with its forward pointing
- * at that port.
+ * Everything between an MCP client and the phone is real: the daemon, the proxy, RelayPhoneTransport
+ * and the TypeScript SDK's schema checks on every reply. Only the orchestrator is faked: a relay that,
+ * for each /v1/mcp/connect, dials that port, sends the hello the server would build, then turns
+ * lines into frames and back.
  *
  * Run: node test/phone-contract.mjs <port>
  */
 import assert from "node:assert/strict";
+import http from "node:http";
+import net from "node:net";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { AdbPhoneTransport } from "../src/adb-transport.js";
+import { WebSocketServer } from "ws";
 import { startDaemon } from "../src/daemon.js";
+import { RelayPhoneTransport } from "../src/relay-transport.js";
+import { VERSION } from "../src/version.js";
 
 const port = Number(process.argv[2]);
 assert.ok(port > 0, "usage: node test/phone-contract.mjs <port>");
 
-const adb = async (args) => {
-  const line = args.join(" ");
-  if (line === "devices -l") return "List of devices attached\nCONTRACT device model:Fake\n";
-  if (line.endsWith("am get-current-user")) return "0\n";
-  if (line.endsWith("forward tcp:0 localabstract:codedroid-mcp-0")) return `${port}\n`;
-  if (line.includes("forward --remove")) return "";
-  throw new Error(`unexpected adb ${line}`);
-};
-const factory = () => new AdbPhoneTransport({ adb, env: {}, identity: () => ({ id: "contract-host", name: "contract" }) });
+const relay = http.createServer();
+const wss = new WebSocketServer({ server: relay, path: "/v1/mcp/connect" });
+wss.on("connection", (ws) => {
+  const phone = net.connect(port, "127.0.0.1");
+  phone.setEncoding("utf8");
+  phone.write(
+    JSON.stringify({ type: "hello", proto: 1, host_id: "contract-host", host: "contract", platform: "test", client: "", bridge: VERSION }) + "\n",
+  );
+  let buffer = "";
+  phone.on("data", (chunk) => {
+    buffer += chunk;
+    let newline;
+    while ((newline = buffer.indexOf("\n")) !== -1) {
+      const line = buffer.slice(0, newline);
+      buffer = buffer.slice(newline + 1);
+      if (line.trim()) ws.send(line);
+    }
+  });
+  ws.on("message", (data) => phone.write(data.toString("utf8") + "\n"));
+  ws.on("close", () => phone.destroy());
+  phone.on("close", () => ws.close());
+  phone.on("error", () => ws.close());
+});
+await new Promise((resolve) => relay.listen(0, "127.0.0.1", resolve));
+
+const host = () => ({
+  server: `http://127.0.0.1:${relay.address().port}`,
+  host_id: "contract-host",
+  token: "t",
+  device: { id: "contract-device", model: "Fake" },
+});
+const factory = () => new RelayPhoneTransport({ host, env: {} });
 const daemon = await startDaemon({ port: 0, phoneTransportFactory: factory });
 
 const text = (result) => result.content[0].text;
@@ -95,10 +123,12 @@ try {
   await client.ping();
   const status = JSON.parse(text(await client.callTool({ name: "codedroid_status", arguments: {} })));
   assert.equal(status.connected, true);
-  assert.deepEqual(status.device, { serial: "CONTRACT", user: 0, socket: "codedroid-mcp-0" });
+  assert.deepEqual(status.device, { id: "contract-device", model: "Fake", server: host().server });
 
   await client.close();
   console.log("phone-contract.mjs: ALL PASS");
 } finally {
   await daemon.close();
+  for (const ws of wss.clients) ws.terminate();
+  relay.close();
 }

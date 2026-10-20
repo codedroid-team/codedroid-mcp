@@ -2,7 +2,7 @@
  * Daemon integration test — no phone required.
  *
  * A fake "phone" MCP server is wired in via InMemoryTransport where the real
- * AdbPhoneTransport would sit. Real Streamable HTTP clients then connect
+ * RelayPhoneTransport would sit. Real Streamable HTTP clients then connect
  * to the daemon and must see the phone's instructions/tools and share the
  * single backend connection concurrently.
  *

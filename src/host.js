@@ -1,35 +1,110 @@
 /**
- * This computer as the phone knows it: a random id kept in ~/.codedroid/host.json (the phone's
- * Settings > Computers remembers it once allowed), and its name.
+ * This computer's pairing with a phone, kept in ~/.codedroid/host.json (dir 0700, file 0600):
+ * {server, host_id, token, device: {id, model}}.
  *
- * Not a secret: only adb reaches the phone's server, so the id only spares the user a second
- * "Allow?" for a computer they already allowed.
+ * The phone shows a one-time code (Settings > Computers > Pair a computer); `pair` redeems it at
+ * the CodeDroid server for a host token. The token is the key to the relay: anyone holding it
+ * reaches the phone (still behind its Allow sheet), so the file is the user's alone.
  */
-import { randomUUID } from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
+
+export const DEFAULT_SERVER = "https://orchestrator.codedroid.com";
+
+export const PAIRING_STEPS =
+  "On the phone, open CodeDroid > Settings > Computers > Pair a computer, then run the command it shows " +
+  "on this computer (npx -y @codedroid/mcp pair XXXX-XXXX).";
 
 export function hostFilePath(home = os.homedir()) {
   return path.join(home, ".codedroid", "host.json");
 }
 
-export function hostIdentity({ home = os.homedir(), hostname = os.hostname() } = {}) {
-  const file = hostFilePath(home);
-  let id = null;
+/** The saved pairing, or null when this computer is not paired. */
+export function readHost({ home = os.homedir() } = {}) {
   try {
-    id = JSON.parse(fs.readFileSync(file, "utf8")).id ?? null;
+    const host = JSON.parse(fs.readFileSync(hostFilePath(home), "utf8"));
+    return host?.token && host.server ? { ...host, server: normalizeServer(host.server) } : null;
   } catch (e) {
-    // First run, or unreadable: a new id.
+    return null;
   }
-  if (!id) {
-    id = randomUUID();
-    try {
-      fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-      fs.writeFileSync(file, JSON.stringify({ id }), { mode: 0o600 });
-    } catch (e) {
-      // Read-only home: the phone asks again next time, nothing worse.
-    }
+}
+
+export function saveHost(host, { home = os.homedir() } = {}) {
+  const file = hostFilePath(home);
+  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+  // A new file, renamed over the old: 0600 from its first byte, and never half-written.
+  const tmp = `${file}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(host, null, 2) + "\n", { mode: 0o600 });
+  fs.renameSync(tmp, file);
+}
+
+/** The phone a pairing points at, as status and /health show it. */
+export function pairedDevice(host) {
+  return host ? { id: host.device?.id ?? null, model: host.device?.model ?? null, server: host.server } : null;
+}
+
+/** [server] without a trailing slash, or an error saying what is wrong with it. */
+export function normalizeServer(server) {
+  let url;
+  try {
+    url = new URL(server);
+  } catch (e) {
+    throw new Error(`Not a server URL: ${server}`);
   }
-  return { id, name: hostname.replace(/\.local$/, "") };
+  if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error(`Not an http(s) server URL: ${server}`);
+  url.search = "";
+  url.hash = "";
+  return url.href.replace(/\/+$/, "");
+}
+
+const NEW_CODE = "On the phone, open CodeDroid > Settings > Computers > Pair a computer for a new one.";
+
+/**
+ * Redeems [code] at [server] and saves the pairing, replacing any earlier one; resolves what was
+ * saved. Throws a message for the user, and leaves the earlier pairing as it was, on any failure.
+ */
+export async function pair(
+  code,
+  { server = DEFAULT_SERVER, fetch = globalThis.fetch, home = os.homedir(), hostname = os.hostname(), platform = os.platform() } = {},
+) {
+  // The server reads the code the forgiving way (any case, with or without the dash); this only
+  // catches what cannot be one before a round-trip.
+  const typed = String(code).replace(/\s+/g, "");
+  if (!/^[0-9a-z]{8}$/i.test(typed.replace(/-/g, ""))) {
+    throw new Error(`${code} is not a pairing code: it is 8 letters and digits, like ABCD-EFGH. ${NEW_CODE}`);
+  }
+  const base = normalizeServer(server);
+  let res;
+  try {
+    res = await fetch(`${base}/v1/mcp/pairings/redeem`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        code: typed,
+        name: hostname.replace(/\.local$/, "").slice(0, 64) || "computer",
+        platform: platform.slice(0, 32),
+      }),
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch (e) {
+    throw new Error(`Could not reach the CodeDroid server at ${base}: ${e.cause?.message ?? e.message}`);
+  }
+  const body = await res.json().catch(() => null);
+  if (res.status === 404) throw new Error(`The code ${code} is not valid: codes work once, for 10 minutes. ${NEW_CODE}`);
+  if (!res.ok) {
+    const detail = typeof body?.detail === "string" ? `: ${body.detail}` : "";
+    throw new Error(`The CodeDroid server at ${base} refused the pairing (HTTP ${res.status}${detail}).`);
+  }
+  if (typeof body?.token !== "string" || !body.host_id) {
+    throw new Error(`The CodeDroid server at ${base} answered the pairing without a host token; update codedroid-mcp.`);
+  }
+  const host = {
+    server: base,
+    host_id: body.host_id,
+    token: body.token,
+    device: { id: body.device?.id ?? null, model: body.device?.model ?? null },
+  };
+  saveHost(host, { home });
+  return host;
 }

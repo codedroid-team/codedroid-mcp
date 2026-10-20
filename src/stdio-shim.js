@@ -3,7 +3,7 @@
  * proxies to the shared local daemon, auto-starting it when needed, so every
  * client on this computer shares one connection to the phone.
  *
- *   IDE ── stdio ── this shim ── HTTP ── daemon ── adb ── CodeDroid on the phone
+ *   IDE ── stdio ── this shim ── HTTP ── daemon ── relay ── CodeDroid on the phone
  *
  * Forked from aura-mcp-connect (MIT, Copyright (c) 2026 Dinesh Kumar C; see
  * LICENSE.aura-mcp-connect).
@@ -19,7 +19,8 @@ import { buildProxyServer } from "./proxy-core.js";
 import { DEFAULT_PORT } from "./daemon.js";
 import { VERSION } from "./version.js";
 
-async function fetchHealth(port, timeoutMs = 1500) {
+/** The daemon's /health on [port], or null when no CodeDroid daemon answers there. */
+export async function fetchHealth(port, timeoutMs = 1500) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {

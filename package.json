@@ -1,7 +1,7 @@
 {
   "name": "@codedroid/mcp",
   "version": "0.1.0",
-  "description": "Give Claude Code, Codex or any MCP client the Android phone attached to your computer, through CodeDroid: read the screen, tap and type, hand CodeDroid a whole task, and run adb.",
+  "description": "Give Claude Code, Codex or any MCP client your Android phone, through CodeDroid: pair once with a code, then read the screen, tap and type, hand CodeDroid a whole task, and run adb.",
   "type": "module",
   "main": "src/index.js",
   "bin": {
@@ -19,13 +19,15 @@
     "node": ">=18"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0"
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "ws": "^8.22.0"
   },
   "keywords": [
     "mcp",
     "model-context-protocol",
     "android",
     "adb",
+    "websocket",
     "claude-code",
     "codex",
     "codedroid"

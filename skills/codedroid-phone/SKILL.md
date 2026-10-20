@@ -1,6 +1,6 @@
 ---
 name: codedroid-phone
-description: Drive the real Android phone attached to this computer through CodeDroid's MCP tools (get_screen, tap, type_text, swipe, open_app, wait_for, run_task, adb). Use whenever a task means seeing or doing something on the phone - checking a screen, tapping through an app, typing into a field, reading what an app shows, or handing CodeDroid a multi-step job on the phone.
+description: Drive the user's real Android phone through CodeDroid's MCP tools (get_screen, tap, type_text, swipe, open_app, wait_for, run_task, adb). Use whenever a task means seeing or doing something on the phone - checking a screen, tapping through an app, typing into a field, reading what an app shows, or handing CodeDroid a multi-step job on the phone.
 ---
 
 # Driving the phone with CodeDroid
@@ -13,9 +13,11 @@ time and check each one.
 ## Before the first call
 
 If the phone's tools are missing, or a call says CodeDroid is not connected, call
-`codedroid_status`. Its `problem` says exactly what to fix (phone not on adb, app not installed,
-accessibility off, the user has not tapped Allow on the phone yet). Tell the user that in their
-words, and call `codedroid_status` again once they have fixed it. Once connected it also returns
+`codedroid_status`. Its `problem` says exactly what to fix (this computer is not paired yet, the
+phone is offline or CodeDroid is not open on it, the user has not tapped Allow on the phone yet).
+Tell the user that in their words, and call `codedroid_status` again once they have fixed it.
+Pairing is theirs to do: on the phone, CodeDroid > Settings > Computers > Pair a computer shows a
+command to run on this computer. Once connected it also returns
 the phone's `instructions`: read them if your session started before the phone connected.
 
 The first time a computer connects, the phone asks the user to allow it. While you drive the
@@ -51,7 +53,7 @@ phone, it shows "<this computer> is using this phone" with a Stop button.
 | `clipboard` | Read it, or set it with `text` |
 | `device_info` | Model, Android version, Android user, screen, locked, CodeDroid ready and signed in |
 | `run_task`, `get_task`, `cancel_task` | Hand CodeDroid's own phone agent a whole goal (below) |
-| `adb` | This computer's adb against the same phone (see the test-on-device skill) |
+| `adb` | This computer's adb, when the phone is on USB or Wireless debugging (see the test-on-device skill) |
 
 ## Handing CodeDroid a task
 

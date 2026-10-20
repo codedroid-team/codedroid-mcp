@@ -1,9 +1,11 @@
 /**
  * daemon — ONE process on this computer that owns the single link to
- * CodeDroid on the phone (over adb) and serves MCP over Streamable HTTP on localhost.
+ * CodeDroid on the phone (through the CodeDroid server's relay) and serves MCP over
+ * Streamable HTTP on localhost.
  *
  * Forked from aura-mcp-connect (MIT, Copyright (c) 2026 Dinesh Kumar C; see
- * LICENSE.aura-mcp-connect): the link is adb instead of WebRTC, and the adb tool is on by default.
+ * LICENSE.aura-mcp-connect): the link is a WebSocket relay instead of WebRTC, and the adb tool is
+ * on by default.
  *
  * Every MCP client (Claude Code, Claude Desktop, Cursor, VS Code windows…)
  * connects to http://127.0.0.1:<port>/mcp and gets its own MCP session; tool
@@ -20,9 +22,9 @@ import { randomUUID } from "crypto";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
+import { adbTool } from "./adb-tool.js";
 import { buildProxyServer, broadcastNotification } from "./proxy-core.js";
-import { AdbPhoneTransport } from "./adb-transport.js";
-import { createAdbTool } from "./adb-tool.js";
+import { RelayPhoneTransport } from "./relay-transport.js";
 import { createStatusTool } from "./status-tool.js";
 import { VERSION } from "./version.js";
 
@@ -52,7 +54,7 @@ export class PhoneManager {
     pingTimeoutMs = PING_TIMEOUT_MS,
   } = {}) {
     this._transportFactory =
-      transportFactory ?? (() => new AdbPhoneTransport({ log }));
+      transportFactory ?? (() => new RelayPhoneTransport({ log }));
     this._log = log;
     this._livenessMaxAgeMs = livenessMaxAgeMs;
     this._pingTimeoutMs = pingTimeoutMs;
@@ -64,7 +66,7 @@ export class PhoneManager {
     this.state = "disconnected";
     /** Why the last connect failed, in words for the user; null once connected. */
     this.lastError = null;
-    /** {serial, user, socket} of the phone, once connected. */
+    /** {id, model, server} of the phone, once connected. */
     this.device = null;
     /** Set by the daemon to fan phone notifications out to sessions. */
     this.onNotification = null;
@@ -239,8 +241,7 @@ function jsonRpcError(res, status, id, code, message) {
  * @param {() => Promise<import("@modelcontextprotocol/sdk/shared/transport.js").Transport> | import("@modelcontextprotocol/sdk/shared/transport.js").Transport} [options.phoneTransportFactory]
  * @param {(msg: string) => void} [options.log]
  * @param {boolean} [options.enableAdbTool]  Serve the host-side `adb` tool. On by
- *   default: the link to the phone is adb already, and the user is a developer.
- *   CODEDROID_MCP_ADB=0 turns it off (index.js).
+ *   default: the user is a developer. CODEDROID_MCP_ADB=0 turns it off (index.js).
  * @returns {Promise<{port: number, close: () => Promise<void>, phoneManager: PhoneManager}>}
  */
 export async function startDaemon({
@@ -254,9 +255,6 @@ export async function startDaemon({
     transportFactory: phoneTransportFactory,
     log,
   });
-  // The phone CodeDroid answered on, unless the user named one.
-  const adbTool = createAdbTool({ serial: () => phoneManager.device?.serial });
-
   /** sessionId → { transport, server } */
   const sessions = new Map();
 

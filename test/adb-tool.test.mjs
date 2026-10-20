@@ -56,25 +56,17 @@ assert.deepEqual(adbArgv("-s shell shell ls"), ["-s", "shell", "shell", "ls"], "
 // ── CODEDROID_SERIAL (or ANDROID_SERIAL) prepends -s <serial> ─────────
 for (const env of [{ CODEDROID_SERIAL: "ABC123" }, { ANDROID_SERIAL: "ABC123" }]) {
   const run = makeRunner();
-  const tool = createAdbTool({ run, env, serial: () => "PHONE" });
+  const tool = createAdbTool({ run, env });
   await tool.handler({ command: "logcat -d" });
   assert.deepEqual(run.calls[0].args, ["-s", "ABC123", "logcat", "-d"]);
-}
-
-// ── Otherwise the phone CodeDroid is connected on ──────────────────────
-{
-  const run = makeRunner();
-  const tool = createAdbTool({ run, env: {}, serial: () => "PHONE" });
-  await tool.handler({ command: "shell getprop ro.product.model" });
-  assert.deepEqual(run.calls[0].args, ["-s", "PHONE", "shell", "getprop ro.product.model"]);
 }
 
 // ── A command that picks its device itself is left alone ──────────────
 for (const command of ["-s OTHER logcat -d", "-d shell ls", "-e devices"]) {
   const run = makeRunner();
-  const tool = createAdbTool({ run, env: { CODEDROID_SERIAL: "ABC123" }, serial: () => "PHONE" });
+  const tool = createAdbTool({ run, env: { CODEDROID_SERIAL: "ABC123" } });
   await tool.handler({ command });
-  assert.equal(run.calls[0].args.filter((a) => a === "ABC123" || a === "PHONE").length, 0, command);
+  assert.equal(run.calls[0].args.filter((a) => a === "ABC123").length, 0, command);
 }
 
 // ── Metacharacters never reach a HOST shell ────────────────────────────
@@ -130,6 +122,19 @@ for (const command of ["-s OTHER logcat -d", "-d shell ls", "-e devices"]) {
   assert.equal(result.isError, true);
   assert.match(result.content[0].text, /device unauthorized/);
   assert.match(result.content[0].text, /Command failed/);
+}
+
+// ── No adb on this computer: say how to get it ────────────────────────
+{
+  const run = makeRunner(() => {
+    const err = new Error("spawn adb ENOENT");
+    err.code = "ENOENT";
+    throw err;
+  });
+  const tool = createAdbTool({ run, env: {} });
+  const result = await tool.handler({ command: "devices" });
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /adb was not found.*platform-tools/);
 }
 
 // ── A non-Error rejection is still reported, not swallowed ────────────

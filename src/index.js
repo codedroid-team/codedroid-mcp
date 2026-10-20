@@ -1,22 +1,24 @@
 #!/usr/bin/env node
 /**
- * codedroid-mcp — connect any MCP client (Claude Code, Codex, Cursor, ...) to CodeDroid on the
- * Android phone attached to this computer over adb.
+ * codedroid-mcp — connect any MCP client (Claude Code, Codex, Cursor, ...) to CodeDroid on an
+ * Android phone paired with this computer.
  *
- * ONE daemon per computer owns the connection to the phone and serves MCP over Streamable HTTP
- * on localhost; clients either point at its URL or launch this stdio shim, which auto-starts it.
+ * ONE daemon per computer owns the connection to the phone (through the CodeDroid server's relay)
+ * and serves MCP over Streamable HTTP on localhost; clients either point at its URL or launch this
+ * stdio shim, which auto-starts it.
  *
  * Modes:
  *   codedroid-mcp                  stdio shim → daemon (auto-starts it)  [default]
  *   codedroid-mcp daemon           run the daemon in the foreground
+ *   codedroid-mcp pair <code>      pair with the phone showing <code>, then connect
  *   codedroid-mcp connect          connect to the phone now (and get it allowed there), then exit
  *   codedroid-mcp status           what the running daemon sees
  *   codedroid-mcp stop             stop the running daemon
  *   codedroid-mcp call <tool> [json]  call one tool and print the result (scripts, CI)
  *   codedroid-mcp skill install|path  the agent skills, for clients without the plugin
  *
- * Options: --port=<n> (or CODEDROID_MCP_PORT), default 4826. CODEDROID_MCP_ADB=0 leaves out the
- * adb tool. CODEDROID_SERIAL picks the phone when several are attached.
+ * Options: --port=<n> (or CODEDROID_MCP_PORT), default 4826. --server=<url> for pair. CODEDROID_MCP_ADB=0
+ * leaves out the adb tool. CODEDROID_SERIAL picks the adb tool's device when several are attached.
  *
  * All log output goes to stderr — stdout is reserved for MCP JSON-RPC frames.
  *
@@ -64,11 +66,13 @@ function resolveEnableAdb(args) {
 
 const HELP = `codedroid-mcp ${VERSION}
 
-Gives an MCP client (Claude Code, Codex, Cursor...) the Android phone attached to this computer
-through CodeDroid: see the screen, tap and type, hand CodeDroid a task, and run adb.
+Gives an MCP client (Claude Code, Codex, Cursor...) your Android phone through CodeDroid: see the
+screen, tap and type, hand CodeDroid a task, and run adb.
 
 Usage:
   codedroid-mcp                     MCP stdio server (auto-starts the shared daemon)
+  codedroid-mcp pair <code>         Pair with the phone showing <code>, then connect
+                                    (--server=<url> when the phone's command has it)
   codedroid-mcp connect             Connect to the phone now; the first time, tap Allow on it
   codedroid-mcp status              What the running daemon sees
   codedroid-mcp stop                Stop the running daemon
@@ -78,8 +82,9 @@ Usage:
                                     (--codex for Codex, --dir=<path> anywhere else)
   codedroid-mcp skill path          Print where the skill files are
 
-The phone needs USB debugging (or Wireless debugging) allowed for this computer, and CodeDroid
-installed with its accessibility service on.
+Pair first: on the phone, open CodeDroid > Settings > Computers > Pair a computer, and run the
+command it shows here. The phone needs CodeDroid signed in, online, with its accessibility
+service on. The adb tool, alone, needs the phone on this computer's adb.
 
 Options:
   --port=<n>   Daemon port (default 4826; env CODEDROID_MCP_PORT)
@@ -87,7 +92,7 @@ Options:
   --version    Print version
   --help       This text
 
-Env: CODEDROID_SERIAL picks the phone when several are attached; ADB is the adb binary.
+Env: CODEDROID_SERIAL picks the adb tool's device when several are attached; ADB is the adb binary.
 
 Clients:
   claude mcp add codedroid -- npx -y @codedroid/mcp
@@ -103,7 +108,7 @@ async function makeDaemonLogger() {
   const { default: os } = await import("os");
   const logFile = path.join(os.homedir(), ".codedroid", "daemon.log");
   try {
-    fs.mkdirSync(path.dirname(logFile), { recursive: true });
+    fs.mkdirSync(path.dirname(logFile), { recursive: true, mode: 0o700 });
   } catch (e) {
     /* stderr still works */
   }
@@ -118,7 +123,7 @@ async function makeDaemonLogger() {
   };
 }
 
-/** A client of the daemon, starting it if needed: for connect, status and call. */
+/** A client of the daemon, starting it if needed: for pair, connect, status and call. */
 async function daemonClient(port, enableAdbTool) {
   const { ensureDaemonRunning } = await import("./stdio-shim.js");
   const { DEFAULT_PORT } = await import("./daemon.js");
@@ -129,6 +134,22 @@ async function daemonClient(port, enableAdbTool) {
   const client = new Client({ name: "codedroid-mcp-cli", version: VERSION });
   await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${effective}/mcp`)), { timeout: 150_000 });
   return client;
+}
+
+/** The running daemon's /health, or null when there is none. */
+async function daemonHealth(port) {
+  const { DEFAULT_PORT } = await import("./daemon.js");
+  const { fetchHealth } = await import("./stdio-shim.js");
+  return fetchHealth(port ?? DEFAULT_PORT);
+}
+
+/** Stops a running daemon and waits until it is gone; false when none was running. */
+async function stopDaemon(port) {
+  const { DEFAULT_PORT } = await import("./daemon.js");
+  if (!(await daemonHealth(port))) return false;
+  await fetch(`http://127.0.0.1:${port ?? DEFAULT_PORT}/shutdown`, { method: "POST" }).catch(() => null);
+  for (let i = 0; i < 50 && (await daemonHealth(port)); i++) await new Promise((r) => setTimeout(r, 100));
+  return true;
 }
 
 function printResult(result) {
@@ -166,10 +187,7 @@ async function main() {
     } catch (e) {
       if (e.code === "EADDRINUSE") {
         const effectivePort = port ?? DEFAULT_PORT;
-        const healthy = await fetch(`http://127.0.0.1:${effectivePort}/health`)
-          .then((r) => (r.ok ? r.json() : null))
-          .catch(() => null);
-        if (healthy?.service === "codedroid-mcp-daemon") {
+        if (await daemonHealth(effectivePort)) {
           daemonLog(`A CodeDroid daemon is already running on port ${effectivePort}.`);
           process.exit(0);
         }
@@ -187,14 +205,25 @@ async function main() {
   }
 
   if (command === "stop") {
-    const { DEFAULT_PORT } = await import("./daemon.js");
-    const res = await fetch(`http://127.0.0.1:${port ?? DEFAULT_PORT}/shutdown`, { method: "POST" }).catch(() => null);
-    process.stdout.write(res?.ok ? "Stopped the daemon.\n" : "No daemon was running.\n");
+    process.stdout.write((await stopDaemon(port)) ? "Stopped the daemon.\n" : "No daemon was running.\n");
     return;
   }
 
-  if (command === "status" || command === "connect") {
-    if (command === "connect") log("Connecting to the phone. The first time, it asks whether to allow this computer: tap Allow.");
+  if (command === "pair") {
+    const code = args._.slice(1).join(" ");
+    if (!code) fatal("Usage: codedroid-mcp pair <code> [--server=<url>]. The phone shows the command: CodeDroid > Settings > Computers > Pair a computer.");
+    const { DEFAULT_SERVER, pair } = await import("./host.js");
+    const host = await pair(code, { server: args.server ?? DEFAULT_SERVER });
+    log(`Paired with ${host.device.model ?? "the phone"} through ${host.server}.`);
+    // A daemon connected, or connecting, holds the old pairing's link; a disconnected one reads the new one.
+    const phone = (await daemonHealth(port))?.phone;
+    if (phone && phone !== "disconnected" && (await stopDaemon(port))) log("Restarted the daemon for the new pairing.");
+  }
+
+  if (command === "status" || command === "connect" || command === "pair") {
+    const { PAIRING_STEPS, readHost } = await import("./host.js");
+    if (!readHost()) fatal(`This computer is not paired with a phone. ${PAIRING_STEPS}`);
+    if (command !== "status") log("Connecting to the phone. The first time, it asks whether to allow this computer: tap Allow.");
     const client = await daemonClient(port, enableAdbTool);
     const result = await client.callTool({ name: "codedroid_status", arguments: {} }, undefined, { timeout: 150_000 });
     printResult(result);
