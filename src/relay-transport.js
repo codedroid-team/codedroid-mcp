@@ -37,6 +37,11 @@ export function connectUrl(server) {
   return url.href;
 }
 
+/** A socket error's reason. Node leaves the message empty when every address failed (localhost: ::1 and 127.0.0.1). */
+function errorText(e) {
+  return e.message || e.errors?.map((inner) => inner.message).join("; ") || e.code || String(e);
+}
+
 export class RelayPhoneTransport {
   /**
    * @param {object} [options]
@@ -139,7 +144,7 @@ export class RelayPhoneTransport {
       });
       ws.on("error", (e) => {
         if (this._open) this.onerror?.(e);
-        else settle(new PhoneUnavailableError(`Could not reach the CodeDroid server at ${host.server}: ${e.message}`));
+        else settle(new PhoneUnavailableError(`Could not reach the CodeDroid server at ${host.server}: ${errorText(e)}`));
       });
       ws.on("close", () => {
         if (this._open) return void this._handleClosed();
