@@ -102,7 +102,8 @@ Clients:
   claude mcp add codedroid -- npx -y @codedroid/mcp
   codex mcp add codedroid -- npx -y @codedroid/mcp
   { "mcpServers": { "codedroid": { "command": "npx", "args": ["-y", "@codedroid/mcp"] } } }
-  or by URL, with the daemon running: http://127.0.0.1:4826/mcp (streamable HTTP)
+  or by URL, with the daemon running: http://127.0.0.1:4826/mcp (streamable HTTP), sending
+  Authorization: Bearer <the token in ~/.codedroid/daemon-token>, which stays the same across restarts
 `;
 
 /** Logger for daemon mode: stderr + ~/.codedroid/daemon.log (it is usually spawned with stdio ignored). */
@@ -148,18 +149,33 @@ async function daemonHealth(port) {
   return fetchHealth(port ?? DEFAULT_PORT);
 }
 
-/** Stops a running daemon and waits until it is gone; false when none was running. */
+/**
+ * Stops a running daemon and waits until it is gone. Resolves {status, port, pid}, status being
+ * "stopped"; "none" when no daemon was running; "refused" when it rejected this user's token; or
+ * "stuck" when it accepted but is still up 5 s later.
+ */
 async function stopDaemon(port) {
   const { DEFAULT_PORT } = await import("./daemon.js");
   const { readDaemonToken } = await import("./host.js");
-  if (!(await daemonHealth(port))) return false;
+  const effective = port ?? DEFAULT_PORT;
+  const health = await daemonHealth(effective);
+  if (!health) return { status: "none", port: effective };
   const token = readDaemonToken();
-  await fetch(`http://127.0.0.1:${port ?? DEFAULT_PORT}/shutdown`, {
+  const res = await fetch(`http://127.0.0.1:${effective}/shutdown`, {
     method: "POST",
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   }).catch(() => null);
-  for (let i = 0; i < 50 && (await daemonHealth(port)); i++) await new Promise((r) => setTimeout(r, 100));
-  return true;
+  if (res?.status === 401) return { status: "refused", port: effective, pid: health.pid };
+  for (let i = 0; i < 50 && (await daemonHealth(effective)); i++) await new Promise((r) => setTimeout(r, 100));
+  return { status: (await daemonHealth(effective)) ? "stuck" : "stopped", port: effective, pid: health.pid };
+}
+
+/** Why a daemon did not stop, and what to do about it; for stop and pair. */
+function notStopped({ status, port, pid }) {
+  const daemon = `The CodeDroid daemon on port ${port}${pid ? ` (pid ${pid})` : ""}`;
+  return status === "refused"
+    ? `${daemon} refused to stop: it does not accept the token in ~/.codedroid/daemon-token. End that process to stop it.`
+    : `${daemon} did not exit within 5 s. End that process to stop it.`;
 }
 
 function printResult(result) {
@@ -215,7 +231,9 @@ async function main() {
   }
 
   if (command === "stop") {
-    process.stdout.write((await stopDaemon(port)) ? "Stopped the daemon.\n" : "No daemon was running.\n");
+    const stopped = await stopDaemon(port);
+    if (stopped.status === "refused" || stopped.status === "stuck") fatal(notStopped(stopped));
+    process.stdout.write(stopped.status === "stopped" ? "Stopped the daemon.\n" : "No daemon was running.\n");
     return;
   }
 
@@ -227,7 +245,13 @@ async function main() {
     log(`Paired with ${host.device.model ?? "the phone"} through ${host.server}.`);
     // A daemon connected, or connecting, holds the old pairing's link; a disconnected one reads the new one.
     const phone = (await daemonHealth(port))?.phone;
-    if (phone && phone !== "disconnected" && (await stopDaemon(port))) log("Restarted the daemon for the new pairing.");
+    if (phone && phone !== "disconnected") {
+      const stopped = await stopDaemon(port);
+      if (stopped.status === "refused" || stopped.status === "stuck") {
+        fatal(`Paired, but the running daemon still holds the old pairing. ${notStopped(stopped)}`);
+      }
+      if (stopped.status === "stopped") log("Restarted the daemon for the new pairing.");
+    }
   }
 
   if (command === "status" || command === "connect" || command === "pair") {
