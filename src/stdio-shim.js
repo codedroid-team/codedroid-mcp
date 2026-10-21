@@ -43,7 +43,7 @@ export async function ensureDaemonRunning(port, log, { enableAdbTool = false } =
     if (enableAdbTool !== existing.adbToolEnabled) {
       log(
         `A daemon is already running on port ${port} with the adb tool ` +
-          `${existing.adbToolEnabled ? "on" : "off"}; CODEDROID_MCP_ADB had no effect. ` +
+          `${existing.adbToolEnabled ? "on" : "off"}; this client's adb setting (--adb, --no-adb, CODEDROID_MCP_ADB) had no effect. ` +
           `Stop that daemon (codedroid-mcp stop) and let this client restart it.`,
       );
     }
@@ -52,10 +52,11 @@ export async function ensureDaemonRunning(port, log, { enableAdbTool = false } =
 
   log(`Daemon not running — starting it on port ${port}...`);
   const indexPath = fileURLToPath(new URL("./index.js", import.meta.url));
-  // Env (and therefore CODEDROID_MCP_ADB) is inherited — deliberately not
-  // filtered here, since that inheritance is what lets a client arm the daemon
-  // it auto-starts. The argv is fixed, so a CLI flag could never reach here.
-  const child = spawn(process.execPath, [indexPath, "daemon", `--port=${port}`], {
+  // The child inherits this environment, but its adb setting comes from argv: this client's own
+  // resolved choice (--adb, --no-adb or CODEDROID_MCP_ADB), so a flag reaches the daemon it starts
+  // and an explicit --no-adb is not undone by an inherited CODEDROID_MCP_ADB=1.
+  const adbArg = enableAdbTool ? "--adb" : "--no-adb";
+  const child = spawn(process.execPath, [indexPath, "daemon", `--port=${port}`, adbArg], {
     detached: true,
     stdio: "ignore",
     windowsHide: true,
