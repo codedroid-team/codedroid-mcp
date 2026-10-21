@@ -13,6 +13,8 @@ const pkg = read("package.json");
 const plugin = read(".claude-plugin/plugin.json");
 const mcp = read(".mcp.json");
 const gemini = read("gemini-extension.json");
+const codex = read(".codex-plugin/plugin.json");
+const marketplace = read(".agents/plugins/marketplace.json");
 
 assert.equal(pkg.version, VERSION, "src/version.js and package.json");
 assert.equal(plugin.version, VERSION, "the plugin and package.json");
@@ -25,5 +27,12 @@ assert.deepEqual(mcp.mcpServers.codedroid.args.slice(-1), [`${pkg.name}@latest`]
 assert.equal(gemini.version, VERSION, "the Gemini extension and package.json");
 assert.deepEqual(gemini.mcpServers, mcp.mcpServers, "Gemini and Claude launch the same MCP server");
 assert.ok(pkg.files.includes("gemini-extension.json"), "npm ships the Gemini extension manifest");
+
+assert.equal(codex.version, VERSION, "the Codex plugin and package.json");
+assert.equal(codex.skills, "./skills/");
+assert.equal(codex.mcpServers, "./.mcp.json");
+assert.equal(marketplace.plugins[0].name, codex.name);
+assert.equal(marketplace.plugins[0].source.path, "./", "Codex installs the repository root");
+for (const file of [".codex-plugin", ".agents/plugins/marketplace.json"]) assert.ok(pkg.files.includes(file));
 
 console.log("package.test.mjs: ALL PASS");

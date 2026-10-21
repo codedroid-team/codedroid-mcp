@@ -1,0 +1,11 @@
+{
+  "name": "codedroid",
+  "version": "0.1.0",
+  "description": "Drive your Android phone through CodeDroid, with MCP tools and device testing skills.",
+  "author": {
+    "name": "CodeDroid"
+  },
+  "homepage": "https://get.codedroid.com",
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json"
+}

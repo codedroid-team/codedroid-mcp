@@ -11,6 +11,8 @@
     "src",
     "skills",
     ".claude-plugin",
+    ".codex-plugin",
+    ".agents/plugins/marketplace.json",
     "gemini-extension.json",
     ".mcp.json",
     "README.md",

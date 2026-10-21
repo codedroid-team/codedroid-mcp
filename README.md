@@ -6,7 +6,7 @@ own agent a whole task, and run adb. The app reads the screen through Android's 
 service, so what the agent gets back is what is really on screen, not a guess from a screenshot
 or a `uiautomator` dump.
 
-It ships as a Claude Code plugin and Gemini CLI extension: this MCP server plus two skills, `codedroid-phone` (how to drive
+It ships as a Claude Code plugin, Codex plugin, and Gemini CLI extension: this MCP server plus two skills, `codedroid-phone` (how to drive
 the phone) and `test-on-device` (build, install, drive, check logcat, report).
 
 ## What you need
@@ -33,7 +33,14 @@ claude mcp add codedroid -- npx -y @codedroid/mcp
 npx @codedroid/mcp skill install            # the two skills, into ~/.claude/skills
 ```
 
-Codex:
+Codex, as a plugin (current CLI):
+
+```bash
+codex plugin marketplace add codedroid-team/codedroid-mcp
+codex plugin add codedroid@codedroid
+```
+
+Or the MCP server and skills separately:
 
 ```bash
 codex mcp add codedroid -- npx -y @codedroid/mcp
