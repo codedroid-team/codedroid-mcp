@@ -13,7 +13,7 @@ import http from "node:http";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { daemonTransport } from "../src/daemon-transport.js";
 import {
   ListToolsRequestSchema,
   CallToolRequestSchema,
@@ -66,9 +66,7 @@ function makeFakePhoneTransport() {
 
 async function connectHttpClient(port, name) {
   const client = new Client({ name, version: "0.0.1" });
-  const transport = new StreamableHTTPClientTransport(
-    new URL(`http://127.0.0.1:${port}/mcp`),
-  );
+  const transport = daemonTransport(port);
   await client.connect(transport);
   return { client, transport };
 }
@@ -174,6 +172,8 @@ try {
   await a.transport.terminateSession();
   await a.client.close();
   await b.client.close();
+  const closedHealth = await fetch(`http://127.0.0.1:${daemon.port}/health`).then((r) => r.json());
+  assert.equal(closedHealth.sessions, 0, "closing clients must release their daemon sessions");
 
 } finally {
   await daemon.close();

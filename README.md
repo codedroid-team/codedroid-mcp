@@ -11,7 +11,7 @@ the phone) and `test-on-device` (build, install, drive, check logcat, report).
 
 ## What you need
 
-- Node.js 18 or newer on this computer.
+- Node.js 20 or newer on this computer.
 - CodeDroid installed from https://get.codedroid.com, signed in, with its accessibility service on.
   The phone only needs to be online: no cable, no USB debugging, no shared network.
 - For the `adb` tool only: adb (Android platform-tools) on this computer, and the phone on it

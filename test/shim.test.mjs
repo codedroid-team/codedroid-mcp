@@ -38,9 +38,10 @@ function makeFakePhoneTransport() {
       },
     ],
   }));
-  phone.setRequestHandler(CallToolRequestSchema, async (req) => ({
-    content: [{ type: "text", text: `echo: ${req.params.arguments?.text}` }],
-  }));
+  phone.setRequestHandler(CallToolRequestSchema, async (req) => {
+    if (req.params.name === "get_task") await new Promise((resolve) => setTimeout(resolve, 300));
+    return { content: [{ type: "text", text: `echo: ${req.params.arguments?.text}` }] };
+  });
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
   phone.connect(serverSide);
   return clientSide;
@@ -97,7 +98,18 @@ try {
   });
   assert.equal(result.content[0].text, "echo: via-shim");
 
+  const order = [];
+  await Promise.all([
+    client.callTool({ name: "get_task", arguments: { task_id: "t1" } }).then(() => order.push("get_task")),
+    new Promise((resolve) => setTimeout(resolve, 20))
+      .then(() => client.callTool({ name: "echo", arguments: { text: "meanwhile" } }))
+      .then(() => order.push("echo")),
+  ]);
+  assert.deepEqual(order, ["echo", "get_task"], "the shim's HTTP connection must not block concurrent calls");
+
   await client.close();
+  const health = await fetch(`http://127.0.0.1:${daemon.port}/health`).then((r) => r.json());
+  assert.equal(health.sessions, 0, "closing stdio must release the shim's daemon session");
   console.log("shim.test.mjs: ALL PASS");
 } finally {
   await daemon.close();

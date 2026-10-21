@@ -13,10 +13,10 @@
 import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { buildProxyServer } from "./proxy-core.js";
 import { DEFAULT_PORT } from "./daemon.js";
+import { daemonTransport } from "./daemon-transport.js";
 import { VERSION } from "./version.js";
 
 /** The daemon's /health on [port], or null when no CodeDroid daemon answers there. */
@@ -95,9 +95,7 @@ export async function runStdioShim({
   await ensureDaemonRunning(port, log, { enableAdbTool });
 
   const client = new Client({ name: "codedroid-mcp-shim", version: VERSION });
-  const httpTransport = new StreamableHTTPClientTransport(
-    new URL(`http://127.0.0.1:${port}/mcp`),
-  );
+  const httpTransport = daemonTransport(port);
   // Long initialize budget: the daemon may be doing the first phone connect
   // (including the on-phone approval tap) behind this call.
   await client.connect(httpTransport, { timeout: 150_000 });
@@ -123,7 +121,10 @@ export async function runStdioShim({
   };
 
   const stdioTransport = new StdioServerTransport();
-  server.onclose = async () => {
+  let closing = false;
+  const shutdown = async () => {
+    if (closing) return;
+    closing = true;
     // IDE closed our stdin — release the daemon session and leave cleanly.
     client.onclose = undefined;
     try {
@@ -133,6 +134,12 @@ export async function runStdioShim({
     }
     process.exit(0);
   };
+  server.onclose = shutdown;
+  // The SDK's stdio transport does not close itself at EOF. Without these hooks the
+  // client eventually kills the shim and its daemon session is left behind.
+  process.stdin.once("end", shutdown);
+  process.once("SIGTERM", shutdown);
+  process.once("SIGINT", shutdown);
 
   await server.connect(stdioTransport);
   log(`Bridging stdio ↔ daemon on port ${port}.`);

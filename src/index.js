@@ -128,11 +128,11 @@ async function daemonClient(port, enableAdbTool) {
   const { ensureDaemonRunning } = await import("./stdio-shim.js");
   const { DEFAULT_PORT } = await import("./daemon.js");
   const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
-  const { StreamableHTTPClientTransport } = await import("@modelcontextprotocol/sdk/client/streamableHttp.js");
+  const { daemonTransport } = await import("./daemon-transport.js");
   const effective = port ?? DEFAULT_PORT;
   await ensureDaemonRunning(effective, log, { enableAdbTool });
   const client = new Client({ name: "codedroid-mcp-cli", version: VERSION });
-  await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${effective}/mcp`)), { timeout: 150_000 });
+  await client.connect(daemonTransport(effective), { timeout: 150_000 });
   return client;
 }
 
