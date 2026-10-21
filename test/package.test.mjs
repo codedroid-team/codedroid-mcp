@@ -12,6 +12,7 @@ const read = (path) => JSON.parse(fs.readFileSync(new URL(`../${path}`, import.m
 const pkg = read("package.json");
 const plugin = read(".claude-plugin/plugin.json");
 const mcp = read(".mcp.json");
+const gemini = read("gemini-extension.json");
 
 assert.equal(pkg.version, VERSION, "src/version.js and package.json");
 assert.equal(plugin.version, VERSION, "the plugin and package.json");
@@ -20,5 +21,9 @@ assert.match(fs.readFileSync(new URL(`../${pkg.bin["codedroid-mcp"]}`, import.me
 for (const path of ["src", "skills", ".claude-plugin", ".mcp.json", "README.md"]) assert.ok(pkg.files.includes(path), `npm ships ${path}`);
 for (const name of SKILLS) assert.ok(fs.existsSync(new URL(`../skills/${name}/SKILL.md`, import.meta.url)), name);
 assert.deepEqual(mcp.mcpServers.codedroid.args.slice(-1), [`${pkg.name}@latest`], "the plugin runs this package");
+
+assert.equal(gemini.version, VERSION, "the Gemini extension and package.json");
+assert.deepEqual(gemini.mcpServers, mcp.mcpServers, "Gemini and Claude launch the same MCP server");
+assert.ok(pkg.files.includes("gemini-extension.json"), "npm ships the Gemini extension manifest");
 
 console.log("package.test.mjs: ALL PASS");

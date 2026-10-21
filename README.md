@@ -1,12 +1,12 @@
 # CodeDroid MCP
 
-Gives Claude Code, Codex or any MCP client your Android phone, through the CodeDroid app on it:
+Gives Claude Code, Codex, Gemini CLI or any MCP client your Android phone, through the CodeDroid app on it:
 read the screen as numbered elements, tap and type, wait for things to appear, hand CodeDroid's
 own agent a whole task, and run adb. The app reads the screen through Android's accessibility
 service, so what the agent gets back is what is really on screen, not a guess from a screenshot
 or a `uiautomator` dump.
 
-It ships as a Claude Code plugin: this MCP server plus two skills, `codedroid-phone` (how to drive
+It ships as a Claude Code plugin and Gemini CLI extension: this MCP server plus two skills, `codedroid-phone` (how to drive
 the phone) and `test-on-device` (build, install, drive, check logcat, report).
 
 ## What you need
@@ -49,6 +49,21 @@ command = "npx"
 args = ["-y", "@codedroid/mcp"]
 tool_timeout_sec = 300
 ```
+
+Gemini CLI, as an extension (includes the MCP server and both skills):
+
+```bash
+gemini extensions install https://github.com/codedroid-team/codedroid-mcp
+```
+
+Or the MCP server alone:
+
+```bash
+gemini mcp add --scope user --timeout 300000 codedroid npx -y @codedroid/mcp
+```
+
+Use the extension or the standalone MCP configuration, so the tools are registered once.
+Restart your client after installation, then pair this computer as described below.
 
 Any other client: `{"mcpServers": {"codedroid": {"command": "npx", "args": ["-y", "@codedroid/mcp"]}}}`,
 or, with the daemon running, the streamable HTTP URL `http://127.0.0.1:4826/mcp`.
