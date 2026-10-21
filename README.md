@@ -59,8 +59,8 @@ Then try:
 - “Open my app, navigate to sign-in, and take a screenshot.”
 - “Install this APK, launch it, and check for crashes.”*
 
-*Installing APKs and using `adb` also requires Android platform-tools and a USB or wireless
-debugging connection. See [adb setup](docs/reference.md#adb-setup).
+*Installing APKs and using `adb` also requires turning the `adb` tool on, Android platform-tools,
+and a USB or wireless debugging connection. See [adb setup](docs/reference.md#adb-setup).
 
 ## Need help?
 

@@ -10,6 +10,18 @@ You have two kinds of tools: CodeDroid's (`get_screen`, `tap`, `type_text`, `wai
 this computer's adb. Use adb to build, install, start and inspect; use CodeDroid to look and act.
 The codedroid-phone skill covers driving the screen.
 
+The `adb` tool is off unless the user turns it on, since it runs commands on their computer. If it
+is not in your tool list, tell the user how, then wait:
+
+- For this run: in a terminal, `npx -y @codedroid/mcp stop`, then
+  `CODEDROID_MCP_ADB=1 npx -y @codedroid/mcp connect`. The shared daemon then serves `adb` to
+  every client until it next stops.
+- For good: add `CODEDROID_MCP_ADB=1` to the environment of the CodeDroid MCP server in the
+  client's MCP settings (or `--adb` to its arguments), or start the client with it set. Then run
+  `npx -y @codedroid/mcp stop` once: the daemon keeps the setting it started with.
+
+Either way, the session has to restart before the client lists `adb`.
+
 ## 1. Know the phone
 
 CodeDroid reaches the phone through the CodeDroid server; adb needs it on this computer, over USB

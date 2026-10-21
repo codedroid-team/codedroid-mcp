@@ -53,7 +53,7 @@ phone, it shows "<this computer> is using this phone" with a Stop button.
 | `clipboard` | Read it, or set it with `text` |
 | `device_info` | Model, Android version, Android user, screen, locked, CodeDroid ready and signed in |
 | `run_task`, `get_task`, `cancel_task` | Hand CodeDroid's own phone agent a whole goal (below) |
-| `adb` | This computer's adb, when the phone is on USB or Wireless debugging (see the test-on-device skill) |
+| `adb` | This computer's adb, when the phone is on USB or Wireless debugging. Off unless the user turns it on: the test-on-device skill says how |
 
 ## Handing CodeDroid a task
 
