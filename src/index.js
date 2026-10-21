@@ -21,8 +21,6 @@
  * leaves out the adb tool. CODEDROID_SERIAL picks the adb tool's device when several are attached.
  *
  * All log output goes to stderr — stdout is reserved for MCP JSON-RPC frames.
- *
- * Forked from aura-mcp-connect (MIT, Copyright (c) 2026 Dinesh Kumar C; see LICENSE.aura-mcp-connect).
  */
 import { VERSION } from "./version.js";
 

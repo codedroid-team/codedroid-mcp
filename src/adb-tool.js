@@ -2,10 +2,8 @@
  * adb — a single generic MCP tool that runs an adb command against a phone
  * attached to THIS computer (USB, or Wireless Debugging).
  *
- * Forked from aura-mcp-connect's `aura-adb` (MIT, Copyright (c) 2026 Dinesh Kumar C;
- * see LICENSE.aura-mcp-connect). Changed: on by default, since the user is a developer
- * (CODEDROID_MCP_ADB=0 turns it off); marked destructive so clients ask before running
- * it; a per-call timeout.
+ * Enabled by default (CODEDROID_MCP_ADB=0 turns it off), with a per-call timeout.
+ * Marked destructive so clients ask before running it.
  *
  * It never touches the connection to CodeDroid: it shells out to this machine's
  * own `adb`, exactly like a developer typing `adb install app.apk` themselves.

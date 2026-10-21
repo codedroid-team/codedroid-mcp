@@ -7,9 +7,6 @@
  *   or any directory (--dir).
  * - Change together: the skills name tools, so a renamed tool means editing them
  *   (test/skill.test.mjs checks every name they use exists).
- *
- * Forked from aura-mcp-connect's skill.js (MIT, Copyright (c) 2026 Dinesh Kumar C; see
- * LICENSE.aura-mcp-connect).
  */
 import fs from "fs";
 import os from "os";

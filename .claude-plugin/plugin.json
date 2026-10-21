@@ -1,6 +1,6 @@
 {
   "name": "codedroid",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Your Android phone, through CodeDroid: read the screen, tap and type, hand CodeDroid a whole task, run adb, and verify app changes on the device.",
   "author": {
     "name": "CodeDroid"
