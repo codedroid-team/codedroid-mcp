@@ -44,6 +44,16 @@ export function pairedDevice(host) {
   return host ? { id: host.device?.id ?? null, model: host.device?.model ?? null, server: host.server } : null;
 }
 
+/** A loopback host, where plaintext http is safe because nothing leaves this machine. */
+function isLoopbackHostname(hostname) {
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "::1" ||
+    hostname.endsWith(".localhost")
+  );
+}
+
 /** [server] without a trailing slash, or an error saying what is wrong with it. */
 export function normalizeServer(server) {
   let url;
@@ -53,6 +63,11 @@ export function normalizeServer(server) {
     throw new Error(`Not a server URL: ${server}`);
   }
   if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error(`Not an http(s) server URL: ${server}`);
+  // Plaintext http would send the pairing code and the host token in the open; allow it only to a
+  // loopback host (local development) and require https for anything reachable over a network.
+  if (url.protocol === "http:" && !isLoopbackHostname(url.hostname)) {
+    throw new Error(`Refusing a plaintext http server for ${server}: use https (http is allowed only for localhost).`);
+  }
   url.search = "";
   url.hash = "";
   return url.href.replace(/\/+$/, "");
