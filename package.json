@@ -16,7 +16,8 @@
     "gemini-extension.json",
     ".mcp.json",
     "README.md",
-    "LICENSE.aura-mcp-connect"
+    "docs",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=20"
@@ -42,5 +43,6 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/codedroid-team/codedroid-mcp.git"
-  }
+  },
+  "license": "MIT"
 }
