@@ -3,8 +3,8 @@
  * CodeDroid on the phone (through the CodeDroid server's relay) and serves MCP over
  * Streamable HTTP on localhost.
  *
- * The phone connection uses a WebSocket relay. /mcp requires a per-daemon bearer token, and the
- * host-side adb tool is opt-in.
+ * The phone connection uses a WebSocket relay. /mcp requires this user's daemon token (a bearer
+ * token kept in ~/.codedroid), and the host-side adb tool is opt-in.
  *
  * Every MCP client (Claude Code, Claude Desktop, Cursor, VS Code windows…)
  * connects to http://127.0.0.1:<port>/mcp and gets its own MCP session; tool
@@ -13,13 +13,13 @@
  * previous one ("newest wins" tug-of-war).
  *
  * Endpoints:
- *   POST/GET/DELETE /mcp   Streamable HTTP MCP (per-session) — needs the per-daemon bearer token
+ *   POST/GET/DELETE /mcp   Streamable HTTP MCP (per-session) — needs the daemon token
  *   POST /shutdown         stop the daemon — needs the token
- *   GET /health            {ok, version, phone, error, sessions, adbToolEnabled} — unauthenticated
+ *   GET /health            {ok, version, pid, phone, error, sessions, adbToolEnabled} — unauthenticated
  */
 import http from "http";
 import os from "os";
-import { randomUUID, randomBytes, timingSafeEqual } from "crypto";
+import { randomUUID, timingSafeEqual } from "crypto";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
@@ -27,7 +27,7 @@ import { adbTool } from "./adb-tool.js";
 import { buildProxyServer, broadcastNotification } from "./proxy-core.js";
 import { RelayPhoneTransport } from "./relay-transport.js";
 import { createStatusTool } from "./status-tool.js";
-import { clearDaemonToken, writeDaemonToken } from "./host.js";
+import { ensureDaemonToken, readDaemonToken, saveDaemonToken } from "./host.js";
 import { VERSION } from "./version.js";
 
 export const DEFAULT_PORT = 4826;
@@ -206,7 +206,7 @@ function bearerToken(req) {
 /** Whether [req] carries the daemon's token. Constant-time, so a wrong guess leaks no timing. */
 function hasValidToken(req, token) {
   const got = bearerToken(req);
-  if (!got) return false;
+  if (!got || !token) return false;
   const a = Buffer.from(got);
   const b = Buffer.from(token);
   return a.length === b.length && timingSafeEqual(a, b);
@@ -261,9 +261,8 @@ function jsonRpcError(res, status, id, code, message) {
  *   default: it runs commands on this computer, so it is opt-in. CODEDROID_MCP_ADB=1
  *   or --adb turns it on (index.js).
  * @param {string} [options.home]  Where ~/.codedroid lives; overridable for tests.
- * @param {string} [options.authToken]  The bearer token /mcp and /shutdown require;
- *   generated and written to ~/.codedroid/daemon-token when omitted.
  * @returns {Promise<{port: number, authToken: string, close: () => Promise<void>, phoneManager: PhoneManager}>}
+ *   authToken is this user's daemon token (host.js ensureDaemonToken), which /mcp and /shutdown require.
  */
 export async function startDaemon({
   port = DEFAULT_PORT,
@@ -272,8 +271,9 @@ export async function startDaemon({
   log = () => {},
   enableAdbTool = false,
   home = os.homedir(),
-  authToken = randomBytes(32).toString("hex"),
 } = {}) {
+  /** Set once the port is ours (below); no request is handled before that. */
+  let authToken = null;
   const phoneManager = new PhoneManager({
     transportFactory: phoneTransportFactory,
     log,
@@ -304,12 +304,23 @@ export async function startDaemon({
 
       // /health stays unauthenticated so a client can discover a running daemon before it has the
       // token. It carries no phone identifiers (id/model/server) — a reachable-but-unauthorized
-      // caller learns only that a daemon is here and whether adb is on.
+      // caller learns only that a daemon is here, whether adb is on, and its pid (for `stop`'s
+      // message when it refuses).
       if (url.pathname === "/health" && req.method === "GET") {
+        // Clients read the token right after this answers. If it was deleted (a user clearing
+        // ~/.codedroid), put it back, or every new client would be locked out of this daemon.
+        if (authToken && !readDaemonToken({ home })) {
+          try {
+            saveDaemonToken(authToken, { home });
+          } catch (e) {
+            log(`Could not restore the daemon token: ${e.message}`);
+          }
+        }
         sendJson(res, 200, {
           ok: true,
           service: "codedroid-mcp-daemon",
           version: VERSION,
+          pid: process.pid,
           phone: phoneManager.state,
           error: phoneManager.lastError,
           sessions: sessions.size,
@@ -318,9 +329,13 @@ export async function startDaemon({
         return;
       }
 
-      // Everything past here drives the phone or the host adb tool: it needs the per-daemon token.
+      // Everything past here drives the phone or the host adb tool: it needs this user's token.
       if (!hasValidToken(req, authToken)) {
-        sendJson(res, 401, { error: "Unauthorized: missing or invalid bearer token" });
+        sendJson(res, 401, {
+          error:
+            "Unauthorized: send this user's daemon token (~/.codedroid/daemon-token) as a bearer token. " +
+            "An @codedroid/mcp from before the token cannot: update it (npx -y @codedroid/mcp@latest).",
+        });
         return;
       }
 
@@ -433,11 +448,12 @@ export async function startDaemon({
     httpServer.listen(port, host, resolve);
   });
   const boundPort = httpServer.address().port;
-  // Write the token only now the port is ours, in the same synchronous turn as listen resolving —
-  // so a concurrent starter that lost the bind (EADDRINUSE above) never clobbered this file, and no
-  // request can be handled before the token exists. One token file per computer, like host.json:
-  // a daemon on a second --port would overwrite it, matching the one-daemon-per-computer model.
-  writeDaemonToken(authToken, { home });
+  // Resolve the token only now the port is ours, in the same synchronous turn as listen resolving:
+  // a starter that lost the bind (EADDRINUSE above) never creates a token of its own, and no request
+  // is handled before the token exists. It is this user's one token, reused across restarts and by
+  // a daemon on another --port. (Only two daemons creating it at the same instant, on two ports, on
+  // a computer that has never had one, could end up with different tokens.)
+  authToken = ensureDaemonToken({ home });
   log(`CodeDroid MCP daemon listening on http://${host}:${boundPort}/mcp`);
   if (enableAdbTool) log("The adb tool is on: connected MCP clients can run adb commands on this machine.");
   else log("The adb tool is off (opt in with CODEDROID_MCP_ADB=1 or --adb).");
@@ -452,7 +468,6 @@ export async function startDaemon({
     }
     sessions.clear();
     await phoneManager.close();
-    clearDaemonToken({ home });
     await new Promise((resolve) => httpServer.close(resolve));
   };
 

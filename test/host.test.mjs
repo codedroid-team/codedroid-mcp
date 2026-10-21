@@ -8,14 +8,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
-  clearDaemonToken,
   daemonTokenPath,
+  ensureDaemonToken,
   hostFilePath,
   pair,
   pairedDevice,
   readDaemonToken,
   readHost,
-  writeDaemonToken,
+  saveDaemonToken,
 } from "../src/host.js";
 
 /** A fetch that records the request and answers [status] with [body]. */
@@ -139,20 +139,55 @@ try {
   fs.rmSync(home, { recursive: true, force: true });
 }
 
-// ── The daemon token: absent, then written 0600, read back, cleared ───
+// ── The daemon token: created once, 0600, the same on every start ─────
 {
   const tokenHome = fs.mkdtempSync(path.join(os.tmpdir(), "codedroid-token-"));
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "codedroid-tmpdir-"));
+  const savedEnv = { TMPDIR: process.env.TMPDIR, XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR };
+  // The read-only fallback lives under the runtime or temp directory: point both away from the real ones.
+  process.env.TMPDIR = tmp;
+  delete process.env.XDG_RUNTIME_DIR;
   try {
-    assert.equal(readDaemonToken({ home: tokenHome }), null, "no token before a daemon writes one");
-    writeDaemonToken("0123abcd", { home: tokenHome });
-    assert.equal(readDaemonToken({ home: tokenHome }), "0123abcd", "the token round-trips, trimmed");
+    assert.equal(readDaemonToken({ home: tokenHome }), null, "no token before a daemon creates one");
+    const token = ensureDaemonToken({ home: tokenHome });
+    assert.match(token, /^[0-9a-f]{64}$/);
+    assert.equal(ensureDaemonToken({ home: tokenHome }), token, "the same token on every start");
+    assert.equal(readDaemonToken({ home: tokenHome }), token);
     if (process.platform !== "win32") {
       assert.equal(fs.statSync(daemonTokenPath(tokenHome)).mode & 0o777, 0o600, "the token file is the user's alone");
     }
-    clearDaemonToken({ home: tokenHome });
-    assert.equal(readDaemonToken({ home: tokenHome }), null, "cleared when the daemon stops");
+    fs.writeFileSync(daemonTokenPath(tokenHome), "not a token\n");
+    assert.equal(readDaemonToken({ home: tokenHome }), null, "anything but a token is ignored");
+    assert.notEqual(ensureDaemonToken({ home: tokenHome }), token, "and replaced");
+
+    // ~/.codedroid read-only (host.json mounted from a secret, say): a private directory of this
+    // user's under the temp directory instead. Root ignores mode bits, so this needs a normal user.
+    if (process.platform !== "win32" && process.getuid() !== 0) {
+      const codedroidDir = path.dirname(daemonTokenPath(tokenHome));
+      fs.rmSync(daemonTokenPath(tokenHome));
+      fs.chmodSync(codedroidDir, 0o500);
+      try {
+        const fallback = ensureDaemonToken({ home: tokenHome });
+        assert.equal(readDaemonToken({ home: tokenHome }), fallback, "clients find it in the fallback");
+        assert.equal(ensureDaemonToken({ home: tokenHome }), fallback, "and the daemon reuses it");
+        const fallbackDir = path.join(tmp, `codedroid-${process.getuid()}`);
+        assert.equal(fs.statSync(fallbackDir).mode & 0o777, 0o700);
+
+        // A fallback directory another user could enter is never trusted, for reading or writing.
+        fs.chmodSync(fallbackDir, 0o755);
+        assert.equal(readDaemonToken({ home: tokenHome }), null, "a token where others can reach it is ignored");
+        assert.throws(() => saveDaemonToken(token, { home: tokenHome }), /not a private directory/);
+      } finally {
+        fs.chmodSync(codedroidDir, 0o700);
+      }
+    }
   } finally {
+    for (const [key, value] of Object.entries(savedEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
     fs.rmSync(tokenHome, { recursive: true, force: true });
+    fs.rmSync(tmp, { recursive: true, force: true });
   }
 }
 

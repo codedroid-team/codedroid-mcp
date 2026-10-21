@@ -6,6 +6,7 @@
  * the CodeDroid server for a host token. The token is the key to the relay: anyone holding it
  * reaches the phone (still behind its Allow sheet), so the file is the user's alone.
  */
+import { randomBytes } from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -24,35 +25,89 @@ export function daemonTokenPath(home = os.homedir()) {
   return path.join(home, ".codedroid", "daemon-token");
 }
 
+/** What ensureDaemonToken writes; anything else found in a token file is ignored. */
+const TOKEN_PATTERN = /^[0-9a-f]{64}$/;
+
 /**
- * The running daemon's bearer token, written by the daemon at startup and read by every client on
- * this computer (shim, CLI). The file is the shared secret: in a 0700 dir, 0600, so a process that
- * cannot read the user's home — another local user, a browser reaching loopback — cannot get it.
- * Null when no daemon has written one.
+ * Where the token goes when ~/.codedroid cannot be written (host.json mounted read-only, say): a
+ * directory of this user's under the runtime or temp directory. On a shared /tmp another user could
+ * create that path first, so it counts only while it is a real directory owned by this user with no
+ * group or other access. (Windows' temp directory is per-user already.)
  */
-export function readDaemonToken({ home = os.homedir() } = {}) {
+function fallbackTokenPath() {
+  const user = process.getuid?.() ?? os.userInfo().username;
+  return path.join(process.env.XDG_RUNTIME_DIR || os.tmpdir(), `codedroid-${user}`, "daemon-token");
+}
+
+function isPrivate(stat) {
+  return process.platform === "win32" || (stat.uid === process.getuid() && (stat.mode & 0o077) === 0);
+}
+
+function readTokenFile(file, { checkPrivate = false } = {}) {
   try {
-    const token = fs.readFileSync(daemonTokenPath(home), "utf8").trim();
-    return token || null;
+    if (checkPrivate) {
+      const dir = fs.lstatSync(path.dirname(file));
+      const entry = fs.lstatSync(file);
+      if (!dir.isDirectory() || !isPrivate(dir) || !entry.isFile() || !isPrivate(entry)) return null;
+    }
+    const token = fs.readFileSync(file, "utf8").trim();
+    return TOKEN_PATTERN.test(token) ? token : null;
   } catch (e) {
     return null;
   }
 }
 
-export function writeDaemonToken(token, { home = os.homedir() } = {}) {
-  const file = daemonTokenPath(home);
+function writeTokenFile(file, token) {
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-  // Same atomic 0600 write as saveHost: 0600 from its first byte, never half-written.
+  // Same atomic write as saveHost: 0600 from its first byte, never half-written.
   const tmp = `${file}.${process.pid}.tmp`;
   fs.writeFileSync(tmp, token + "\n", { mode: 0o600 });
   fs.renameSync(tmp, file);
 }
 
-export function clearDaemonToken({ home = os.homedir() } = {}) {
+/**
+ * This user's daemon token, or null: ~/.codedroid/daemon-token, else the private fallback. Every
+ * client on this computer (shim, CLI) reads it and sends it to the daemon. The file is the shared
+ * secret — 0600, in a directory only this user can enter — so a process that cannot read the user's
+ * files (another local user, a browser reaching loopback) cannot get it.
+ */
+export function readDaemonToken({ home = os.homedir() } = {}) {
+  return readTokenFile(daemonTokenPath(home)) ?? readTokenFile(fallbackTokenPath(), { checkPrivate: true });
+}
+
+/**
+ * This user's daemon token, created the first time a daemon starts. It stays the same across
+ * restarts and is shared by every daemon this user runs, so a header stored in an HTTP client keeps
+ * working and a second daemon on another port cannot lock the first one's clients out.
+ */
+export function ensureDaemonToken({ home = os.homedir() } = {}) {
+  const existing = readDaemonToken({ home });
+  if (existing) return existing;
+  const token = randomBytes(32).toString("hex");
+  saveDaemonToken(token, { home });
+  return token;
+}
+
+/** Writes [token] to ~/.codedroid/daemon-token, or to the private fallback when ~/.codedroid is read-only. */
+export function saveDaemonToken(token, { home = os.homedir() } = {}) {
   try {
-    fs.rmSync(daemonTokenPath(home));
+    writeTokenFile(daemonTokenPath(home), token);
   } catch (e) {
-    /* already gone */
+    if (!["EACCES", "EPERM", "EROFS"].includes(e.code)) throw e;
+    const fallback = fallbackTokenPath();
+    try {
+      fs.mkdirSync(path.dirname(fallback), { mode: 0o700 });
+    } catch (mkdirError) {
+      if (mkdirError.code !== "EEXIST") throw mkdirError;
+    }
+    const dir = fs.lstatSync(path.dirname(fallback));
+    if (!dir.isDirectory() || !isPrivate(dir)) {
+      throw new Error(
+        `Cannot save the daemon token: ${path.dirname(daemonTokenPath(home))} is read-only and ` +
+          `${path.dirname(fallback)} is not a private directory of this user's.`,
+      );
+    }
+    writeTokenFile(fallback, token);
   }
 }
 

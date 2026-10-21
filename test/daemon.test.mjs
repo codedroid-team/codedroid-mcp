@@ -22,6 +22,7 @@ import {
   CallToolRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { startDaemon } from "../src/daemon.js";
+import { daemonTokenPath, readDaemonToken } from "../src/host.js";
 
 const FAKE_INSTRUCTIONS = "FAKE PHONE INSTRUCTIONS — agents must see this at handshake.";
 let phoneConnects = 0;
@@ -161,6 +162,13 @@ try {
   assert.equal(badToken.status, 401, "/mcp with a wrong token must be refused");
   const noTokenShutdown = await fetch(`http://127.0.0.1:${daemon.port}/shutdown`, { method: "POST" });
   assert.equal(noTokenShutdown.status, 401, "/shutdown without the token must be refused");
+  assert.match((await noToken.json()).error, /~\/\.codedroid\/daemon-token.*update it/, "a 401 says how to fix it");
+  assert.equal(health.pid, process.pid, "/health names the daemon's process, for stop's message");
+
+  // ── A deleted token file is put back before a client reads it ───────
+  fs.rmSync(daemonTokenPath(home));
+  await fetch(`http://127.0.0.1:${daemon.port}/health`).then((r) => r.json());
+  assert.equal(readDaemonToken({ home }), daemon.authToken, "/health must restore the daemon's token");
 
   // ── Non-loopback Host header is rejected ────────────────────────────
   // (fetch/undici silently strips a custom Host header, so use raw http.)
@@ -219,6 +227,7 @@ const armed = await startDaemon({
 });
 
 try {
+  assert.equal(armed.authToken, daemon.authToken, "a restarted daemon keeps the user's token");
   const c = await connectHttpClient(armed.port, "client-c", armed.authToken);
   const tools = await c.client.listTools();
   assert.deepEqual(
