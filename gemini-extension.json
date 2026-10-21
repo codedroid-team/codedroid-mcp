@@ -7,7 +7,7 @@
       "command": "npx",
       "args": [
         "-y",
-        "@codedroid/mcp@latest"
+        "@codedroid/mcp@0.1.1"
       ]
     }
   }

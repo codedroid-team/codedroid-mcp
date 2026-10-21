@@ -22,7 +22,11 @@ assert.ok(fs.existsSync(new URL(`../${pkg.bin["codedroid-mcp"]}`, import.meta.ur
 assert.match(fs.readFileSync(new URL(`../${pkg.bin["codedroid-mcp"]}`, import.meta.url), "utf8"), /^#!\/usr\/bin\/env node\n/);
 for (const path of ["src", "skills", ".claude-plugin", ".mcp.json", "README.md"]) assert.ok(pkg.files.includes(path), `npm ships ${path}`);
 for (const name of SKILLS) assert.ok(fs.existsSync(new URL(`../skills/${name}/SKILL.md`, import.meta.url)), name);
-assert.deepEqual(mcp.mcpServers.codedroid.args.slice(-1), [`${pkg.name}@latest`], "the plugin runs this package");
+assert.deepEqual(
+  mcp.mcpServers.codedroid.args.slice(-1),
+  [`${pkg.name}@${pkg.version}`],
+  "the plugin pins this package to the released version — bump .mcp.json and gemini-extension.json on release",
+);
 
 assert.equal(gemini.version, VERSION, "the Gemini extension and package.json");
 assert.deepEqual(gemini.mcpServers, mcp.mcpServers, "Gemini and Claude launch the same MCP server");
