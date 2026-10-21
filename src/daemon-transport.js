@@ -22,9 +22,14 @@ class DaemonTransport extends StreamableHTTPClientTransport {
 /** A request owns its localhost connection: a long get_task must not hold cancel_task or
  * another session behind it in the HTTP connection pool (reproduced with Node 26's fetch).
  * MCP sessions still live across requests; only the underlying TCP connection is released.
+ *
+ * [token] is the running daemon's bearer token (host.js readDaemonToken); the SDK applies these
+ * headers to every request on the transport — POST, the GET event stream, and the DELETE teardown.
  */
-export function daemonTransport(port) {
+export function daemonTransport(port, token) {
+  const headers = { Connection: "close" };
+  if (token) headers.Authorization = `Bearer ${token}`;
   return new DaemonTransport(new URL(`http://127.0.0.1:${port}/mcp`), {
-    requestInit: { headers: { Connection: "close" } },
+    requestInit: { headers },
   });
 }

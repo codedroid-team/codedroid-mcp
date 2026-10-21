@@ -102,7 +102,7 @@ read progress, or `cancel_task` to stop the task.
 | `clipboard` | Read or update the clipboard. |
 | `device_info` | Inspect the device model, Android version, user, screen, lock state, and CodeDroid readiness. |
 | `run_task`, `get_task`, `cancel_task` | Start, monitor, or cancel a task run by CodeDroid's agent. |
-| `adb` | Run local adb commands against the connected phone. |
+| `adb` | Run local adb commands against the connected phone. Off by default; enable with `--adb` or `CODEDROID_MCP_ADB=1`. |
 | `codedroid_status` | Check the phone connection and get instructions for resolving connection problems. |
 
 Screen interaction tools return an `after` observation with the current app, keyboard state,
@@ -173,7 +173,8 @@ Add this server configuration to your client's MCP settings:
 ```
 
 Clients that support Streamable HTTP can also connect to `http://127.0.0.1:4826/mcp` while the
-CodeDroid MCP daemon is running.
+CodeDroid MCP daemon is running, sending the daemon's bearer token from `~/.codedroid/daemon-token`
+as `Authorization: Bearer <token>`.
 
 ### Environment variables
 
@@ -181,7 +182,7 @@ CodeDroid MCP daemon is running.
 | --- | --- |
 | `CODEDROID_SERIAL` | Select an adb device when several are connected. `ANDROID_SERIAL` is also supported. |
 | `CODEDROID_MCP_PORT` | Set the local daemon port. Default: `4826`. |
-| `CODEDROID_MCP_ADB=0` | Disable the `adb` tool. |
+| `CODEDROID_MCP_ADB=1` | Add the host-side `adb` tool (off by default; `--adb` does the same, `--no-adb` forces it off). |
 | `CODEDROID_MCP_CLIENT` | Set the client name shown on the phone. |
 | `ADB` | Set the path to the adb executable. |
 | `CODEDROID_DEBUG=1` | Include stack traces in diagnostic output. |
@@ -232,8 +233,12 @@ after a restart or network change. MCP screen interactions are serialized on the
 Calls interrupted by a connection loss are not automatically replayed: an action may have
 completed before its response was lost. Read the screen before deciding whether to retry.
 
-Pairing credentials are stored in `~/.codedroid/host.json`, readable only by your user account.
-Daemon logs are written to `~/.codedroid/daemon.log`.
+Pairing credentials are stored in `~/.codedroid/host.json`, readable only by your user account. The
+daemon serves MCP on loopback only and requires a per-daemon bearer token, written to
+`~/.codedroid/daemon-token` (0600) at startup and read by clients on this computer; a process that
+cannot read your home directory cannot drive the phone or the `adb` tool. The host-side `adb` tool,
+which runs commands on this computer, is off unless you enable it with `--adb` or
+`CODEDROID_MCP_ADB=1`. Daemon logs are written to `~/.codedroid/daemon.log`.
 
 ## Development
 

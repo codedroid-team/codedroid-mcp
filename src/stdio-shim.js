@@ -17,6 +17,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { buildProxyServer } from "./proxy-core.js";
 import { DEFAULT_PORT } from "./daemon.js";
 import { daemonTransport } from "./daemon-transport.js";
+import { readDaemonToken } from "./host.js";
 import { VERSION } from "./version.js";
 
 /** The daemon's /health on [port], or null when no CodeDroid daemon answers there. */
@@ -37,7 +38,7 @@ export async function fetchHealth(port, timeoutMs = 1500) {
   }
 }
 
-export async function ensureDaemonRunning(port, log, { enableAdbTool = true } = {}) {
+export async function ensureDaemonRunning(port, log, { enableAdbTool = false } = {}) {
   const existing = await fetchHealth(port);
   if (existing) {
     // A daemon's tool set is fixed at startup, so an already-running one can't
@@ -90,12 +91,13 @@ export async function ensureDaemonRunning(port, log, { enableAdbTool = true } = 
 export async function runStdioShim({
   port = DEFAULT_PORT,
   log = () => {},
-  enableAdbTool = true,
+  enableAdbTool = false,
 } = {}) {
   await ensureDaemonRunning(port, log, { enableAdbTool });
 
   const client = new Client({ name: "codedroid-mcp-shim", version: VERSION });
-  const httpTransport = daemonTransport(port);
+  // The daemon (ours or one ensureDaemonRunning just started) wrote its token; present it on /mcp.
+  const httpTransport = daemonTransport(port, readDaemonToken());
   // Long initialize budget: the daemon may be doing the first phone connect
   // (including the on-phone approval tap) behind this call.
   await client.connect(httpTransport, { timeout: 150_000 });

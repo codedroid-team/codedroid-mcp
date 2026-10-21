@@ -10,6 +10,9 @@
  */
 import assert from "node:assert/strict";
 import http from "node:http";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
@@ -64,23 +67,27 @@ function makeFakePhoneTransport() {
   return clientSide;
 }
 
-async function connectHttpClient(port, name) {
+async function connectHttpClient(port, name, token) {
   const client = new Client({ name, version: "0.0.1" });
-  const transport = daemonTransport(port);
+  const transport = daemonTransport(port, token);
   await client.connect(transport);
   return { client, transport };
 }
+
+// A throwaway home so the daemon's token file lands in temp, not the real ~/.codedroid.
+const home = fs.mkdtempSync(path.join(os.tmpdir(), "codedroid-daemon-"));
 
 const daemon = await startDaemon({
   port: 0,
   phoneTransportFactory: makeFakePhoneTransport,
   log: () => {},
   enableAdbTool: false,
+  home,
 });
 
 try {
   // ── Session 1: instructions + tools pass through ────────────────────
-  const a = await connectHttpClient(daemon.port, "client-a");
+  const a = await connectHttpClient(daemon.port, "client-a", daemon.authToken);
   assert.equal(
     a.client.getInstructions(),
     FAKE_INSTRUCTIONS,
@@ -101,7 +108,7 @@ try {
   assert.equal(resultA.content[0].text, "echo: hello-from-a");
 
   // ── Session 2 concurrently: both must work, sharing ONE phone link ──
-  const b = await connectHttpClient(daemon.port, "client-b");
+  const b = await connectHttpClient(daemon.port, "client-b", daemon.authToken);
   const [resA, resB] = await Promise.all([
     a.client.callTool({ name: "echo", arguments: { text: "again-a" } }),
     b.client.callTool({ name: "echo", arguments: { text: "again-b" } }),
@@ -134,6 +141,26 @@ try {
   assert.equal(health.phone, "connected");
   assert.equal(health.sessions, 2);
   assert.equal(health.adbToolEnabled, false, "/health must say adb is off");
+  assert.ok(!("device" in health), "/health must not leak the phone's id/model/server");
+
+  // ── The per-daemon token gates /mcp ─────────────────────────────────
+  const initBody = JSON.stringify({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "probe", version: "0" } },
+  });
+  const initHeaders = { "content-type": "application/json", accept: "application/json, text/event-stream" };
+  const noToken = await fetch(`http://127.0.0.1:${daemon.port}/mcp`, { method: "POST", headers: initHeaders, body: initBody });
+  assert.equal(noToken.status, 401, "/mcp without the bearer token must be refused");
+  const badToken = await fetch(`http://127.0.0.1:${daemon.port}/mcp`, {
+    method: "POST",
+    headers: { ...initHeaders, authorization: "Bearer not-the-token" },
+    body: initBody,
+  });
+  assert.equal(badToken.status, 401, "/mcp with a wrong token must be refused");
+  const noTokenShutdown = await fetch(`http://127.0.0.1:${daemon.port}/shutdown`, { method: "POST" });
+  assert.equal(noTokenShutdown.status, 401, "/shutdown without the token must be refused");
 
   // ── Non-loopback Host header is rejected ────────────────────────────
   // (fetch/undici silently strips a custom Host header, so use raw http.)
@@ -163,6 +190,7 @@ try {
       "content-type": "application/json",
       "mcp-session-id": "nonexistent",
       accept: "application/json, text/event-stream",
+      authorization: `Bearer ${daemon.authToken}`,
     },
     body: JSON.stringify({ jsonrpc: "2.0", method: "tools/list", id: 1 }),
   });
@@ -179,17 +207,19 @@ try {
   await daemon.close();
 }
 
-// ── By default the daemon serves adb ──────────────────────────────────
+// ── Opt in and the daemon serves adb ──────────────────────────────────
 // Separate daemon rather than a flag on the one above: the gate is a
 // construction-time decision, and this proves both sides of it.
 const armed = await startDaemon({
   port: 0,
   phoneTransportFactory: makeFakePhoneTransport,
   log: () => {},
+  enableAdbTool: true,
+  home,
 });
 
 try {
-  const c = await connectHttpClient(armed.port, "client-c");
+  const c = await connectHttpClient(armed.port, "client-c", armed.authToken);
   const tools = await c.client.listTools();
   assert.deepEqual(
     tools.tools.map((t) => t.name).sort(),
@@ -223,4 +253,5 @@ try {
   console.log("daemon.test.mjs: ALL PASS");
 } finally {
   await armed.close();
+  fs.rmSync(home, { recursive: true, force: true });
 }

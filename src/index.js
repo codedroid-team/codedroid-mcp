@@ -17,8 +17,8 @@
  *   codedroid-mcp call <tool> [json]  call one tool and print the result (scripts, CI)
  *   codedroid-mcp skill install|path  the agent skills, for clients without the plugin
  *
- * Options: --port=<n> (or CODEDROID_MCP_PORT), default 4826. --server=<url> for pair. CODEDROID_MCP_ADB=0
- * leaves out the adb tool. CODEDROID_SERIAL picks the adb tool's device when several are attached.
+ * Options: --port=<n> (or CODEDROID_MCP_PORT), default 4826. --server=<url> for pair. --adb (or
+ * CODEDROID_MCP_ADB=1) adds the host-side adb tool, off by default. CODEDROID_SERIAL picks its device.
  *
  * All log output goes to stderr — stdout is reserved for MCP JSON-RPC frames.
  *
@@ -57,17 +57,22 @@ function resolvePort(args) {
   return port;
 }
 
-/** The adb tool is on unless CODEDROID_MCP_ADB=0 (or --no-adb). The env var reaches a daemon the shim starts. */
+/**
+ * The adb tool is OFF unless turned on with --adb or CODEDROID_MCP_ADB=1: it runs commands on this
+ * computer, so it is opt-in. The env var reaches a daemon the shim starts (--no-adb stays as an
+ * explicit off, e.g. to override the env var). */
 function resolveEnableAdb(args) {
+  if (args["adb"]) return true;
   if (args["no-adb"]) return false;
   const raw = process.env.CODEDROID_MCP_ADB;
-  return raw === undefined || (raw !== "0" && raw.toLowerCase() !== "false");
+  if (raw === undefined) return false;
+  return raw === "1" || raw.toLowerCase() === "true";
 }
 
 const HELP = `codedroid-mcp ${VERSION}
 
 Gives an MCP client (Claude Code, Codex, Cursor...) your Android phone through CodeDroid: see the
-screen, tap and type, hand CodeDroid a task, and run adb.
+screen, tap and type, hand CodeDroid a task, and — with --adb — run adb on this computer.
 
 Usage:
   codedroid-mcp                     MCP stdio server (auto-starts the shared daemon)
@@ -88,7 +93,8 @@ service on. The adb tool, alone, needs the phone on this computer's adb.
 
 Options:
   --port=<n>   Daemon port (default 4826; env CODEDROID_MCP_PORT)
-  --no-adb     Leave out the adb tool (env CODEDROID_MCP_ADB=0)
+  --adb        Add the host-side adb tool, off by default (env CODEDROID_MCP_ADB=1)
+  --no-adb     Force the adb tool off (overrides CODEDROID_MCP_ADB)
   --version    Print version
   --help       This text
 
@@ -129,10 +135,11 @@ async function daemonClient(port, enableAdbTool) {
   const { DEFAULT_PORT } = await import("./daemon.js");
   const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
   const { daemonTransport } = await import("./daemon-transport.js");
+  const { readDaemonToken } = await import("./host.js");
   const effective = port ?? DEFAULT_PORT;
   await ensureDaemonRunning(effective, log, { enableAdbTool });
   const client = new Client({ name: "codedroid-mcp-cli", version: VERSION });
-  await client.connect(daemonTransport(effective), { timeout: 150_000 });
+  await client.connect(daemonTransport(effective, readDaemonToken()), { timeout: 150_000 });
   return client;
 }
 
@@ -146,8 +153,13 @@ async function daemonHealth(port) {
 /** Stops a running daemon and waits until it is gone; false when none was running. */
 async function stopDaemon(port) {
   const { DEFAULT_PORT } = await import("./daemon.js");
+  const { readDaemonToken } = await import("./host.js");
   if (!(await daemonHealth(port))) return false;
-  await fetch(`http://127.0.0.1:${port ?? DEFAULT_PORT}/shutdown`, { method: "POST" }).catch(() => null);
+  const token = readDaemonToken();
+  await fetch(`http://127.0.0.1:${port ?? DEFAULT_PORT}/shutdown`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  }).catch(() => null);
   for (let i = 0; i < 50 && (await daemonHealth(port)); i++) await new Promise((r) => setTimeout(r, 100));
   return true;
 }

@@ -4,8 +4,8 @@
  * Streamable HTTP on localhost.
  *
  * Forked from aura-mcp-connect (MIT, Copyright (c) 2026 Dinesh Kumar C; see
- * LICENSE.aura-mcp-connect): the link is a WebSocket relay instead of WebRTC, and the adb tool is
- * on by default.
+ * LICENSE.aura-mcp-connect): the link is a WebSocket relay instead of WebRTC, /mcp requires a
+ * per-daemon bearer token, and the host-side adb tool is opt-in.
  *
  * Every MCP client (Claude Code, Claude Desktop, Cursor, VS Code windows…)
  * connects to http://127.0.0.1:<port>/mcp and gets its own MCP session; tool
@@ -14,11 +14,13 @@
  * previous one ("newest wins" tug-of-war).
  *
  * Endpoints:
- *   POST/GET/DELETE /mcp   Streamable HTTP MCP (per-session)
- *   GET /health            {ok, version, phone, device, error, sessions, adbToolEnabled}
+ *   POST/GET/DELETE /mcp   Streamable HTTP MCP (per-session) — needs the per-daemon bearer token
+ *   POST /shutdown         stop the daemon — needs the token
+ *   GET /health            {ok, version, phone, error, sessions, adbToolEnabled} — unauthenticated
  */
 import http from "http";
-import { randomUUID } from "crypto";
+import os from "os";
+import { randomUUID, randomBytes, timingSafeEqual } from "crypto";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
@@ -26,6 +28,7 @@ import { adbTool } from "./adb-tool.js";
 import { buildProxyServer, broadcastNotification } from "./proxy-core.js";
 import { RelayPhoneTransport } from "./relay-transport.js";
 import { createStatusTool } from "./status-tool.js";
+import { clearDaemonToken, writeDaemonToken } from "./host.js";
 import { VERSION } from "./version.js";
 
 export const DEFAULT_PORT = 4826;
@@ -195,6 +198,21 @@ function isAllowedOrigin(origin) {
   }
 }
 
+/** The bearer token on a request, or null. `Authorization: Bearer <token>`. */
+function bearerToken(req) {
+  const match = /^Bearer\s+(.+)$/i.exec((req.headers.authorization ?? "").trim());
+  return match ? match[1] : null;
+}
+
+/** Whether [req] carries the daemon's token. Constant-time, so a wrong guess leaks no timing. */
+function hasValidToken(req, token) {
+  const got = bearerToken(req);
+  if (!got) return false;
+  const a = Buffer.from(got);
+  const b = Buffer.from(token);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
 function readJsonBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -240,16 +258,22 @@ function jsonRpcError(res, status, id, code, message) {
  * @param {string} [options.host]
  * @param {() => Promise<import("@modelcontextprotocol/sdk/shared/transport.js").Transport> | import("@modelcontextprotocol/sdk/shared/transport.js").Transport} [options.phoneTransportFactory]
  * @param {(msg: string) => void} [options.log]
- * @param {boolean} [options.enableAdbTool]  Serve the host-side `adb` tool. On by
- *   default: the user is a developer. CODEDROID_MCP_ADB=0 turns it off (index.js).
- * @returns {Promise<{port: number, close: () => Promise<void>, phoneManager: PhoneManager}>}
+ * @param {boolean} [options.enableAdbTool]  Serve the host-side `adb` tool. OFF by
+ *   default: it runs commands on this computer, so it is opt-in. CODEDROID_MCP_ADB=1
+ *   or --adb turns it on (index.js).
+ * @param {string} [options.home]  Where ~/.codedroid lives; overridable for tests.
+ * @param {string} [options.authToken]  The bearer token /mcp and /shutdown require;
+ *   generated and written to ~/.codedroid/daemon-token when omitted.
+ * @returns {Promise<{port: number, authToken: string, close: () => Promise<void>, phoneManager: PhoneManager}>}
  */
 export async function startDaemon({
   port = DEFAULT_PORT,
   host = "127.0.0.1",
   phoneTransportFactory,
   log = () => {},
-  enableAdbTool = true,
+  enableAdbTool = false,
+  home = os.homedir(),
+  authToken = randomBytes(32).toString("hex"),
 } = {}) {
   const phoneManager = new PhoneManager({
     transportFactory: phoneTransportFactory,
@@ -279,17 +303,25 @@ export async function startDaemon({
 
       const url = new URL(req.url, `http://${req.headers.host}`);
 
+      // /health stays unauthenticated so a client can discover a running daemon before it has the
+      // token. It carries no phone identifiers (id/model/server) — a reachable-but-unauthorized
+      // caller learns only that a daemon is here and whether adb is on.
       if (url.pathname === "/health" && req.method === "GET") {
         sendJson(res, 200, {
           ok: true,
           service: "codedroid-mcp-daemon",
           version: VERSION,
           phone: phoneManager.state,
-          device: phoneManager.device,
           error: phoneManager.lastError,
           sessions: sessions.size,
           adbToolEnabled: enableAdbTool,
         });
+        return;
+      }
+
+      // Everything past here drives the phone or the host adb tool: it needs the per-daemon token.
+      if (!hasValidToken(req, authToken)) {
+        sendJson(res, 401, { error: "Unauthorized: missing or invalid bearer token" });
         return;
       }
 
@@ -402,8 +434,14 @@ export async function startDaemon({
     httpServer.listen(port, host, resolve);
   });
   const boundPort = httpServer.address().port;
+  // Write the token only now the port is ours, in the same synchronous turn as listen resolving —
+  // so a concurrent starter that lost the bind (EADDRINUSE above) never clobbered this file, and no
+  // request can be handled before the token exists. One token file per computer, like host.json:
+  // a daemon on a second --port would overwrite it, matching the one-daemon-per-computer model.
+  writeDaemonToken(authToken, { home });
   log(`CodeDroid MCP daemon listening on http://${host}:${boundPort}/mcp`);
   if (enableAdbTool) log("The adb tool is on: connected MCP clients can run adb commands on this machine.");
+  else log("The adb tool is off (opt in with CODEDROID_MCP_ADB=1 or --adb).");
 
   const close = async () => {
     for (const { transport } of sessions.values()) {
@@ -415,8 +453,9 @@ export async function startDaemon({
     }
     sessions.clear();
     await phoneManager.close();
+    clearDaemonToken({ home });
     await new Promise((resolve) => httpServer.close(resolve));
   };
 
-  return { port: boundPort, close, phoneManager };
+  return { port: boundPort, authToken, close, phoneManager };
 }

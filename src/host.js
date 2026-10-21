@@ -20,6 +20,42 @@ export function hostFilePath(home = os.homedir()) {
   return path.join(home, ".codedroid", "host.json");
 }
 
+export function daemonTokenPath(home = os.homedir()) {
+  return path.join(home, ".codedroid", "daemon-token");
+}
+
+/**
+ * The running daemon's bearer token, written by the daemon at startup and read by every client on
+ * this computer (shim, CLI). The file is the shared secret: in a 0700 dir, 0600, so a process that
+ * cannot read the user's home — another local user, a browser reaching loopback — cannot get it.
+ * Null when no daemon has written one.
+ */
+export function readDaemonToken({ home = os.homedir() } = {}) {
+  try {
+    const token = fs.readFileSync(daemonTokenPath(home), "utf8").trim();
+    return token || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+export function writeDaemonToken(token, { home = os.homedir() } = {}) {
+  const file = daemonTokenPath(home);
+  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+  // Same atomic 0600 write as saveHost: 0600 from its first byte, never half-written.
+  const tmp = `${file}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, token + "\n", { mode: 0o600 });
+  fs.renameSync(tmp, file);
+}
+
+export function clearDaemonToken({ home = os.homedir() } = {}) {
+  try {
+    fs.rmSync(daemonTokenPath(home));
+  } catch (e) {
+    /* already gone */
+  }
+}
+
 /** The saved pairing, or null when this computer is not paired. */
 export function readHost({ home = os.homedir() } = {}) {
   try {

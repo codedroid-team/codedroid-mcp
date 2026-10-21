@@ -7,7 +7,16 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { hostFilePath, pair, pairedDevice, readHost } from "../src/host.js";
+import {
+  clearDaemonToken,
+  daemonTokenPath,
+  hostFilePath,
+  pair,
+  pairedDevice,
+  readDaemonToken,
+  readHost,
+  writeDaemonToken,
+} from "../src/host.js";
 
 /** A fetch that records the request and answers [status] with [body]. */
 function fakeFetch(status, body) {
@@ -128,6 +137,23 @@ try {
   }
 } finally {
   fs.rmSync(home, { recursive: true, force: true });
+}
+
+// ── The daemon token: absent, then written 0600, read back, cleared ───
+{
+  const tokenHome = fs.mkdtempSync(path.join(os.tmpdir(), "codedroid-token-"));
+  try {
+    assert.equal(readDaemonToken({ home: tokenHome }), null, "no token before a daemon writes one");
+    writeDaemonToken("0123abcd", { home: tokenHome });
+    assert.equal(readDaemonToken({ home: tokenHome }), "0123abcd", "the token round-trips, trimmed");
+    if (process.platform !== "win32") {
+      assert.equal(fs.statSync(daemonTokenPath(tokenHome)).mode & 0o777, 0o600, "the token file is the user's alone");
+    }
+    clearDaemonToken({ home: tokenHome });
+    assert.equal(readDaemonToken({ home: tokenHome }), null, "cleared when the daemon stops");
+  } finally {
+    fs.rmSync(tokenHome, { recursive: true, force: true });
+  }
 }
 
 console.log("host.test.mjs: ALL PASS");

@@ -13,6 +13,9 @@
 import assert from "node:assert/strict";
 import http from "node:http";
 import net from "node:net";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { WebSocketServer } from "ws";
@@ -55,7 +58,9 @@ const host = () => ({
   device: { id: "contract-device", model: "Fake" },
 });
 const factory = () => new RelayPhoneTransport({ host, env: {} });
-const daemon = await startDaemon({ port: 0, phoneTransportFactory: factory });
+// A throwaway home so the daemon's token file lands in temp, not the real ~/.codedroid.
+const home = fs.mkdtempSync(path.join(os.tmpdir(), "codedroid-daemon-"));
+const daemon = await startDaemon({ port: 0, phoneTransportFactory: factory, enableAdbTool: true, home });
 
 const text = (result) => result.content[0].text;
 const errorOf = (result) => {
@@ -65,7 +70,11 @@ const errorOf = (result) => {
 
 try {
   const client = new Client({ name: "contract", version: "0" });
-  await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${daemon.port}/mcp`)));
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${daemon.port}/mcp`), {
+      requestInit: { headers: { Authorization: `Bearer ${daemon.authToken}` } },
+    }),
+  );
 
   // Handshake: the phone's rules first, adb's after, inside what Claude Code keeps.
   const instructions = client.getInstructions();
@@ -129,6 +138,7 @@ try {
   console.log("phone-contract.mjs: ALL PASS");
 } finally {
   await daemon.close();
+  fs.rmSync(home, { recursive: true, force: true });
   for (const ws of wss.clients) ws.terminate();
   relay.close();
 }
