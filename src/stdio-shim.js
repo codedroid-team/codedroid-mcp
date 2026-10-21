@@ -5,9 +5,6 @@
  *
  *   IDE ── stdio ── this shim ── HTTP ── daemon ── relay ── CodeDroid on the phone
  *
- * Forked from aura-mcp-connect (MIT, Copyright (c) 2026 Dinesh Kumar C; see
- * LICENSE.aura-mcp-connect).
- *
  * Any number of shims (one per IDE/window) share the one phone connection.
  */
 import { spawn } from "child_process";

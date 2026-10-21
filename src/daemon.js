@@ -3,9 +3,8 @@
  * CodeDroid on the phone (through the CodeDroid server's relay) and serves MCP over
  * Streamable HTTP on localhost.
  *
- * Forked from aura-mcp-connect (MIT, Copyright (c) 2026 Dinesh Kumar C; see
- * LICENSE.aura-mcp-connect): the link is a WebSocket relay instead of WebRTC, /mcp requires a
- * per-daemon bearer token, and the host-side adb tool is opt-in.
+ * The phone connection uses a WebSocket relay. /mcp requires a per-daemon bearer token, and the
+ * host-side adb tool is opt-in.
  *
  * Every MCP client (Claude Code, Claude Desktop, Cursor, VS Code windows…)
  * connects to http://127.0.0.1:<port>/mcp and gets its own MCP session; tool

@@ -1,6 +1,6 @@
 {
   "name": "@codedroid/mcp",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "MCP server for controlling Android devices through CodeDroid from Claude Code, Codex, Gemini CLI, and other MCP clients.",
   "type": "module",
   "main": "src/index.js",
@@ -16,7 +16,8 @@
     "gemini-extension.json",
     ".mcp.json",
     "README.md",
-    "LICENSE.aura-mcp-connect"
+    "docs",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=20"
@@ -42,5 +43,6 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/codedroid-team/codedroid-mcp.git"
-  }
+  },
+  "license": "MIT"
 }

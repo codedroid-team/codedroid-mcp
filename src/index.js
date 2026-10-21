@@ -21,8 +21,6 @@
  * CODEDROID_MCP_ADB=1) adds the host-side adb tool, off by default. CODEDROID_SERIAL picks its device.
  *
  * All log output goes to stderr — stdout is reserved for MCP JSON-RPC frames.
- *
- * Forked from aura-mcp-connect (MIT, Copyright (c) 2026 Dinesh Kumar C; see LICENSE.aura-mcp-connect).
  */
 import { VERSION } from "./version.js";
 

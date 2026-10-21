@@ -2,10 +2,9 @@
  * proxy-core — builds an MCP Server that transparently forwards requests to a
  * backend MCP Client (the single phone connection).
  *
- * Forked from aura-mcp-connect (MIT, Copyright (c) 2026 Dinesh Kumar C; see
- * LICENSE.aura-mcp-connect). Changed: a session still opens when the phone cannot be
- * reached, serving the local tools (adb, codedroid_status) and saying why in its
- * instructions, and tools/list keeps trying the phone.
+ * A session still opens when the phone cannot be reached, serving the local tools
+ * (adb, codedroid_status) and saying why in its instructions. tools/list keeps
+ * trying the phone.
  *
  * Used twice:
  *   - daemon: one proxy Server per HTTP client session → phone client
