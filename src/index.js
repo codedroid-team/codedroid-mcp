@@ -60,8 +60,8 @@ function resolvePort(args) {
  * computer, so it is opt-in. The env var reaches a daemon the shim starts (--no-adb stays as an
  * explicit off, e.g. to override the env var). */
 function resolveEnableAdb(args) {
-  if (args["adb"]) return true;
   if (args["no-adb"]) return false;
+  if (args["adb"]) return true;
   const raw = process.env.CODEDROID_MCP_ADB;
   if (raw === undefined) return false;
   return raw === "1" || raw.toLowerCase() === "true";
@@ -91,8 +91,9 @@ service on. The adb tool, alone, needs the phone on this computer's adb.
 
 Options:
   --port=<n>   Daemon port (default 4826; env CODEDROID_MCP_PORT)
-  --adb        Add the host-side adb tool, off by default (env CODEDROID_MCP_ADB=1)
-  --no-adb     Force the adb tool off (overrides CODEDROID_MCP_ADB)
+  --adb        Start a daemon with the host-side adb tool (env CODEDROID_MCP_ADB=1)
+  --no-adb     Start without adb (overrides --adb and CODEDROID_MCP_ADB)
+               These settings do not change an already-running shared daemon.
   --version    Print version
   --help       This text
 
@@ -160,11 +161,21 @@ async function stopDaemon(port) {
   const effective = port ?? DEFAULT_PORT;
   const health = await daemonHealth(effective);
   if (!health) return { status: "none", port: effective };
-  const token = readDaemonToken();
-  const res = await fetch(`http://127.0.0.1:${effective}/shutdown`, {
+  const shutdown = (token) => fetch(`http://127.0.0.1:${effective}/shutdown`, {
     method: "POST",
+    signal: AbortSignal.timeout(5000),
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   }).catch(() => null);
+  // Legacy daemons need no token, including when the new credential file is invalid. Earlier
+  // token-enabled daemons lacked the capability marker; retry those with a token after a 401.
+  const { DAEMON_AUTHENTICATION } = await import("./daemon.js");
+  const authenticated = health.authentication === DAEMON_AUTHENTICATION;
+  let res = await shutdown(authenticated ? readDaemonToken() : null);
+  if (!authenticated && res?.status === 401) {
+    await res.arrayBuffer();
+    const token = readDaemonToken();
+    if (token) res = await shutdown(token);
+  }
   if (res?.status === 401) return { status: "refused", port: effective, pid: health.pid };
   for (let i = 0; i < 50 && (await daemonHealth(effective)); i++) await new Promise((r) => setTimeout(r, 100));
   return { status: (await daemonHealth(effective)) ? "stuck" : "stopped", port: effective, pid: health.pid };
@@ -213,7 +224,10 @@ async function main() {
     } catch (e) {
       if (e.code === "EADDRINUSE") {
         const effectivePort = port ?? DEFAULT_PORT;
-        if (await daemonHealth(effectivePort)) {
+        const existing = await daemonHealth(effectivePort);
+        if (existing) {
+          const { assertAuthenticatedDaemon } = await import("./stdio-shim.js");
+          assertAuthenticatedDaemon(existing, effectivePort);
           daemonLog(`A CodeDroid daemon is already running on port ${effectivePort}.`);
           process.exit(0);
         }

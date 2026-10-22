@@ -27,8 +27,13 @@ class DaemonTransport extends StreamableHTTPClientTransport {
  * headers to every request on the transport — POST, the GET event stream, and the DELETE teardown.
  */
 export function daemonTransport(port, token) {
-  const headers = { Connection: "close" };
-  if (token) headers.Authorization = `Bearer ${token}`;
+  if (!token) {
+    throw new Error(
+      `The daemon token is missing from ~/.codedroid/daemon-token. ` +
+        `End the CodeDroid daemon process on port ${port}, then reconnect to create a new token.`,
+    );
+  }
+  const headers = { Connection: "close", Authorization: `Bearer ${token}` };
   return new DaemonTransport(new URL(`http://127.0.0.1:${port}/mcp`), {
     requestInit: { headers },
   });

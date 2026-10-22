@@ -142,6 +142,8 @@ try {
   assert.equal(health.phone, "connected");
   assert.equal(health.sessions, 2);
   assert.equal(health.adbToolEnabled, false, "/health must say adb is off");
+  assert.equal(health.authentication, "bearer-v1");
+  assert.ok(!("error" in health), "connection errors belong behind authentication");
   assert.ok(!("device" in health), "/health must not leak the phone's id/model/server");
 
   // ── The per-daemon token gates /mcp ─────────────────────────────────
@@ -165,10 +167,27 @@ try {
   assert.match((await noToken.json()).error, /~\/\.codedroid\/daemon-token.*update it/, "a 401 says how to fix it");
   assert.equal(health.pid, process.pid, "/health names the daemon's process, for stop's message");
 
-  // ── A deleted token file is put back before a client reads it ───────
-  fs.rmSync(daemonTokenPath(home));
-  await fetch(`http://127.0.0.1:${daemon.port}/health`).then((r) => r.json());
-  assert.equal(readDaemonToken({ home }), daemon.authToken, "/health must restore the daemon's token");
+  // Every MCP method must check credentials even when the session id is valid.
+  for (const method of ["POST", "GET", "DELETE"]) {
+    for (const authorization of [null, "Bearer wrong-token"]) {
+      const response = await fetch(`http://127.0.0.1:${daemon.port}/mcp`, {
+        method,
+        headers: {
+          ...initHeaders,
+          "mcp-session-id": a.transport.sessionId,
+          ...(authorization ? { authorization } : {}),
+        },
+        ...(method === "POST" ? { body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list" }) } : {}),
+      });
+      assert.equal(response.status, 401, `${method} must authenticate existing sessions`);
+      await response.arrayBuffer();
+    }
+  }
+  const badShutdown = await fetch(`http://127.0.0.1:${daemon.port}/shutdown`, {
+    method: "POST", headers: { authorization: "Bearer wrong-token" },
+  });
+  assert.equal(badShutdown.status, 401);
+  await badShutdown.arrayBuffer();
 
   // ── Non-loopback Host header is rejected ────────────────────────────
   // (fetch/undici silently strips a custom Host header, so use raw http.)
@@ -259,6 +278,12 @@ try {
   );
 
   await c.client.close();
+  armed.phoneManager.lastError = "Private relay URL: https://private.example/";
+  const privateHealth = await fetch(`http://127.0.0.1:${armed.port}/health`).then((r) => r.json());
+  assert.ok(!JSON.stringify(privateHealth).includes("private.example"));
+  fs.rmSync(daemonTokenPath(home));
+  await fetch(`http://127.0.0.1:${armed.port}/health`).then((r) => r.json());
+  assert.equal(readDaemonToken({ home }), null, "discovery does not recreate deleted credentials");
   console.log("daemon.test.mjs: ALL PASS");
 } finally {
   await armed.close();

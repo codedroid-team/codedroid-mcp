@@ -15,7 +15,7 @@
  * Endpoints:
  *   POST/GET/DELETE /mcp   Streamable HTTP MCP (per-session) — needs the daemon token
  *   POST /shutdown         stop the daemon — needs the token
- *   GET /health            {ok, version, pid, phone, error, sessions, adbToolEnabled} — unauthenticated
+ *   GET /health            {ok, version, pid, authentication, phone, sessions, adbToolEnabled} — unauthenticated
  */
 import http from "http";
 import os from "os";
@@ -27,10 +27,11 @@ import { adbTool } from "./adb-tool.js";
 import { buildProxyServer, broadcastNotification } from "./proxy-core.js";
 import { RelayPhoneTransport } from "./relay-transport.js";
 import { createStatusTool } from "./status-tool.js";
-import { ensureDaemonToken, readDaemonToken, saveDaemonToken } from "./host.js";
+import { ensureDaemonToken } from "./host.js";
 import { VERSION } from "./version.js";
 
 export const DEFAULT_PORT = 4826;
+export const DAEMON_AUTHENTICATION = "bearer-v1";
 const MAX_BODY_BYTES = 8 * 1024 * 1024;
 
 /** How long a link stays trusted after its last proven round-trip. Past
@@ -302,27 +303,15 @@ export async function startDaemon({
 
       const url = new URL(req.url, `http://${req.headers.host}`);
 
-      // /health stays unauthenticated so a client can discover a running daemon before it has the
-      // token. It carries no phone identifiers (id/model/server) — a reachable-but-unauthorized
-      // caller learns only that a daemon is here, whether adb is on, and its pid (for `stop`'s
-      // message when it refuses).
+      // Discovery exposes no device identifiers, connection errors, or credential-file mutations.
       if (url.pathname === "/health" && req.method === "GET") {
-        // Clients read the token right after this answers. If it was deleted (a user clearing
-        // ~/.codedroid), put it back, or every new client would be locked out of this daemon.
-        if (authToken && !readDaemonToken({ home })) {
-          try {
-            saveDaemonToken(authToken, { home });
-          } catch (e) {
-            log(`Could not restore the daemon token: ${e.message}`);
-          }
-        }
         sendJson(res, 200, {
           ok: true,
           service: "codedroid-mcp-daemon",
           version: VERSION,
           pid: process.pid,
+          authentication: DAEMON_AUTHENTICATION,
           phone: phoneManager.state,
-          error: phoneManager.lastError,
           sessions: sessions.size,
           adbToolEnabled: enableAdbTool,
         });
@@ -448,12 +437,14 @@ export async function startDaemon({
     httpServer.listen(port, host, resolve);
   });
   const boundPort = httpServer.address().port;
-  // Resolve the token only now the port is ours, in the same synchronous turn as listen resolving:
-  // a starter that lost the bind (EADDRINUSE above) never creates a token of its own, and no request
-  // is handled before the token exists. It is this user's one token, reused across restarts and by
-  // a daemon on another --port. (Only two daemons creating it at the same instant, on two ports, on
-  // a computer that has never had one, could end up with different tokens.)
-  authToken = ensureDaemonToken({ home });
+  // A loser of the port bind never creates credentials. If token setup fails, release the port
+  // before rejecting startup; callers must not be left with an unusable listener they cannot close.
+  try {
+    authToken = ensureDaemonToken({ home });
+  } catch (e) {
+    await new Promise((resolve) => httpServer.close(resolve));
+    throw e;
+  }
   log(`CodeDroid MCP daemon listening on http://${host}:${boundPort}/mcp`);
   if (enableAdbTool) log("The adb tool is on: connected MCP clients can run adb commands on this machine.");
   else log("The adb tool is off (opt in with CODEDROID_MCP_ADB=1 or --adb).");

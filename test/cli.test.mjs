@@ -2,24 +2,26 @@
  * The CLI against real daemons it starts itself — no phone required.
  *
  * A client's adb setting (flag or env) must reach the daemon it starts, and `stop` must say so when
- * a daemon refuses it rather than claim it stopped. Every CLI run gets a home and temp directory of
- * its own, so this never touches the real ~/.codedroid or a running daemon.
+ * a daemon refuses it rather than claim it stopped. Each CLI run has its own home, so this never
+ * touches the real ~/.codedroid or a running daemon.
  *
  * Run: node test/cli.test.mjs
  */
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import fs from "node:fs";
+import http from "node:http";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { startDaemon } from "../src/daemon.js";
+import { daemonTokenPath, ensureDaemonToken } from "../src/host.js";
 
 const indexPath = fileURLToPath(new URL("../src/index.js", import.meta.url));
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "codedroid-cli-"));
 
-/** A home of its own, with its own temp directory for the token's read-only fallback. */
+/** A home and environment of its own, isolated from real pairing and daemon state. */
 function sandbox(name) {
   const home = path.join(root, name);
   fs.mkdirSync(path.join(home, "tmp"), { recursive: true });
@@ -60,9 +62,11 @@ try {
   {
     const { env } = sandbox("flag");
     const port = await freePort();
-    await cli(["--adb", `--port=${port}`, "call", "codedroid_status"], env);
+    const result = await cli(["--adb", `--port=${port}`, "call", "codedroid_status"], env);
     const running = await health(port);
     started.push(running?.pid);
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(JSON.parse(result.stdout).connected, false);
     assert.equal(running?.adbToolEnabled, true, "--adb must reach the daemon the client starts");
     const stop = await cli([`--port=${port}`, "stop"], env);
     assert.equal(stop.code, 0, stop.stderr);
@@ -74,19 +78,116 @@ try {
   {
     const { env } = sandbox("no-adb");
     const port = await freePort();
-    await cli(["--no-adb", `--port=${port}`, "call", "codedroid_status"], { ...env, CODEDROID_MCP_ADB: "1" });
+    const result = await cli(["--no-adb", `--port=${port}`, "call", "codedroid_status"], { ...env, CODEDROID_MCP_ADB: "1" });
     const running = await health(port);
     started.push(running?.pid);
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(JSON.parse(result.stdout).connected, false);
     assert.equal(running?.adbToolEnabled, false, "--no-adb must reach the daemon the client starts");
-    await cli([`--port=${port}`, "stop"], env);
+    const stop = await cli([`--port=${port}`, "stop"], env);
+    assert.equal(stop.code, 0, stop.stderr);
+  }
+
+  // Conflicting flags leave adb off, regardless of argv order.
+  for (const flags of [["--adb", "--no-adb"], ["--no-adb", "--adb"]]) {
+    const { env } = sandbox(`conflict-${flags[0]}`);
+    const port = await freePort();
+    const result = await cli([...flags, `--port=${port}`, "call", "codedroid_status"], env);
+    const running = await health(port);
+    started.push(running?.pid);
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(JSON.parse(result.stdout).connected, false);
+    assert.equal(running?.adbToolEnabled, false);
+    const stop = await cli([`--port=${port}`, "stop"], env);
+    assert.equal(stop.code, 0, stop.stderr);
+  }
+
+  // Legacy discovery is insufficient: refuse to connect, but keep `stop` usable for migration.
+  for (const protectedLegacy of [false, true]) {
+    const { home, env } = sandbox(`legacy-${protectedLegacy}`);
+    const token = protectedLegacy ? ensureDaemonToken({ home }) : null;
+    const requests = [];
+    const legacy = http.createServer((req, res) => {
+      requests.push({ path: req.url, authorization: req.headers.authorization });
+      res.setHeader("Content-Type", "application/json");
+      if (req.url === "/health") {
+        res.end(JSON.stringify({ service: "codedroid-mcp-daemon", version: "0.1.2", adbToolEnabled: true }));
+      } else if (req.url === "/shutdown" && req.method === "POST") {
+        if (token && req.headers.authorization !== `Bearer ${token}`) {
+          res.writeHead(401);
+          res.end("{}");
+          return;
+        }
+        res.end(JSON.stringify({ ok: true }));
+        // Emulate the old daemon process exiting, including its keep-alive connections.
+        setImmediate(() => {
+          legacy.close();
+          legacy.closeAllConnections();
+        });
+      } else {
+        res.writeHead(500);
+        res.end("{}");
+      }
+    });
+    await new Promise((resolve) => legacy.listen(0, "127.0.0.1", resolve));
+    const port = legacy.address().port;
+    try {
+      const connect = await cli([`--port=${port}`, "call", "codedroid_status"], env);
+      assert.notEqual(connect.code, 0);
+      assert.match(connect.stderr, /needs an authentication upgrade/);
+      assert.ok(connect.stderr.includes(`stop --port=${port}`));
+      const daemon = await cli(["daemon", `--port=${port}`], env);
+      assert.notEqual(daemon.code, 0);
+      assert.match(daemon.stderr, /needs an authentication upgrade/);
+      assert.ok(!requests.some((req) => req.path === "/mcp"), "never use tools on a legacy daemon");
+      // An invalid new credential must not prevent stopping an old daemon which never needed it.
+      if (!protectedLegacy) {
+        fs.mkdirSync(path.dirname(daemonTokenPath(home)), { recursive: true });
+        fs.writeFileSync(daemonTokenPath(home), "invalid", { mode: 0o600 });
+      }
+      const stop = await cli([`--port=${port}`, "stop"], env);
+      assert.equal(stop.code, 0, stop.stderr);
+      assert.match(stop.stdout, /Stopped the daemon/);
+      if (protectedLegacy) {
+        const shutdowns = requests.filter((req) => req.path === "/shutdown");
+        assert.deepEqual(shutdowns.map((req) => req.authorization), [undefined, `Bearer ${token}`]);
+      } else {
+        assert.ok(requests.every((req) => req.authorization === undefined));
+      }
+    } finally {
+      await new Promise((resolve) => legacy.close(resolve));
+    }
+  }
+
+  // A shared home yields one credential across clients with different runtime/temp environments.
+  {
+    const { home, env } = sandbox("different-env");
+    const daemon = await startDaemon({
+      port: 0, home,
+      phoneTransportFactory: () => { throw new Error("No phone in CLI test"); },
+    });
+    try {
+      const otherTmp = path.join(home, "other-tmp");
+      fs.mkdirSync(otherTmp);
+      const result = await cli([`--port=${daemon.port}`, "call", "codedroid_status"], {
+        ...env, TMPDIR: otherTmp, XDG_RUNTIME_DIR: otherTmp,
+      });
+      assert.equal(result.code, 0, result.stderr);
+      assert.equal(JSON.parse(result.stdout).connected, false);
+      fs.rmSync(daemonTokenPath(home));
+      const missing = await cli([`--port=${daemon.port}`, "call", "codedroid_status"], env);
+      assert.notEqual(missing.code, 0);
+      assert.match(missing.stderr, /daemon token is missing.*End the CodeDroid daemon process/);
+      assert.equal(fs.existsSync(daemonTokenPath(home)), false);
+    } finally {
+      await daemon.close();
+    }
   }
 
   // ── stop fails, saying why, when the daemon refuses this user's token ─
   {
     const owner = sandbox("owner");
     const other = sandbox("other");
-    process.env.TMPDIR = path.join(owner.home, "tmp");
-    delete process.env.XDG_RUNTIME_DIR;
     const daemon = await startDaemon({
       port: 0,
       home: owner.home,
