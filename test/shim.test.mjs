@@ -7,6 +7,9 @@
  * Run: node test/shim.test.mjs
  */
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -50,11 +53,15 @@ function makeFakePhoneTransport() {
 // Armed, so this also proves the daemon's locally-appended adb guidance and
 // tool survive the SECOND proxy hop. The shim registers no local tools of its
 // own — it must forward whatever the daemon advertises, instructions included.
+// A throwaway home shared with the spawned shim (via HOME) so both read the one daemon token file.
+const home = fs.mkdtempSync(path.join(os.tmpdir(), "codedroid-daemon-"));
+
 const daemon = await startDaemon({
   port: 0,
   phoneTransportFactory: makeFakePhoneTransport,
   log: () => {},
   enableAdbTool: true,
+  home,
 });
 
 const indexPath = fileURLToPath(new URL("../src/index.js", import.meta.url));
@@ -63,6 +70,8 @@ const client = new Client({ name: "shim-test-client", version: "0.0.1" });
 const transport = new StdioClientTransport({
   command: process.execPath,
   args: [indexPath, `--port=${daemon.port}`],
+  // HOME points the shim at the same ~/.codedroid, so readDaemonToken() finds this daemon's token.
+  env: { ...process.env, HOME: home },
   stderr: "ignore",
 });
 
@@ -113,4 +122,5 @@ try {
   console.log("shim.test.mjs: ALL PASS");
 } finally {
   await daemon.close();
+  fs.rmSync(home, { recursive: true, force: true });
 }

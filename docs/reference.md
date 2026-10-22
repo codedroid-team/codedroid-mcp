@@ -21,7 +21,7 @@ read progress, or `cancel_task` to stop the task.
 | `clipboard` | Read or update the clipboard. |
 | `device_info` | Inspect the device model, Android version, user, screen, lock state, and CodeDroid readiness. |
 | `run_task`, `get_task`, `cancel_task` | Start, monitor, or cancel a task run by CodeDroid's agent. |
-| `adb` | Run local adb commands against the connected phone. |
+| `adb` | Run local adb commands against the connected phone. Off by default; enable with `--adb` or `CODEDROID_MCP_ADB=1`. |
 | `codedroid_status` | Check the phone connection and get instructions for resolving connection problems. |
 
 Screen interaction tools return an `after` observation with the current app, keyboard state,
@@ -46,6 +46,13 @@ on your computer and a USB or wireless debugging connection to your phone.
 For USB, enable **USB debugging** in the phone's Developer options, connect the cable, and
 accept the debugging prompt on the phone. Run `adb devices` to check the connection.
 For wireless debugging, see [troubleshooting](#troubleshooting).
+
+The `adb` tool is off by default because it runs commands on your computer. To turn it on, add
+`CODEDROID_MCP_ADB=1` to the CodeDroid MCP server's environment in your client's MCP settings (or
+`--adb` to its arguments), or start your client with it set. The shared daemon keeps the setting it
+started with, so run `npx -y @codedroid/mcp stop` once afterwards. To turn it on for every client
+until the daemon next stops, run `npx -y @codedroid/mcp stop`, then
+`CODEDROID_MCP_ADB=1 npx -y @codedroid/mcp connect`.
 
 ## MCP configuration
 
@@ -100,7 +107,19 @@ Add this server configuration to your client's MCP settings:
 }
 ```
 
-Clients that support Streamable HTTP can also connect to `http://127.0.0.1:4826/mcp`.
+Clients that support Streamable HTTP can also connect to `http://127.0.0.1:4826/mcp`, sending the
+token in `~/.codedroid/daemon-token` as `Authorization: Bearer <token>`. The daemon creates the
+token the first time it starts and reuses it across restarts and ports, so a stored header keeps
+working. To change it, stop **all** of this user's daemons before deleting the file. Invalid or
+unreadable credentials cause an error and are never silently replaced. If `~/.codedroid` is read-only,
+provision a valid token there first: a regular file owned by your user, containing a cryptographically
+random 32-byte value as 64 lowercase hexadecimal characters, with permissions `0600`. The daemon does not search temporary directories for credentials.
+
+After upgrading from an unauthenticated daemon, run `npx -y @codedroid/mcp stop` and reconnect.
+For a custom port, pass the same `--port=<n>` to `stop`. New clients refuse legacy daemons until they
+are restarted. If the token was deleted while a daemon was running, end the daemon process (its pid
+is available at `/health`), then reconnect; discovery does not recreate credentials.
+
 After pairing, run `npx -y @codedroid/mcp connect` to start the shared daemon before connecting
 an HTTP client.
 
@@ -110,7 +129,7 @@ an HTTP client.
 | --- | --- |
 | `CODEDROID_SERIAL` | Select an adb device when several are connected. `ANDROID_SERIAL` is also supported. |
 | `CODEDROID_MCP_PORT` | Set the local daemon port. Default: `4826`. |
-| `CODEDROID_MCP_ADB=0` | Disable the `adb` tool. |
+| `CODEDROID_MCP_ADB=1` | Start a daemon with the host-side `adb` tool (off by default; `--adb` does the same, `--no-adb` overrides both). Existing daemons keep their startup setting for all clients. |
 | `CODEDROID_MCP_CLIENT` | Set the client name shown on the phone. |
 | `ADB` | Set the path to the adb executable. |
 | `CODEDROID_DEBUG=1` | Include stack traces in diagnostic output. |
@@ -141,6 +160,9 @@ connection problem.
 | Connection was denied | Wait one minute, run `npx -y @codedroid/mcp connect`, then tap **Allow**. |
 | Connection was stopped on the phone | Wait one minute before reconnecting. |
 | adb cannot find the phone | Connect it over USB, or run `adb pair <ip:port>` followed by `adb connect <ip:port>` for wireless debugging. |
+| The agent has no `adb` tool | It is off by default: see [adb setup](#adb-setup). |
+| Daemon needs an authentication upgrade | Run `npx -y @codedroid/mcp stop` (with `--port=<n>` for a custom port), then reconnect. |
+| `Unauthorized: send this user's daemon token` | Update the client (`npx -y @codedroid/mcp@latest`). An HTTP client must send the token in `~/.codedroid/daemon-token`. |
 
 Force-stopping or running instrumentation against `com.codedroid.app` disables its accessibility
 service. Re-enable it in Android Accessibility settings afterward. Clearing the app's data also
@@ -161,8 +183,12 @@ after a restart or network change. MCP screen interactions are serialized on the
 Calls interrupted by a connection loss are not automatically replayed: an action may have
 completed before its response was lost. Read the screen before deciding whether to retry.
 
-Pairing credentials are stored in `~/.codedroid/host.json`, readable only by your user account.
-Daemon logs are written to `~/.codedroid/daemon.log`.
+Pairing credentials are stored in `~/.codedroid/host.json`, readable only by your user account. The
+daemon serves MCP on loopback only and requires your daemon token, kept in
+`~/.codedroid/daemon-token` (0600): the daemon creates it the first time it starts, and clients on
+this computer read it. A process that cannot read your home directory cannot drive the phone or the
+`adb` tool. The host-side `adb` tool, which runs commands on this computer, is off unless you turn
+it on (see [adb setup](#adb-setup)). Daemon logs are written to `~/.codedroid/daemon.log`.
 
 ## Development
 

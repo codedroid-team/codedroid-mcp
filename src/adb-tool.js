@@ -2,7 +2,7 @@
  * adb — a single generic MCP tool that runs an adb command against a phone
  * attached to THIS computer (USB, or Wireless Debugging).
  *
- * Enabled by default (CODEDROID_MCP_ADB=0 turns it off), with a per-call timeout.
+ * Off by default; --adb or CODEDROID_MCP_ADB=1 enables it, with a per-call timeout.
  * Marked destructive so clients ask before running it.
  *
  * It never touches the connection to CodeDroid: it shells out to this machine's

@@ -6,6 +6,7 @@
  * the CodeDroid server for a host token. The token is the key to the relay: anyone holding it
  * reaches the phone (still behind its Allow sheet), so the file is the user's alone.
  */
+import { randomBytes } from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -18,6 +19,72 @@ export const PAIRING_STEPS =
 
 export function hostFilePath(home = os.homedir()) {
   return path.join(home, ".codedroid", "host.json");
+}
+
+export function daemonTokenPath(home = os.homedir()) {
+  return path.join(home, ".codedroid", "daemon-token");
+}
+
+const TOKEN_PATTERN = /^[0-9a-f]{64}$/;
+
+/** The shared daemon credential, or null only when the file does not exist. */
+export function readDaemonToken({ home = os.homedir() } = {}) {
+  const file = daemonTokenPath(home);
+  try {
+    const entry = fs.lstatSync(file);
+    if (!entry.isFile()) throw new Error("expected a regular token file, not a directory or symlink");
+    if (
+      process.platform !== "win32" &&
+      (entry.uid !== process.getuid() || (entry.mode & 0o077) !== 0)
+    ) {
+      throw new Error("the token must be owned by this user with permissions 0600");
+    }
+    const token = fs.readFileSync(file, "utf8").trim();
+    if (!TOKEN_PATTERN.test(token)) throw new Error("invalid token contents");
+    return token;
+  } catch (e) {
+    if (e.code === "ENOENT") return null;
+    throw new Error(
+      `Cannot read daemon token at ${file}: ${e.message}. ` +
+        "Check its permissions; to reset it, end all CodeDroid daemon processes before deleting the file and restarting.",
+      { cause: e },
+    );
+  }
+}
+
+/**
+ * Create once and reuse across ports and restarts. Publish a fully written 0600 file with a hard
+ * link: unlike rename, link fails if another starter already published its token. Every starter
+ * reads the winner. Staging on the same filesystem keeps publication atomic, without exposing a
+ * partially written credential or overwriting an existing one.
+ */
+export function ensureDaemonToken({ home = os.homedir() } = {}) {
+  const existing = readDaemonToken({ home });
+  if (existing) return existing;
+  const file = daemonTokenPath(home);
+  let staging;
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+    staging = fs.mkdtempSync(path.join(path.dirname(file), ".daemon-token-"));
+    const staged = path.join(staging, "token");
+    fs.writeFileSync(staged, randomBytes(32).toString("hex") + "\n", { mode: 0o600, flag: "wx" });
+    try {
+      fs.linkSync(staged, file);
+    } catch (e) {
+      if (e.code !== "EEXIST") throw e;
+    }
+    const token = readDaemonToken({ home });
+    if (!token) throw new Error("the token disappeared during startup; end all daemons before resetting it");
+    return token;
+  } catch (e) {
+    throw new Error(
+      `Cannot create daemon token at ${file}: ${e.message}. ` +
+        "Make ~/.codedroid writable, or provision a private 0600 daemon-token file there before starting.",
+      { cause: e },
+    );
+  } finally {
+    if (staging) fs.rmSync(staging, { recursive: true, force: true });
+  }
 }
 
 /** The saved pairing, or null when this computer is not paired. */

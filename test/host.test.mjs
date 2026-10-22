@@ -7,7 +7,15 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { hostFilePath, pair, pairedDevice, readHost } from "../src/host.js";
+import {
+  daemonTokenPath,
+  ensureDaemonToken,
+  hostFilePath,
+  pair,
+  pairedDevice,
+  readDaemonToken,
+  readHost,
+} from "../src/host.js";
 
 /** A fetch that records the request and answers [status] with [body]. */
 function fakeFetch(status, body) {
@@ -128,6 +136,61 @@ try {
   }
 } finally {
   fs.rmSync(home, { recursive: true, force: true });
+}
+
+// ── Token lifecycle: never silently rotate an existing credential ─────
+{
+  const tokenHome = fs.mkdtempSync(path.join(os.tmpdir(), "codedroid-token-"));
+  const file = daemonTokenPath(tokenHome);
+  try {
+    assert.equal(readDaemonToken({ home: tokenHome }), null);
+    const token = ensureDaemonToken({ home: tokenHome });
+    assert.match(token, /^[0-9a-f]{64}$/);
+    assert.equal(ensureDaemonToken({ home: tokenHome }), token);
+    assert.equal(readDaemonToken({ home: tokenHome }), token);
+    assert.deepEqual(fs.readdirSync(path.dirname(file)), ["daemon-token"], "staging files are cleaned up");
+    if (process.platform !== "win32") {
+      assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+      assert.equal(fs.statSync(path.dirname(file)).mode & 0o777, 0o700);
+      fs.chmodSync(file, 0o644);
+      assert.throws(() => readDaemonToken({ home: tokenHome }), /permissions 0600/);
+      assert.throws(() => ensureDaemonToken({ home: tokenHome }), /permissions 0600/);
+      assert.equal(fs.readFileSync(file, "utf8").trim(), token, "insecure files are not replaced");
+      fs.chmodSync(file, 0o600);
+    }
+    fs.writeFileSync(file, "not a token\n");
+    assert.throws(() => readDaemonToken({ home: tokenHome }), /invalid token contents/);
+    assert.throws(() => ensureDaemonToken({ home: tokenHome }), /end all CodeDroid daemon processes/);
+    assert.equal(fs.readFileSync(file, "utf8"), "not a token\n", "invalid contents are not replaced");
+    fs.writeFileSync(file, token + "\n");
+
+    if (process.platform !== "win32" && process.getuid() !== 0) {
+      fs.chmodSync(file, 0o000);
+      try {
+        assert.throws(() => readDaemonToken({ home: tokenHome }), /Cannot read daemon token/);
+        assert.throws(() => ensureDaemonToken({ home: tokenHome }), /Cannot read daemon token/);
+      } finally {
+        fs.chmodSync(file, 0o600);
+      }
+      const dir = path.dirname(file);
+      fs.chmodSync(dir, 0o500);
+      try {
+        assert.equal(ensureDaemonToken({ home: tokenHome }), token, "pre-provisioned read-only homes work");
+      } finally {
+        fs.chmodSync(dir, 0o700);
+      }
+      fs.rmSync(file);
+      fs.chmodSync(dir, 0o500);
+      try {
+        assert.throws(() => ensureDaemonToken({ home: tokenHome }), /Make ~\/\.codedroid writable/);
+        assert.equal(readDaemonToken({ home: tokenHome }), null, "no silent fallback to another location");
+      } finally {
+        fs.chmodSync(dir, 0o700);
+      }
+    }
+  } finally {
+    fs.rmSync(tokenHome, { recursive: true, force: true });
+  }
 }
 
 console.log("host.test.mjs: ALL PASS");

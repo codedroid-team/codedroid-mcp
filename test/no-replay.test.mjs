@@ -4,6 +4,9 @@
  * Run: node test/no-replay.test.mjs
  */
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
@@ -11,9 +14,16 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { startDaemon } from "../src/daemon.js";
 
-async function connect(port) {
+// A throwaway home so each daemon's token file lands in temp, not the real ~/.codedroid.
+const home = fs.mkdtempSync(path.join(os.tmpdir(), "codedroid-daemon-"));
+
+async function connect(port, token) {
   const client = new Client({ name: "test", version: "0" });
-  await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp`)));
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp`), {
+      requestInit: { headers: { Authorization: `Bearer ${token}` } },
+    }),
+  );
   return client;
 }
 
@@ -35,9 +45,9 @@ async function connect(port) {
     phone.connect(serverSide);
     return clientSide;
   };
-  const daemon = await startDaemon({ port: 0, phoneTransportFactory: factory, enableAdbTool: false });
+  const daemon = await startDaemon({ port: 0, phoneTransportFactory: factory, enableAdbTool: false, home });
   try {
-    const client = await connect(daemon.port);
+    const client = await connect(daemon.port, daemon.authToken);
     const result = await client.callTool({ name: "tap", arguments: {} });
     assert.equal(result.isError, true);
     assert.match(result.content[0].text, /may or may not have happened/);
@@ -53,9 +63,9 @@ async function connect(port) {
   const factory = () => {
     throw new Error("This computer is not paired with a phone.");
   };
-  const daemon = await startDaemon({ port: 0, phoneTransportFactory: factory, enableAdbTool: false });
+  const daemon = await startDaemon({ port: 0, phoneTransportFactory: factory, enableAdbTool: false, home });
   try {
-    const client = await connect(daemon.port);
+    const client = await connect(daemon.port, daemon.authToken);
     assert.match(client.getInstructions(), /not connected yet: This computer is not paired/);
     assert.deepEqual((await client.listTools()).tools.map((t) => t.name), ["codedroid_status"]);
     const call = await client.callTool({ name: "get_screen", arguments: {} });
@@ -84,10 +94,10 @@ async function connect(port) {
     phone.connect(serverSide);
     return clientSide;
   };
-  const daemon = await startDaemon({ port: 0, phoneTransportFactory: factory, enableAdbTool: false });
+  const daemon = await startDaemon({ port: 0, phoneTransportFactory: factory, enableAdbTool: false, home });
   try {
     const started = Date.now();
-    const client = await connect(daemon.port);
+    const client = await connect(daemon.port, daemon.authToken);
     let changed = false;
     client.setNotificationHandler(
       (await import("@modelcontextprotocol/sdk/types.js")).ToolListChangedNotificationSchema,
@@ -108,4 +118,5 @@ async function connect(port) {
   }
 }
 
+fs.rmSync(home, { recursive: true, force: true });
 console.log("no-replay.test.mjs: ALL PASS");
