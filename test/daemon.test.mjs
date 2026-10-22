@@ -210,6 +210,23 @@ try {
   });
   assert.equal(forbiddenStatus, 403, "DNS-rebinding style requests must be blocked");
 
+  // ── Origin gating: a browser's opaque "null" origin is rejected; loopback passes ──
+  const statusForOrigin = (origin) =>
+    new Promise((resolve, reject) => {
+      const req = http.request(
+        { host: "127.0.0.1", port: daemon.port, path: "/health", method: "GET", headers: { Origin: origin } },
+        (res) => {
+          res.resume();
+          resolve(res.statusCode);
+        },
+      );
+      req.on("error", reject);
+      req.end();
+    });
+  assert.equal(await statusForOrigin("null"), 403, "an opaque (null) Origin must be blocked");
+  assert.equal(await statusForOrigin("https://evil.example.com"), 403, "a cross-site Origin must be blocked");
+  assert.equal(await statusForOrigin("http://localhost:9999"), 200, "a loopback Origin is allowed");
+
   // ── Bad session id → clean JSON-RPC error, not a crash ─────────────
   const bad = await fetch(`http://127.0.0.1:${daemon.port}/mcp`, {
     method: "POST",

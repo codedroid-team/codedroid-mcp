@@ -189,7 +189,11 @@ function isLoopbackHost(hostHeader) {
 }
 
 function isAllowedOrigin(origin) {
-  if (origin === undefined || origin === "null") return true; // non-browser clients
+  // No Origin header = a non-browser client (curl, the MCP SDK's Node fetch). A browser always
+  // sends one: a real origin, or the literal "null" for an opaque origin (a sandboxed iframe, a
+  // data:/file: document). Only a loopback origin is allowed; "null" is not — it would otherwise
+  // let such a page reach this port.
+  if (origin === undefined) return true;
   try {
     const url = new URL(origin);
     return isLoopbackHost(url.host);

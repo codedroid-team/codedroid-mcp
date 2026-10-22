@@ -126,13 +126,25 @@ try {
   await assert.rejects(pair("ABCD-EFGH", { server: "ftp://orchestrator.codedroid.com", fetch: fakeFetch(200, REDEEMED), home }), /Not an http\(s\) server URL/);
   await assert.rejects(pair("ABCD-EFGH", { server: "not a url", fetch: fakeFetch(200, REDEEMED), home }), /Not a server URL/);
 
-  // ── A hand-edited server is read normalized; a bad one is no pairing ──
+  // ── Plaintext http is refused for a networked host, allowed for loopback ──
+  await assert.rejects(
+    pair("ABCD-EFGH", { server: "http://orchestrator.codedroid.com", fetch: fakeFetch(200, REDEEMED), home }),
+    /Refusing a plaintext http server/,
+  );
+  for (const server of ["http://localhost:8000", "http://127.0.0.1:8000", "http://dev.localhost"]) {
+    const host = await pair("ABCD-EFGH", { server, fetch: fakeFetch(200, REDEEMED), home });
+    assert.ok(host.server.startsWith("http://"), `${server} is allowed for local development`);
+  }
+
+  // ── A hand-edited server is read normalized; a bad or plaintext one is no pairing ──
   {
     const saved = JSON.parse(fs.readFileSync(hostFilePath(home), "utf8"));
     fs.writeFileSync(hostFilePath(home), JSON.stringify({ ...saved, server: "HTTPS://Orchestrator.dev2.codedroid.com/?x=1" }));
     assert.equal(readHost({ home }).server, "https://orchestrator.dev2.codedroid.com");
     fs.writeFileSync(hostFilePath(home), JSON.stringify({ ...saved, server: "not a url" }));
     assert.equal(readHost({ home }), null);
+    fs.writeFileSync(hostFilePath(home), JSON.stringify({ ...saved, server: "http://orchestrator.codedroid.com" }));
+    assert.equal(readHost({ home }), null, "a hand-edited plaintext http pairing is not used");
   }
 } finally {
   fs.rmSync(home, { recursive: true, force: true });
