@@ -17,6 +17,7 @@
     ".mcp.json",
     "README.md",
     "docs",
+    "assets",
     "LICENSE"
   ],
   "engines": {

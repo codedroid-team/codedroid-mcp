@@ -1,10 +1,18 @@
 {
   "name": "codedroid",
+  "displayName": "CodeDroid",
   "version": "0.1.2",
   "description": "Your Android phone, through CodeDroid: read the screen, tap and type, hand CodeDroid a whole task, run adb, and verify app changes on the device.",
   "author": {
-    "name": "CodeDroid"
+    "name": "CodeDroid",
+    "url": "https://get.codedroid.com"
   },
   "homepage": "https://get.codedroid.com",
-  "keywords": ["android", "adb", "mobile", "testing", "device"]
+  "repository": "https://github.com/codedroid-team/codedroid-mcp",
+  "license": "MIT",
+  "keywords": ["android", "adb", "mobile", "testing", "device"],
+  "icon": "./assets/icon.png",
+  "documentationUrl": "https://github.com/codedroid-team/codedroid-mcp/blob/main/docs/reference.md",
+  "supportUrl": "https://github.com/codedroid-team/codedroid-mcp/issues",
+  "termsOfServiceUrl": "https://www.codedroid.com/terms"
 }

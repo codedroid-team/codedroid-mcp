@@ -39,4 +39,9 @@ assert.equal(marketplace.plugins[0].name, codex.name);
 assert.equal(marketplace.plugins[0].source.path, "./", "Codex installs the repository root");
 for (const file of [".codex-plugin", ".agents/plugins/marketplace.json"]) assert.ok(pkg.files.includes(file));
 
+for (const icon of [plugin.icon, codex.interface.composerIcon, codex.interface.logo]) {
+  assert.ok(fs.existsSync(new URL(`../${icon}`, import.meta.url)), icon);
+}
+assert.ok(pkg.files.includes("assets"), "npm ships the plugin icon");
+
 console.log("package.test.mjs: ALL PASS");
