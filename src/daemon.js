@@ -434,19 +434,23 @@ export async function startDaemon({
           return;
         }
 
+        // 404 for a session this daemon does not have (it ended, or the daemon restarted): what
+        // tells a client to initialize again. 400 when there was no session at all.
         jsonRpcError(
           res,
-          400,
+          sessionId ? 404 : 400,
           body?.id,
           -32000,
-          "Bad Request: unknown session (send initialize without mcp-session-id to start one)",
+          sessionId
+            ? "Session not found (send initialize without mcp-session-id to start one)"
+            : "Bad Request: unknown session (send initialize without mcp-session-id to start one)",
         );
         return;
       }
 
       if (req.method === "GET" || req.method === "DELETE") {
         if (!sessionId || !sessions.has(sessionId)) {
-          jsonRpcError(res, 400, null, -32000, "Bad Request: no valid session");
+          jsonRpcError(res, sessionId ? 404 : 400, null, -32000, sessionId ? "Session not found" : "Bad Request: no valid session");
           return;
         }
         await sessions.get(sessionId).transport.handleRequest(req, res);

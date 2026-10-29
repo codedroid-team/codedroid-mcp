@@ -198,7 +198,9 @@ MCP client → stdio bridge → local daemon → CodeDroid relay → Android app
 
 All clients on a computer share a local daemon and its connection to each paired phone. The
 phone and daemon each open an outbound WebSocket to the CodeDroid server. The phone reconnects
-after a restart or network change. MCP screen interactions are serialized on each phone.
+after a restart or network change. MCP screen interactions are serialized on each phone. If the
+daemon restarts, the stdio bridge opens a new session on its next request, so the MCP client
+doesn't need to reconnect.
 
 Calls interrupted by a connection loss are not automatically replayed: an action may have
 completed before its response was lost. Read the screen before deciding whether to retry.

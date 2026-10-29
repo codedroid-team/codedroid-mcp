@@ -8,6 +8,7 @@
  */
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -59,7 +60,7 @@ const PAIRING = { server: "https://orchestrator.example", host_id: "h1", token: 
 // A throwaway home shared with the spawned shim (via HOME) so both read the one daemon token file.
 const home = fs.mkdtempSync(path.join(os.tmpdir(), "codedroid-daemon-"));
 
-const daemon = await startDaemon({
+let daemon = await startDaemon({
   port: 0,
   pairings: () => [PAIRING],
   phoneTransportFactory: makeFakePhoneTransport,
@@ -119,6 +120,31 @@ try {
       .then(() => order.push("echo")),
   ]);
   assert.deepEqual(order, ["echo", "get_task"], "the shim's HTTP connection must not block concurrent calls");
+
+  // ── The daemon restarts under the shim: its session is gone, the IDE's is not ──
+  const { port } = daemon;
+  await daemon.close();
+  daemon = await startDaemon({ port, pairings: () => [PAIRING], phoneTransportFactory: makeFakePhoneTransport, enableAdbTool: true, home });
+  const afterRestart = await client.callTool({ name: "echo", arguments: { text: "after-restart" } });
+  assert.equal(afterRestart.content[0].text, "echo: after-restart", "the shim opens a new daemon session and sends the call again");
+  assert.deepEqual((await client.listTools()).tools.map((t) => t.name).sort(), ["adb", "codedroid_devices", "codedroid_status", "echo"]);
+
+  // ── A reconnect that fails does not strand the shim: the next request tries again ──
+  // What answers the port meanwhile drops the shim's session and refuses a new one (a legacy daemon).
+  await daemon.close();
+  const impostor = http.createServer((req, res) => {
+    const legacy = req.url === "/health";
+    res.writeHead(legacy ? 200 : 404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(legacy ? { ok: true, service: "codedroid-mcp-daemon" } : { error: "Session not found" }));
+  });
+  await new Promise((resolve) => impostor.listen(port, "127.0.0.1", resolve));
+  const refused = await client.callTool({ name: "echo", arguments: { text: "refused" } });
+  assert.equal(refused.isError, true, "a reconnect that fails is a tool error");
+  assert.match(refused.content[0].text, /authentication upgrade/);
+  await new Promise((resolve) => impostor.close(resolve));
+  daemon = await startDaemon({ port, pairings: () => [PAIRING], phoneTransportFactory: makeFakePhoneTransport, enableAdbTool: true, home });
+  const recovered = await client.callTool({ name: "echo", arguments: { text: "recovered" } });
+  assert.equal(recovered.content[0].text, "echo: recovered", "the next request opens a new daemon session");
 
   await client.close();
   const health = await fetch(`http://127.0.0.1:${daemon.port}/health`).then((r) => r.json());

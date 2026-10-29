@@ -242,7 +242,7 @@ try {
     },
     body: JSON.stringify({ jsonrpc: "2.0", method: "tools/list", id: 1 }),
   });
-  assert.equal(bad.status, 400);
+  assert.equal(bad.status, 404, "a session the daemon does not have is 404, which tells clients to initialize again");
 
   // ── Clean session teardown ──────────────────────────────────────────
   await a.transport.terminateSession();

@@ -5,7 +5,9 @@
  *
  *   IDE ── stdio ── this shim ── HTTP ── daemon ── relay ── CodeDroid on the phone
  *
- * Any number of shims (one per IDE/window) share the one phone connection.
+ * Any number of shims (one per IDE/window) share the daemon's phone connections. A daemon that
+ * restarts (an upgrade, `stop`, a crash) costs a shim its session, not its IDE: the next request
+ * opens a new one, starting the daemon again if it is gone.
  */
 import { spawn } from "child_process";
 import { fileURLToPath } from "url";
@@ -91,7 +93,19 @@ export async function ensureDaemonRunning(port, log, { enableAdbTool = false } =
 }
 
 /**
- * Run the stdio shim until the IDE closes stdin or the daemon goes away.
+ * The request never reached a daemon session: the daemon no longer has it (404, or 400 from an older
+ * daemon) or nothing listens on the port. Safe to send again, even a tap.
+ */
+export function isLostDaemonSession(e) {
+  return (
+    e?.code === 404 ||
+    /unknown session|no valid session|session not found/i.test(e?.message ?? "") ||
+    e?.cause?.code === "ECONNREFUSED"
+  );
+}
+
+/**
+ * Run the stdio shim until the IDE closes stdin.
  * @param {object} [options]
  * @param {number} [options.port]
  * @param {(msg: string) => void} [options.log] stderr logger
@@ -104,34 +118,59 @@ export async function runStdioShim({
   log = () => {},
   enableAdbTool = false,
 } = {}) {
-  await ensureDaemonRunning(port, log, { enableAdbTool });
+  let server;
+  const connectDaemon = async () => {
+    await ensureDaemonRunning(port, log, { enableAdbTool });
+    const next = new Client({ name: "codedroid-mcp-shim", version: VERSION });
+    // Pass phone/daemon notifications through to the IDE.
+    next.fallbackNotificationHandler = async (notification) => {
+      try {
+        await server?.notification(notification);
+      } catch (e) {
+        /* session closing — drop */
+      }
+    };
+    // The daemon (ours or one ensureDaemonRunning just started) wrote its token; present it on /mcp.
+    // Long initialize budget: the daemon may be doing the first phone connect
+    // (including the on-phone approval tap) behind this call.
+    await next.connect(daemonTransport(port, readDaemonToken()), { timeout: 150_000 });
+    return next;
+  };
 
-  const client = new Client({ name: "codedroid-mcp-shim", version: VERSION });
-  // The daemon (ours or one ensureDaemonRunning just started) wrote its token; present it on /mcp.
-  const httpTransport = daemonTransport(port, readDaemonToken());
-  // Long initialize budget: the daemon may be doing the first phone connect
-  // (including the on-phone approval tap) behind this call.
-  await client.connect(httpTransport, { timeout: 150_000 });
+  let client = await connectDaemon();
+  let reconnecting = null;
+  /** The daemon session as proxy-core sees it: one that ends is replaced, and the request sent again. */
+  const daemon = {
+    getServerCapabilities: () => client.getServerCapabilities(),
+    getInstructions: () => client.getInstructions(),
+    async request(...args) {
+      const used = client;
+      try {
+        return await used.request(...args);
+      } catch (e) {
+        // A client without a transport is closed: the request never left, so it is safe to send again.
+        if (used.transport && !isLostDaemonSession(e)) throw e;
+        if (client === used && !reconnecting) {
+          reconnecting = (async () => {
+            log(`Daemon session lost (${e.message}) — opening a new one.`);
+            // Replaced only once a new session opens, so a failed attempt leaves the next request to try again.
+            client = await connectDaemon();
+            used.close().catch(() => {});
+          })().finally(() => {
+            reconnecting = null;
+          });
+        }
+        await reconnecting;
+        return client.request(...args);
+      }
+    },
+  };
 
-  const server = await buildProxyServer({
-    getClient: async () => client,
+  server = await buildProxyServer({
+    getClient: async () => daemon,
     name: "codedroid",
     version: VERSION,
   });
-
-  // Pass phone/daemon notifications through to the IDE.
-  client.fallbackNotificationHandler = async (notification) => {
-    try {
-      await server.notification(notification);
-    } catch (e) {
-      /* session closing — drop */
-    }
-  };
-
-  client.onclose = () => {
-    log("Daemon connection closed — exiting so the IDE can reconnect.");
-    process.exit(1);
-  };
 
   const stdioTransport = new StdioServerTransport();
   let closing = false;
@@ -139,7 +178,6 @@ export async function runStdioShim({
     if (closing) return;
     closing = true;
     // IDE closed our stdin — release the daemon session and leave cleanly.
-    client.onclose = undefined;
     try {
       await client.close();
     } catch (e) {
