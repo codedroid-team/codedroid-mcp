@@ -2,7 +2,7 @@
  * RelayPhoneTransport — an MCP SDK `Transport` to CodeDroid on the phone, through the CodeDroid
  * server's relay.
  *
- *   1. Read this computer's pairing (host.js): the server, the host token, the phone.
+ *   1. Read the pairing it is for (host.js): the server, the host token, the phone.
  *   2. Open ws(s)://<server>/v1/mcp/connect with the token, plus X-CodeDroid-Client and
  *      X-CodeDroid-Bridge, from which the server builds the phone's hello. The phone keeps its own
  *      socket to the server, so neither side needs the other's address.
@@ -13,7 +13,7 @@
  * A library: failures surface through start() rejecting or onclose/onerror, never process.exit().
  */
 import WebSocket from "ws";
-import { PAIRING_STEPS, pairedDevice, readHost } from "./host.js";
+import { PAIRING_STEPS, pairedDevice, readHosts } from "./host.js";
 import { VERSION } from "./version.js";
 
 export class PhoneUnavailableError extends Error {
@@ -48,7 +48,7 @@ export class RelayPhoneTransport {
    * @param {Record<string, string | undefined>} [options.env]
    * @param {number} [options.approvalTimeoutMs] the first time, a person taps Allow on the phone
    * @param {() => {server: string, host_id: string, token: string, device: {id: string, model: string | null}} | null} [options.host]
-   *   this computer's pairing, null when it has none
+   *   the pairing to connect through, null when there is none; this computer's first by default
    * @param {(msg: string) => void} [options.log]
    */
   constructor(options = {}) {
@@ -59,7 +59,7 @@ export class RelayPhoneTransport {
 
     this._env = options.env ?? process.env;
     this._approvalTimeoutMs = options.approvalTimeoutMs ?? 130_000;
-    this._host = options.host ?? readHost;
+    this._host = options.host ?? (() => readHosts()[0] ?? null);
     this._log = options.log ?? (() => {});
     this._ws = null;
     this._open = false;

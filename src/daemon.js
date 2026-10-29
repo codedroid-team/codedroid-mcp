@@ -1,6 +1,6 @@
 /**
- * daemon — ONE process on this computer that owns the single link to
- * CodeDroid on the phone (through the CodeDroid server's relay) and serves MCP over
+ * daemon — ONE process on this computer that owns the links to CodeDroid on every
+ * paired phone (through the CodeDroid server's relay) and serves MCP over
  * Streamable HTTP on localhost.
  *
  * The phone connection uses a WebSocket relay. /mcp requires this user's daemon token (a bearer
@@ -8,14 +8,14 @@
  *
  * Every MCP client (Claude Code, Claude Desktop, Cursor, VS Code windows…)
  * connects to http://127.0.0.1:<port>/mcp and gets its own MCP session; tool
- * calls are serialized onto the one phone connection. This replaces the old
- * model where each client spawned its own bridge and stole the phone from the
- * previous one ("newest wins" tug-of-war).
+ * calls are serialized per phone, onto that phone's one connection (phones.js).
+ * This replaces the old model where each client spawned its own bridge and
+ * stole the phone from the previous one ("newest wins" tug-of-war).
  *
  * Endpoints:
  *   POST/GET/DELETE /mcp   Streamable HTTP MCP (per-session) — needs the daemon token
  *   POST /shutdown         stop the daemon — needs the token
- *   GET /health            {ok, version, pid, authentication, phone, sessions, adbToolEnabled} — unauthenticated
+ *   GET /health            {ok, version, pid, authentication, phone, phones, sessions, adbToolEnabled} — unauthenticated
  */
 import http from "http";
 import os from "os";
@@ -24,10 +24,11 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { adbTool } from "./adb-tool.js";
+import { describeHost, ensureDaemonToken, readHosts } from "./host.js";
+import { Phones } from "./phones.js";
 import { buildProxyServer, broadcastNotification } from "./proxy-core.js";
 import { RelayPhoneTransport } from "./relay-transport.js";
-import { createStatusTool } from "./status-tool.js";
-import { ensureDaemonToken } from "./host.js";
+import { createDevicesTool, createStatusTool } from "./status-tool.js";
 import { VERSION } from "./version.js";
 
 export const DEFAULT_PORT = 4826;
@@ -46,8 +47,10 @@ const PING_TIMEOUT_MS = 5_000;
 const CONNECT_WAIT_MS = 5_000;
 /** In a session that opened without the phone, how long tools/list waits for it: a ping's worth. */
 const LIST_WAIT_MS = 2_000;
+/** Why a closed PhoneManager connects nothing: the daemon stops, or Phones dropped its pairing. */
+const CLOSED_MESSAGE = "This phone's link is closed: the daemon is shutting down, or the phone was unpaired or paired again.";
 
-/** Owns the single connection to the phone: single-flight connect, exclusive
+/** Owns the connection to one phone: single-flight connect, exclusive
  *  tool-call queue, reconnect-on-demand after a drop. */
 export class PhoneManager {
   constructor({
@@ -78,7 +81,7 @@ export class PhoneManager {
   }
 
   async getClient() {
-    if (this._closed) throw new Error("Daemon is shutting down");
+    if (this._closed) throw new Error(CLOSED_MESSAGE);
     if (this._client) {
       // A phone app restart or network flip can kill the link without any
       // close event — the cached client then looks healthy while every
@@ -109,6 +112,11 @@ export class PhoneManager {
     return this._connectPromise;
   }
 
+  /** The connected client, or null; unlike getClient, never connects or pings. */
+  get current() {
+    return this._client;
+  }
+
   /** Every successful round-trip proves the link — cheaper than extra pings. */
   markAlive() {
     this._lastAliveAt = Date.now();
@@ -137,6 +145,11 @@ export class PhoneManager {
       this.state = "disconnected";
       this.lastError = e.message;
       throw e;
+    }
+    // Closed while connecting (unpaired during the wait for Allow): nothing would ever close this link.
+    if (this._closed) {
+      await client.close().catch(() => {});
+      throw new Error(CLOSED_MESSAGE);
     }
     client.onclose = () => {
       if (this._client === client) {
@@ -260,18 +273,22 @@ function jsonRpcError(res, status, id, code, message) {
  * @param {object} [options]
  * @param {number} [options.port]   0 = ephemeral (tests)
  * @param {string} [options.host]
- * @param {() => Promise<import("@modelcontextprotocol/sdk/shared/transport.js").Transport> | import("@modelcontextprotocol/sdk/shared/transport.js").Transport} [options.phoneTransportFactory]
+ * @param {() => object[]} [options.pairings]  This computer's pairings, read on every request;
+ *   host.json by default.
+ * @param {(pairing: object) => Promise<import("@modelcontextprotocol/sdk/shared/transport.js").Transport> | import("@modelcontextprotocol/sdk/shared/transport.js").Transport} [options.phoneTransportFactory]
+ *   A transport to the phone of [pairing]; the relay by default.
  * @param {(msg: string) => void} [options.log]
  * @param {boolean} [options.enableAdbTool]  Serve the host-side `adb` tool. OFF by
  *   default: it runs commands on this computer, so it is opt-in. CODEDROID_MCP_ADB=1
  *   or --adb turns it on (index.js).
  * @param {string} [options.home]  Where ~/.codedroid lives; overridable for tests.
- * @returns {Promise<{port: number, authToken: string, close: () => Promise<void>, phoneManager: PhoneManager}>}
+ * @returns {Promise<{port: number, authToken: string, close: () => Promise<void>, phones: Phones}>}
  *   authToken is this user's daemon token (host.js ensureDaemonToken), which /mcp and /shutdown require.
  */
 export async function startDaemon({
   port = DEFAULT_PORT,
   host = "127.0.0.1",
+  pairings = () => readHosts({ home }),
   phoneTransportFactory,
   log = () => {},
   enableAdbTool = false,
@@ -279,19 +296,28 @@ export async function startDaemon({
 } = {}) {
   /** Set once the port is ours (below); no request is handled before that. */
   let authToken = null;
-  const phoneManager = new PhoneManager({
-    transportFactory: phoneTransportFactory,
-    log,
+  const phones = new Phones({
+    pairings,
+    createManager: (pairing) => {
+      const phoneLog = (msg) => log(`[${describeHost(pairing)}] ${msg}`);
+      return new PhoneManager({
+        transportFactory: phoneTransportFactory
+          ? () => phoneTransportFactory(pairing)
+          : () => new RelayPhoneTransport({ host: () => pairing, log: phoneLog }),
+        log: phoneLog,
+      });
+    },
+    listWaitMs: LIST_WAIT_MS,
   });
   /** sessionId → { transport, server } */
   const sessions = new Map();
 
-  phoneManager.onNotification = (notification) =>
+  phones.onNotification = (notification) =>
     broadcastNotification(
       [...sessions.values()].map((s) => s.server),
       notification,
     );
-  phoneManager.onConnected = () =>
+  phones.onConnected = () =>
     broadcastNotification(
       [...sessions.values()].map((s) => s.server),
       { method: "notifications/tools/list_changed" },
@@ -309,13 +335,15 @@ export async function startDaemon({
 
       // Discovery exposes no device identifiers, connection errors, or credential-file mutations.
       if (url.pathname === "/health" && req.method === "GET") {
+        const { state, paired, connected } = phones.summary();
         sendJson(res, 200, {
           ok: true,
           service: "codedroid-mcp-daemon",
           version: VERSION,
           pid: process.pid,
           authentication: DAEMON_AUTHENTICATION,
-          phone: phoneManager.state,
+          phone: state,
+          phones: { paired, connected },
           sessions: sessions.size,
           adbToolEnabled: enableAdbTool,
         });
@@ -367,17 +395,17 @@ export async function startDaemon({
         if (!sessionId && isInitializeRequest(body)) {
           let server;
           try {
+            // Phones queues each phone's calls itself and proves its links alive.
             server = await buildProxyServer({
-              getClient: () => phoneManager.getClient(),
-              runExclusive: (fn) => phoneManager.runExclusive(fn),
-              onBackendAlive: () => phoneManager.markAlive(),
+              getClient: async () => phones,
+              connect: () => phones.connect(),
               name: "codedroid (via daemon)",
               version: VERSION,
               // Executes on THIS machine (wherever the daemon runs), not the
               // phone — see adb-tool.js. The stdio shim builds its own proxy
               // server without these, so it transparently forwards their
               // calls to here rather than double-registering them.
-              localTools: [createStatusTool(phoneManager), ...(enableAdbTool ? [adbTool] : [])],
+              localTools: [createDevicesTool(phones), createStatusTool(phones), ...(enableAdbTool ? [adbTool] : [])],
               connectWaitMs: CONNECT_WAIT_MS,
               listWaitMs: LIST_WAIT_MS,
             });
@@ -462,9 +490,9 @@ export async function startDaemon({
       }
     }
     sessions.clear();
-    await phoneManager.close();
+    await phones.close();
     await new Promise((resolve) => httpServer.close(resolve));
   };
 
-  return { port: boundPort, authToken, close, phoneManager };
+  return { port: boundPort, authToken, close, phones };
 }

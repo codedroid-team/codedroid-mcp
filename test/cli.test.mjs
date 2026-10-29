@@ -206,6 +206,34 @@ try {
     }
   }
 
+  // ── unpair forgets one phone; a running daemon that serves several keeps going ─
+  {
+    const { home, env } = sandbox("unpair");
+    const pairing = (id, model) => ({ server: "https://orchestrator.example", host_id: `h-${id}`, token: `t-${id}`, device: { id, model } });
+    fs.mkdirSync(path.join(home, ".codedroid"), { recursive: true, mode: 0o700 });
+    fs.writeFileSync(
+      path.join(home, ".codedroid", "host.json"),
+      JSON.stringify({ pairings: [pairing("aaaa-1", "XPS Googlebook"), pairing("bbbb-2", "Pixel 9")] }),
+      { mode: 0o600 },
+    );
+    const daemon = await startDaemon({ port: 0, home, phoneTransportFactory: () => { throw new Error("offline"); } });
+    try {
+      const missing = await cli([`--port=${daemon.port}`, "unpair", "Galaxy"], env);
+      assert.notEqual(missing.code, 0);
+      assert.match(missing.stderr, /No paired phone is "Galaxy"\. Paired: XPS Googlebook \(aaaa-1\), Pixel 9 \(bbbb-2\)/);
+      const removed = await cli([`--port=${daemon.port}`, "unpair", "Pixel", "9"], env);
+      assert.equal(removed.code, 0, removed.stderr);
+      assert.match(removed.stdout, /Unpaired Pixel 9 \(bbbb-2\)/);
+      const saved = JSON.parse(fs.readFileSync(path.join(home, ".codedroid", "host.json"), "utf8"));
+      assert.deepEqual(saved.pairings.map((p) => p.device.model), ["XPS Googlebook"]);
+      const status = await cli([`--port=${daemon.port}`, "call", "codedroid_status"], env);
+      assert.deepEqual(JSON.parse(status.stdout).devices.map((d) => d.model), ["XPS Googlebook"], "the running daemon reads the change");
+      assert.ok(await health(daemon.port), "unpairing does not stop a daemon that serves several phones");
+    } finally {
+      await daemon.close();
+    }
+  }
+
   console.log("cli.test.mjs: ALL PASS");
 } finally {
   for (const pid of started) {

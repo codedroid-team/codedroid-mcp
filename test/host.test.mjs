@@ -9,12 +9,15 @@ import os from "node:os";
 import path from "node:path";
 import {
   daemonTokenPath,
+  describeHost,
   ensureDaemonToken,
+  findHost,
   hostFilePath,
   pair,
   pairedDevice,
   readDaemonToken,
-  readHost,
+  readHosts,
+  unpair,
 } from "../src/host.js";
 
 /** A fetch that records the request and answers [status] with [body]. */
@@ -37,10 +40,10 @@ const REDEEMED = {
 const home = fs.mkdtempSync(path.join(os.tmpdir(), "codedroid-host-"));
 try {
   // ── Not paired: no file, or the adb-era {id} file ───────────────────
-  assert.equal(readHost({ home }), null);
+  assert.deepEqual(readHosts({ home }), []);
   fs.mkdirSync(path.dirname(hostFilePath(home)), { recursive: true });
   fs.writeFileSync(hostFilePath(home), JSON.stringify({ id: "old" }));
-  assert.equal(readHost({ home }), null);
+  assert.deepEqual(readHosts({ home }), []);
 
   // ── Redeem: the request, then host.json the user's alone ────────────
   {
@@ -57,7 +60,7 @@ try {
     assert.equal(fetch.calls[0].init.headers.Authorization, undefined, "redeeming takes no credentials");
     assert.deepEqual(fetch.calls[0].body, { code: "ABCD-EFGH", name: "borna-mbp", platform: "darwin" });
     assert.deepEqual(host, { server: "https://orchestrator.dev2.codedroid.com", ...REDEEMED });
-    assert.deepEqual(readHost({ home }), host);
+    assert.deepEqual(readHosts({ home }), [host]);
     assert.deepEqual(pairedDevice(host), { ...REDEEMED.device, server: "https://orchestrator.dev2.codedroid.com" });
     if (process.platform !== "win32") {
       assert.equal(fs.statSync(hostFilePath(home)).mode & 0o777, 0o600, "an older host.json is narrowed too");
@@ -138,16 +141,68 @@ try {
 
   // ── A hand-edited server is read normalized; a bad or plaintext one is no pairing ──
   {
-    const saved = JSON.parse(fs.readFileSync(hostFilePath(home), "utf8"));
-    fs.writeFileSync(hostFilePath(home), JSON.stringify({ ...saved, server: "HTTPS://Orchestrator.dev2.codedroid.com/?x=1" }));
-    assert.equal(readHost({ home }).server, "https://orchestrator.dev2.codedroid.com");
-    fs.writeFileSync(hostFilePath(home), JSON.stringify({ ...saved, server: "not a url" }));
-    assert.equal(readHost({ home }), null);
-    fs.writeFileSync(hostFilePath(home), JSON.stringify({ ...saved, server: "http://orchestrator.codedroid.com" }));
-    assert.equal(readHost({ home }), null, "a hand-edited plaintext http pairing is not used");
+    const [saved] = readHosts({ home });
+    const write = (server) => fs.writeFileSync(hostFilePath(home), JSON.stringify({ pairings: [{ ...saved, server }] }));
+    write("HTTPS://Orchestrator.dev2.codedroid.com/?x=1");
+    assert.equal(readHosts({ home })[0].server, "https://orchestrator.dev2.codedroid.com");
+    write("not a url");
+    assert.deepEqual(readHosts({ home }), []);
+    write("http://orchestrator.codedroid.com");
+    assert.deepEqual(readHosts({ home }), [], "a hand-edited plaintext http pairing is not used");
   }
 } finally {
   fs.rmSync(home, { recursive: true, force: true });
+}
+
+// ── Several phones: each pairing adds one, and a phone is named by id or model ──
+{
+  const multi = fs.mkdtempSync(path.join(os.tmpdir(), "codedroid-hosts-"));
+  const redeemed = (n, model) => ({ host_id: `host-${n}`, token: `cdmcp_${n}`, device: { id: `${n}f1c0d6e-0000-4000-8000-00000000000${n}`, model } });
+  const pairAs = (n, model, server) => pair("ABCD-EFGH", { server, fetch: fakeFetch(200, redeemed(n, model)), home: multi });
+  try {
+    // A host.json from before several phones is read as one pairing, and kept when another is added.
+    fs.mkdirSync(path.dirname(hostFilePath(multi)), { recursive: true });
+    fs.writeFileSync(hostFilePath(multi), JSON.stringify({ server: "https://orchestrator.dev2.codedroid.com", ...redeemed(1, "XPS Googlebook") }));
+    assert.deepEqual(readHosts({ home: multi }).map((h) => h.device.model), ["XPS Googlebook"]);
+    await pairAs(2, "Pixel 9");
+    await pairAs(3, "Pixel 9", "https://orchestrator.dev2.codedroid.com");
+    const hosts = readHosts({ home: multi });
+    assert.deepEqual(hosts.map((h) => h.token), ["cdmcp_1", "cdmcp_2", "cdmcp_3"], "a new pairing never replaces another phone's");
+    assert.deepEqual(hosts.map((h) => h.server), [
+      "https://orchestrator.dev2.codedroid.com",
+      "https://orchestrator.codedroid.com",
+      "https://orchestrator.dev2.codedroid.com",
+    ]);
+    const file = JSON.parse(fs.readFileSync(hostFilePath(multi), "utf8"));
+    assert.equal(file.token, "cdmcp_3", "the latest pairing stays at the top level, where an older codedroid-mcp reads it");
+    assert.equal(file.pairings.length, 3);
+
+    // Pairing the same phone again replaces its pairing, in place of a second one.
+    await pair("ABCD-EFGH", { fetch: fakeFetch(200, { ...redeemed(2, "Pixel 9"), token: "cdmcp_2b" }), home: multi });
+    assert.deepEqual(readHosts({ home: multi }).map((h) => h.token), ["cdmcp_1", "cdmcp_3", "cdmcp_2b"]);
+
+    // Naming a phone: its id, a unique model, or the unique start of its id; any case.
+    const [xps, pixelA, pixelB] = readHosts({ home: multi });
+    assert.equal(findHost([xps, pixelA, pixelB], xps.device.id.toUpperCase()), xps);
+    assert.equal(findHost([xps, pixelA, pixelB], "xps googlebook"), xps);
+    assert.equal(findHost([xps, pixelA, pixelB], "3f1c"), pixelA);
+    assert.equal(findHost([xps, pixelA, pixelB], "googlebook"), xps, "part of a model names the one phone that has it");
+    assert.throws(() => findHost([xps, pixelA, pixelB], "pixel"), /"pixel" matches 2 paired phones/);
+    assert.throws(() => findHost([xps, pixelA, pixelB], "Pixel 9"), /matches 2 paired phones: Pixel 9 \(3f1c.*\), Pixel 9 \(2f1c.*\)\. Use the id/);
+    assert.throws(() => findHost([xps, pixelA, pixelB], "Galaxy"), /No paired phone is "Galaxy"\. Paired: XPS Googlebook \(1f1c/);
+    assert.throws(() => findHost([], "Galaxy"), /None is paired\. On the phone/);
+    assert.throws(() => findHost([xps], " "), /Name a phone/);
+    assert.equal(describeHost({ host_id: "h", device: { id: null, model: null } }), "unknown model (h)", "a pairing without a device id is named by its host id");
+
+    // Unpairing forgets that phone alone.
+    assert.equal(unpair("XPS Googlebook", { home: multi }).token, "cdmcp_1");
+    assert.deepEqual(readHosts({ home: multi }).map((h) => h.token), ["cdmcp_3", "cdmcp_2b"]);
+    assert.throws(() => unpair("XPS", { home: multi }), /No paired phone is "XPS"/);
+    assert.deepEqual(readHosts({ home: multi }).map((h) => h.token), ["cdmcp_3", "cdmcp_2b"], "a failed unpair keeps every pairing");
+    if (process.platform !== "win32") assert.equal(fs.statSync(hostFilePath(multi)).mode & 0o777, 0o600);
+  } finally {
+    fs.rmSync(multi, { recursive: true, force: true });
+  }
 }
 
 // ── Token lifecycle: never silently rotate an existing credential ─────

@@ -1,6 +1,8 @@
 /**
- * This computer's pairing with a phone, kept in ~/.codedroid/host.json (dir 0700, file 0600):
- * {server, host_id, token, device: {id, model}}.
+ * This computer's pairings with phones, kept in ~/.codedroid/host.json (dir 0700, file 0600):
+ * {pairings: [{server, host_id, token, device: {id, model}}, ...]}. A file from before several
+ * phones holds one pairing at its top level, and is read as a list of one; the latest pairing is
+ * kept there too, so an older codedroid-mcp still finds a phone.
  *
  * The phone shows a one-time code (Settings > Computers > Pair a computer); `pair` redeems it at
  * the CodeDroid server for a host token. The token is the key to the relay: anyone holding it
@@ -87,23 +89,76 @@ export function ensureDaemonToken({ home = os.homedir() } = {}) {
   }
 }
 
-/** The saved pairing, or null when this computer is not paired. */
-export function readHost({ home = os.homedir() } = {}) {
+/** A saved pairing as used, or null when it is incomplete or its server is unusable. */
+function validHost(host) {
   try {
-    const host = JSON.parse(fs.readFileSync(hostFilePath(home), "utf8"));
     return host?.token && host.server ? { ...host, server: normalizeServer(host.server) } : null;
   } catch (e) {
     return null;
   }
 }
 
-export function saveHost(host, { home = os.homedir() } = {}) {
+/** The saved pairings, in the order they were made; empty when this computer is not paired. */
+export function readHosts({ home = os.homedir() } = {}) {
+  let saved;
+  try {
+    saved = JSON.parse(fs.readFileSync(hostFilePath(home), "utf8"));
+  } catch (e) {
+    return [];
+  }
+  const entries = Array.isArray(saved?.pairings) ? saved.pairings : [saved];
+  return entries.map(validHost).filter(Boolean);
+}
+
+export function saveHosts(hosts, { home = os.homedir() } = {}) {
   const file = hostFilePath(home);
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
   // A new file, renamed over the old: 0600 from its first byte, and never half-written.
   const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(host, null, 2) + "\n", { mode: 0o600 });
+  fs.writeFileSync(tmp, JSON.stringify({ ...hosts.at(-1), pairings: hosts }, null, 2) + "\n", { mode: 0o600 });
   fs.renameSync(tmp, file);
+}
+
+/** What names a pairing's phone: its device id, or the host id from a server that sent none. */
+export function deviceKey(host) {
+  return host.device?.id ?? host.host_id;
+}
+
+/** A pairing as a person reads it: "Pixel 9 (6f1c0d6e-...)". */
+export function describeHost(host) {
+  return `${host.device?.model ?? "unknown model"} (${deviceKey(host)})`;
+}
+
+/**
+ * The pairing [selector] names among [hosts], tried in this order: its device id; its model; the
+ * start of its id; part of its model ("Pixel" for "Google Pixel 5"). Case does not matter. A
+ * selector that names several phones, or none, throws a message naming the paired phones.
+ */
+export function findHost(hosts, selector) {
+  const wanted = String(selector ?? "").trim().toLowerCase();
+  const paired = hosts.length ? `Paired: ${hosts.map(describeHost).join(", ")}.` : `None is paired. ${PAIRING_STEPS}`;
+  if (!wanted) throw new Error(`Name a phone by its id or model. ${paired}`);
+  const exact = hosts.find((h) => String(deviceKey(h)).toLowerCase() === wanted);
+  if (exact) return exact;
+  for (const matches of [
+    hosts.filter((h) => h.device?.model?.toLowerCase() === wanted),
+    hosts.filter((h) => String(deviceKey(h)).toLowerCase().startsWith(wanted)),
+    hosts.filter((h) => h.device?.model?.toLowerCase().includes(wanted)),
+  ]) {
+    if (matches.length === 1) return matches[0];
+    if (matches.length > 1) {
+      throw new Error(`"${selector}" matches ${matches.length} paired phones: ${matches.map(describeHost).join(", ")}. Use the id.`);
+    }
+  }
+  throw new Error(`No paired phone is "${selector}". ${paired}`);
+}
+
+/** Forgets the pairing [selector] names (findHost); resolves the one removed. */
+export function unpair(selector, { home = os.homedir() } = {}) {
+  const hosts = readHosts({ home });
+  const removed = findHost(hosts, selector);
+  saveHosts(hosts.filter((h) => h !== removed), { home });
+  return removed;
 }
 
 /** The phone a pairing points at, as status and /health show it. */
@@ -143,8 +198,9 @@ export function normalizeServer(server) {
 const NEW_CODE = "On the phone, open CodeDroid > Settings > Computers > Pair a computer for a new one.";
 
 /**
- * Redeems [code] at [server] and saves the pairing, replacing any earlier one; resolves what was
- * saved. Throws a message for the user, and leaves the earlier pairing as it was, on any failure.
+ * Redeems [code] at [server] and adds the pairing to the saved ones, replacing an earlier pairing
+ * with the same phone; resolves what was saved. Throws a message for the user, and leaves the
+ * saved pairings as they were, on any failure.
  */
 export async function pair(
   code,
@@ -187,6 +243,7 @@ export async function pair(
     token: body.token,
     device: { id: body.device?.id ?? null, model: body.device?.model ?? null },
   };
-  saveHost(host, { home });
+  const others = readHosts({ home }).filter((h) => deviceKey(h) !== deviceKey(host));
+  saveHosts([...others, host], { home });
   return host;
 }

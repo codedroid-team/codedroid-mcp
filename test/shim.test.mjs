@@ -50,6 +50,9 @@ function makeFakePhoneTransport() {
   return clientSide;
 }
 
+/** The one phone these tests pair with; the daemon reads no host.json. */
+const PAIRING = { server: "https://orchestrator.example", host_id: "h1", token: "t1", device: { id: "phone-1", model: "Pixel 5" } };
+
 // Armed, so this also proves the daemon's locally-appended adb guidance and
 // tool survive the SECOND proxy hop. The shim registers no local tools of its
 // own — it must forward whatever the daemon advertises, instructions included.
@@ -58,6 +61,7 @@ const home = fs.mkdtempSync(path.join(os.tmpdir(), "codedroid-daemon-"));
 
 const daemon = await startDaemon({
   port: 0,
+  pairings: () => [PAIRING],
   phoneTransportFactory: makeFakePhoneTransport,
   log: () => {},
   enableAdbTool: true,
@@ -97,7 +101,7 @@ try {
   const tools = await client.listTools();
   assert.deepEqual(
     tools.tools.map((t) => t.name).sort(),
-    ["adb", "codedroid_status", "echo"],
+    ["adb", "codedroid_devices", "codedroid_status", "echo"],
     "the shim forwards the daemon's local tool without re-registering it",
   );
 

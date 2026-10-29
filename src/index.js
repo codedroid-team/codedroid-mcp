@@ -1,18 +1,19 @@
 #!/usr/bin/env node
 /**
- * codedroid-mcp — connect any MCP client (Claude Code, Codex, Cursor, ...) to CodeDroid on an
- * Android phone paired with this computer.
+ * codedroid-mcp — connect any MCP client (Claude Code, Codex, Cursor, ...) to CodeDroid on the
+ * Android phones paired with this computer.
  *
- * ONE daemon per computer owns the connection to the phone (through the CodeDroid server's relay)
+ * ONE daemon per computer owns the connections to the phones (through the CodeDroid server's relay)
  * and serves MCP over Streamable HTTP on localhost; clients either point at its URL or launch this
  * stdio shim, which auto-starts it.
  *
  * Modes:
  *   codedroid-mcp                  stdio shim → daemon (auto-starts it)  [default]
  *   codedroid-mcp daemon           run the daemon in the foreground
- *   codedroid-mcp pair <code>      pair with the phone showing <code>, then connect
- *   codedroid-mcp connect          connect to the phone now (and get it allowed there), then exit
- *   codedroid-mcp status           what the running daemon sees
+ *   codedroid-mcp pair <code>      pair with the phone showing <code> too, then connect to it
+ *   codedroid-mcp connect [phone]  connect to the phones now (and get it allowed there), then exit
+ *   codedroid-mcp unpair <phone>   forget one paired phone
+ *   codedroid-mcp status [phone]   what the running daemon sees
  *   codedroid-mcp stop             stop the running daemon
  *   codedroid-mcp call <tool> [json]  call one tool and print the result (scripts, CI)
  *   codedroid-mcp skill install|path  the agent skills, for clients without the plugin
@@ -69,15 +70,17 @@ function resolveEnableAdb(args) {
 
 const HELP = `codedroid-mcp ${VERSION}
 
-Gives an MCP client (Claude Code, Codex, Cursor...) your Android phone through CodeDroid: see the
+Gives an MCP client (Claude Code, Codex, Cursor...) your Android phones through CodeDroid: see the
 screen, tap and type, hand CodeDroid a task, and — with --adb — run adb on this computer.
 
 Usage:
   codedroid-mcp                     MCP stdio server (auto-starts the shared daemon)
   codedroid-mcp pair <code>         Pair with the phone showing <code>, then connect
-                                    (--server=<url> when the phone's command has it)
-  codedroid-mcp connect             Connect to the phone now; the first time, tap Allow on it
-  codedroid-mcp status              What the running daemon sees
+                                    (--server=<url> when the phone's command has it).
+                                    Pair each phone: earlier pairings stay.
+  codedroid-mcp connect [phone]     Connect to the phones now; the first time, tap Allow on each
+  codedroid-mcp unpair <phone>      Forget a paired phone (its id or model)
+  codedroid-mcp status [phone]      What the running daemon sees
   codedroid-mcp stop                Stop the running daemon
   codedroid-mcp call <tool> [json]  Call one tool and print the result
   codedroid-mcp daemon              Run the shared daemon in the foreground
@@ -86,8 +89,9 @@ Usage:
   codedroid-mcp skill path          Print where the skill files are
 
 Pair first: on the phone, open CodeDroid > Settings > Computers > Pair a computer, and run the
-command it shows here. The phone needs CodeDroid signed in, online, with its accessibility
-service on. The adb tool, alone, needs the phone on this computer's adb.
+command it shows here; do the same on every phone to use. A phone needs CodeDroid signed in,
+online, with its accessibility service on. The adb tool, alone, needs the phone on this
+computer's adb. With several phones paired, tools take a device argument naming one.
 
 Options:
   --port=<n>   Daemon port (default 4826; env CODEDROID_MCP_PORT)
@@ -254,12 +258,14 @@ async function main() {
   if (command === "pair") {
     const code = args._.slice(1).join(" ");
     if (!code) fatal("Usage: codedroid-mcp pair <code> [--server=<url>]. The phone shows the command: CodeDroid > Settings > Computers > Pair a computer.");
-    const { DEFAULT_SERVER, pair } = await import("./host.js");
+    const { DEFAULT_SERVER, deviceKey, pair } = await import("./host.js");
     const host = await pair(code, { server: args.server ?? DEFAULT_SERVER });
     log(`Paired with ${host.device.model ?? "the phone"} through ${host.server}.`);
-    // A daemon connected, or connecting, holds the old pairing's link; a disconnected one reads the new one.
-    const phone = (await daemonHealth(port))?.phone;
-    if (phone && phone !== "disconnected") {
+    args._ = ["pair", deviceKey(host)];
+    // A daemon that serves several phones reads new pairings itself. An older one connected, or
+    // connecting, holds the old pairing's link; a disconnected one reads the new one.
+    const health = await daemonHealth(port);
+    if (health && !health.phones && health.phone !== "disconnected") {
       const stopped = await stopDaemon(port);
       if (stopped.status === "refused" || stopped.status === "stuck") {
         fatal(`Paired, but the running daemon still holds the old pairing. ${notStopped(stopped)}`);
@@ -268,12 +274,35 @@ async function main() {
     }
   }
 
+  if (command === "unpair") {
+    const selector = args._.slice(1).join(" ");
+    if (!selector) fatal("Usage: codedroid-mcp unpair <phone>, the phone's id or model as codedroid-mcp status shows it.");
+    const { describeHost, unpair } = await import("./host.js");
+    let removed;
+    try {
+      removed = unpair(selector);
+    } catch (e) {
+      fatal(e.message);
+    }
+    // A daemon that serves several phones lets go of it on its next request; an older one holds it until it stops.
+    const health = await daemonHealth(port);
+    if (health && !health.phones) {
+      const stopped = await stopDaemon(port);
+      if (stopped.status === "refused" || stopped.status === "stuck") fatal(`Unpaired, but ${notStopped(stopped)}`);
+    }
+    process.stdout.write(
+      `Unpaired ${describeHost(removed)}. To also remove this computer on the phone: CodeDroid > Settings > Computers.\n`,
+    );
+    return;
+  }
+
   if (command === "status" || command === "connect" || command === "pair") {
-    const { PAIRING_STEPS, readHost } = await import("./host.js");
-    if (!readHost()) fatal(`This computer is not paired with a phone. ${PAIRING_STEPS}`);
-    if (command !== "status") log("Connecting to the phone. The first time, it asks whether to allow this computer: tap Allow.");
+    const { PAIRING_STEPS, readHosts } = await import("./host.js");
+    if (!readHosts().length) fatal(`This computer is not paired with a phone. ${PAIRING_STEPS}`);
+    if (command !== "status") log("Connecting. The first time, the phone asks whether to allow this computer: tap Allow.");
+    const device = args._.slice(1).join(" ") || undefined;
     const client = await daemonClient(port, enableAdbTool);
-    const result = await client.callTool({ name: "codedroid_status", arguments: {} }, undefined, { timeout: 150_000 });
+    const result = await client.callTool({ name: "codedroid_status", arguments: { device } }, undefined, { timeout: 150_000 });
     printResult(result);
     await client.close();
     const status = JSON.parse(result.content?.[0]?.text ?? "{}");

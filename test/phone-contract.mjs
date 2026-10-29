@@ -60,7 +60,7 @@ const host = () => ({
 const factory = () => new RelayPhoneTransport({ host, env: {} });
 // A throwaway home so the daemon's token file lands in temp, not the real ~/.codedroid.
 const home = fs.mkdtempSync(path.join(os.tmpdir(), "codedroid-daemon-"));
-const daemon = await startDaemon({ port: 0, phoneTransportFactory: factory, enableAdbTool: true, home });
+const daemon = await startDaemon({ port: 0, pairings: () => [host()], phoneTransportFactory: factory, enableAdbTool: true, home });
 
 const text = (result) => result.content[0].text;
 const errorOf = (result) => {
@@ -84,7 +84,7 @@ try {
 
   const tools = (await client.listTools()).tools;
   const names = tools.map((t) => t.name);
-  for (const name of ["get_screen", "tap", "type_text", "swipe", "run_task", "get_task", "adb", "codedroid_status"]) {
+  for (const name of ["get_screen", "tap", "type_text", "swipe", "run_task", "get_task", "adb", "codedroid_devices", "codedroid_status"]) {
     assert.ok(names.includes(name), `tools/list lacks ${name}: ${names}`);
   }
   assert.equal(tools.find((t) => t.name === "get_screen").annotations.readOnlyHint, true);

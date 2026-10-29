@@ -23,6 +23,13 @@ the phone's `instructions`: read them if your session started before the phone c
 The first time a computer connects, the phone asks the user to allow it. While you drive the
 phone, it shows "<this computer> is using this phone" with a Stop button.
 
+Several phones can be paired with one computer. `codedroid_devices` lists them right away with
+each one's id, model and link state, without connecting. With more than one paired, pass `device`
+on every phone tool call. It can be the id, or the model or part of it ("Pixel") when that names
+only one phone. If the user hasn't said which phone, ask them. Each phone has its own screen,
+tasks and task ids, so pass the same `device` to `get_task` as to its `run_task`. A phone that is
+offline doesn't affect the others.
+
 ## Look, act, check
 
 1. `get_screen` lists what is on screen, one element per line:
