@@ -2,13 +2,15 @@
   "name": "codedroid",
   "description": "CodeDroid's plugins for coding agents.",
   "owner": {
-    "name": "CodeDroid"
+    "name": "CodeDroid",
+    "url": "https://get.codedroid.com"
   },
   "plugins": [
     {
       "name": "codedroid",
       "source": "./",
-      "description": "Your Android phone, through CodeDroid: drive it, run adb, and verify app changes on the device."
+      "description": "Your Android phone, through CodeDroid: drive it, run adb, and verify app changes on the device.",
+      "category": "development"
     }
   ]
 }

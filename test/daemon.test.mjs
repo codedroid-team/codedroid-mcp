@@ -75,11 +75,15 @@ async function connectHttpClient(port, name, token) {
   return { client, transport };
 }
 
+/** The one phone these tests pair with; the daemon reads no host.json. */
+const PAIRING = { server: "https://orchestrator.example", host_id: "h1", token: "t1", device: { id: "phone-1", model: "Pixel 5" } };
+
 // A throwaway home so the daemon's token file lands in temp, not the real ~/.codedroid.
 const home = fs.mkdtempSync(path.join(os.tmpdir(), "codedroid-daemon-"));
 
 const daemon = await startDaemon({
   port: 0,
+  pairings: () => [PAIRING],
   phoneTransportFactory: makeFakePhoneTransport,
   log: () => {},
   enableAdbTool: false,
@@ -98,7 +102,7 @@ try {
   // The phone's "echo" and the daemon's own codedroid_status; no adb with CODEDROID_MCP_ADB=0.
   assert.deepEqual(
     toolsA.tools.map((t) => t.name).sort(),
-    ["codedroid_status", "echo"],
+    ["codedroid_devices", "codedroid_status", "echo"],
     "adb must not appear in tools/list when turned off",
   );
 
@@ -238,7 +242,7 @@ try {
     },
     body: JSON.stringify({ jsonrpc: "2.0", method: "tools/list", id: 1 }),
   });
-  assert.equal(bad.status, 400);
+  assert.equal(bad.status, 404, "a session the daemon does not have is 404, which tells clients to initialize again");
 
   // ── Clean session teardown ──────────────────────────────────────────
   await a.transport.terminateSession();
@@ -256,6 +260,7 @@ try {
 // construction-time decision, and this proves both sides of it.
 const armed = await startDaemon({
   port: 0,
+  pairings: () => [PAIRING],
   phoneTransportFactory: makeFakePhoneTransport,
   log: () => {},
   enableAdbTool: true,
@@ -268,7 +273,7 @@ try {
   const tools = await c.client.listTools();
   assert.deepEqual(
     tools.tools.map((t) => t.name).sort(),
-    ["adb", "codedroid_status", "echo"],
+    ["adb", "codedroid_devices", "codedroid_status", "echo"],
     "the daemon merges the host-side adb tool into tools/list",
   );
 
@@ -295,7 +300,7 @@ try {
   );
 
   await c.client.close();
-  armed.phoneManager.lastError = "Private relay URL: https://private.example/";
+  armed.phones.select()[0].manager.lastError = "Private relay URL: https://private.example/";
   const privateHealth = await fetch(`http://127.0.0.1:${armed.port}/health`).then((r) => r.json());
   assert.ok(!JSON.stringify(privateHealth).includes("private.example"));
   fs.rmSync(daemonTokenPath(home));

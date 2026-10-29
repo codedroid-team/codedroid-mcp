@@ -22,7 +22,8 @@ read progress, or `cancel_task` to stop the task.
 | `device_info` | Inspect the device model, Android version, user, screen, lock state, and CodeDroid readiness. |
 | `run_task`, `get_task`, `cancel_task` | Start, monitor, or cancel a task run by CodeDroid's agent. |
 | `adb` | Run local adb commands against the connected phone. Off by default; enable with `--adb` or `CODEDROID_MCP_ADB=1`. |
-| `codedroid_status` | Check the phone connection and get instructions for resolving connection problems. |
+| `codedroid_devices` | List the paired phones (id, model, server) and whether each is connected, without connecting. |
+| `codedroid_status` | Connect to the paired phones, report each connection, and get instructions for resolving problems. |
 
 Screen interaction tools return an `after` observation with the current app, keyboard state,
 screen changes, and visible elements. Phone tool errors include an error code, message, and
@@ -142,10 +143,29 @@ npx -y @codedroid/mcp connect
 npx -y @codedroid/mcp status
 npx -y @codedroid/mcp call get_screen
 npx -y @codedroid/mcp call tap '{"text": "Display"}'
+npx -y @codedroid/mcp unpair "Pixel 9"
 npx -y @codedroid/mcp stop
 ```
 
 `connect` reconnects a paired computer. `stop` shuts down the local daemon.
+
+### Several phones
+
+Run `pair` on each phone to add it. Pairing another phone keeps the earlier ones. Pairing the same
+phone again replaces its old pairing. The running daemon picks up `pair` and `unpair` on its next
+request, so clients stay connected.
+
+Every phone tool takes a `device` argument. It can be a phone's id, the start of its id, or its
+model or part of the model ("Pixel" for "Google Pixel 5"), as long as it names only one paired
+phone. The `codedroid_devices` tool lists the paired phones and the state of each link, without
+connecting. With one phone paired, `device` is optional. With several, a
+call without it fails and lists the paired phones. Each phone has its own link and its own queue,
+so calls to different phones run side by side, and one phone going offline doesn't affect the
+others. With several phones, resource URIs end in `?device=<id>`.
+
+`status`, `connect` and the `codedroid_status` tool report every paired phone, or only the phone
+you name (`npx -y @codedroid/mcp status "Pixel 9"`, or `{"device": "Pixel 9"}`). The CLI's `call`
+takes `device` the same way: `npx -y @codedroid/mcp call get_screen '{"device": "Pixel 9"}'`.
 
 ## Troubleshooting
 
@@ -176,14 +196,16 @@ MCP client → stdio bridge → local daemon → CodeDroid relay → Android app
                               └── local adb
 ```
 
-All clients on a computer share a local daemon and its connection to the paired phone. The
+All clients on a computer share a local daemon and its connection to each paired phone. The
 phone and daemon each open an outbound WebSocket to the CodeDroid server. The phone reconnects
-after a restart or network change. MCP screen interactions are serialized on the phone.
+after a restart or network change. MCP screen interactions are serialized on each phone. If the
+daemon restarts, the stdio bridge opens a new session on its next request, so the MCP client
+doesn't need to reconnect.
 
 Calls interrupted by a connection loss are not automatically replayed: an action may have
 completed before its response was lost. Read the screen before deciding whether to retry.
 
-Pairing credentials are stored in `~/.codedroid/host.json`, readable only by your user account. The
+Pairing credentials, one per phone, are stored in `~/.codedroid/host.json`, readable only by your user account. The
 daemon serves MCP on loopback only and requires your daemon token, kept in
 `~/.codedroid/daemon-token` (0600): the daemon creates it the first time it starts, and clients on
 this computer read it. A process that cannot read your home directory cannot drive the phone or the
@@ -211,4 +233,18 @@ contract tests from `CodeDroid-app/`:
 
 These tests export `test/fixtures/phone-tools.json` and run `test/phone-contract.mjs` against
 the app's MCP server through a test relay.
+
+### Release
+
+`npm test` fails until every manifest names the same version.
+
+1. Set the new version in `package.json` (`npm version <x.y.z> --no-git-tag-version`),
+   `src/version.js`, `.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`,
+   `gemini-extension.json`, `.mcp.json`, and both versions in `server.json`.
+2. Run `npm test` and `claude plugin validate .claude-plugin/plugin.json`.
+3. Run `npm publish --access public` **before** merging to `main`: the plugins launch
+   `@codedroid/mcp@<version>`, so installs fail until that version is on npm.
+4. Merge to `main`. Anthropic's directory picks up the new commit and scans it.
+5. Run `mcp-publisher login github` (once), then `mcp-publisher publish` to update the
+   [MCP Registry](https://registry.modelcontextprotocol.io).
 

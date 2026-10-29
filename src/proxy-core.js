@@ -45,15 +45,23 @@ const DEFAULT_TIMEOUT_MS = 30_000;
  * Phone tools that never touch the screen, so need not wait behind the calls that do: get_task
  * alone can wait 55 s for a task, and holding cancel_task behind it would defeat the point.
  */
-const UNQUEUED_TOOLS = new Set(["get_task", "cancel_task", "device_info"]);
+export const UNQUEUED_TOOLS = new Set(["get_task", "cancel_task", "device_info"]);
 
 /** The request never reached the phone: the link was already down when it was sent. */
 const NEVER_SENT = /not open|not connected/i;
 /** The link dropped with the request in flight: it may or may not have run. */
 const DROPPED = /connection closed/i;
 
+/** A request that could not be sent to any phone; its message says why, for the model to read. */
+export class RoutingError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "RoutingError";
+  }
+}
+
 /** [promise]'s value, or null if it takes longer than [ms]; its rejection still rejects. */
-function within(promise, ms) {
+export function within(promise, ms) {
   if (!Number.isFinite(ms)) return promise;
   let timer;
   return Promise.race([promise, new Promise((resolve) => (timer = setTimeout(() => resolve(null), ms)))]).finally(() =>
@@ -70,6 +78,9 @@ function toolError(text) {
  * @param {() => Promise<import("@modelcontextprotocol/sdk/client/index.js").Client>} options.getClient
  *   Resolves the live backend client (reconnecting if needed). Called per
  *   request so a phone reconnect is picked up transparently.
+ * @param {() => Promise<import("@modelcontextprotocol/sdk/client/index.js").Client>} [options.connect]
+ *   What the session waits on as it opens, for the backend's capabilities and instructions;
+ *   getClient by default.
  * @param {(fn: () => Promise<any>) => Promise<any>} [options.runExclusive]
  *   Serializer for tool calls — there is one physical screen, so concurrent
  *   tool calls from different sessions must queue, not interleave.
@@ -95,6 +106,7 @@ function toolError(text) {
  */
 export async function buildProxyServer({
   getClient,
+  connect = getClient,
   runExclusive = (fn) => fn(),
   onBackendAlive = () => {},
   name,
@@ -110,7 +122,7 @@ export async function buildProxyServer({
     // The first connect can wait on a person tapping Allow on the phone, longer than clients
     // wait for a server to start: past connectWaitMs the session opens without the phone, and
     // the daemon announces its tools (tools/list_changed) once it connects.
-    backend = await within(getClient(), connectWaitMs);
+    backend = await within(connect(), connectWaitMs);
     if (!backend) throw new Error("Waiting for the phone: if it asks whether to allow this computer, tap Allow.");
   } catch (e) {
     // With nothing of our own to serve, a session without the phone is no session.
@@ -242,6 +254,7 @@ export async function buildProxyServer({
           result = await run();
           break;
         } catch (e) {
+          if (e instanceof RoutingError) return toolError(e.message);
           const message = e?.message ?? String(e);
           if (NEVER_SENT.test(message) && attempt === 0) continue;
           if (NEVER_SENT.test(message)) return toolError(`CodeDroid on the phone is not connected: ${message} Call codedroid_status.`);

@@ -78,7 +78,7 @@ if (process.argv[2] === "child") {
       const client = new Client({ name: "startup-test", version: "0" });
       try {
         await client.connect(daemonTransport(port, token));
-        assert.deepEqual((await client.listTools()).tools.map((tool) => tool.name), ["codedroid_status"],
+        assert.deepEqual((await client.listTools()).tools.map((tool) => tool.name), ["codedroid_devices", "codedroid_status"],
           "adb must be absent by default");
         const result = await client.callTool({ name: "codedroid_status", arguments: {} });
         assert.equal(JSON.parse(result.content[0].text).connected, false);

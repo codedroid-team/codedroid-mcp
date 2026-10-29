@@ -1,11 +1,32 @@
 {
   "name": "codedroid",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Drive your Android phone through CodeDroid, with MCP tools and device testing skills.",
   "author": {
-    "name": "CodeDroid"
+    "name": "CodeDroid",
+    "url": "https://get.codedroid.com"
   },
   "homepage": "https://get.codedroid.com",
+  "repository": "https://github.com/codedroid-team/codedroid-mcp",
+  "license": "MIT",
+  "keywords": ["android", "adb", "mobile", "testing", "device"],
   "skills": "./skills/",
-  "mcpServers": "./.mcp.json"
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "CodeDroid",
+    "shortDescription": "Read, drive, and test on your real Android phone",
+    "longDescription": "Read the screen, tap and type, hand CodeDroid a whole task, run adb, and verify Android app changes on your real phone. Requires the CodeDroid app on the phone.",
+    "developerName": "CodeDroid",
+    "category": "Developer tools",
+    "capabilities": ["Interactive", "Read", "Write"],
+    "websiteURL": "https://get.codedroid.com",
+    "termsOfServiceURL": "https://www.codedroid.com/terms",
+    "defaultPrompt": [
+      "Read the screen on my phone and describe what is open.",
+      "Open Android Settings and check the Android version.",
+      "Install my app on the phone, open it, and check for crashes."
+    ],
+    "composerIcon": "./assets/icon.png",
+    "logo": "./assets/icon.png"
+  }
 }

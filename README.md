@@ -62,6 +62,32 @@ Then try:
 *Installing APKs and using `adb` also requires turning the `adb` tool on, Android platform-tools,
 and a USB or wireless debugging connection. See [adb setup](docs/reference.md#adb-setup).
 
+## What it includes
+
+- **MCP tools** to read the screen, take screenshots, tap, type, swipe, open apps, and hand
+  CodeDroid's agent a multi-step task, on one phone or [several](docs/reference.md#several-phones).
+  See the [tool list](docs/reference.md#tools).
+- **Skills**: `codedroid-phone` teaches the agent to drive the phone one checked step at a time,
+  and `test-on-device` walks it through building, installing, and verifying an Android app change.
+- **An optional `adb` tool**, off by default, that runs adb commands on your computer.
+
+## Privacy and security
+
+The plugin runs `npx -y @codedroid/mcp@<version>`, which downloads this exact release from npm
+and starts a local MCP server. Everything it sends goes over TLS to the CodeDroid server, `orchestrator.codedroid.com`
+unless the pairing command shown on your phone names another:
+
+- **Pairing** sends the one-time code, your computer's name, and its OS (for example `darwin`),
+  so the phone can show which computer is connected.
+- **Tool calls** are relayed between your agent and the phone: screen contents, screenshots, text
+  you ask it to type, clipboard reads and writes, and task progress. The phone asks you to
+  **Allow** a computer the first time, shows when one is in use, and can stop or revoke it.
+
+The local server listens on `127.0.0.1` only and requires a per-user token. Pairing credentials,
+the token, and logs stay in `~/.codedroid` on your computer. The `adb` tool runs only on your
+computer and is off unless you turn it on. The plugin collects no analytics. See
+[Architecture](docs/reference.md#architecture) for details.
+
 ## Need help?
 
 Check your connection:

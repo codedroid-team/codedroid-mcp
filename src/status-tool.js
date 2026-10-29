@@ -1,49 +1,93 @@
 /**
- * codedroid_status — whether CodeDroid on the phone is connected, and if not, what to do about it.
+ * The daemon's own tools about the phones, served when no phone can answer:
  *
- * Served by the daemon itself, so it answers when the phone cannot: the one tool an agent can
- * call to learn that this computer is not paired, the phone is offline, or the user has not
- * tapped Allow yet. Calling it also tries to connect again.
+ *   codedroid_devices — the paired phones and how each link stands now; instant, never connects.
+ *   codedroid_status  — connects to each paired phone, then says which are connected and, if not,
+ *                       what to do about it (not paired, offline, waiting on Allow).
  */
-import { pairedDevice, readHost } from "./host.js";
+import { PAIRING_STEPS, describeHost, pairedDevice } from "./host.js";
+import { DEVICE_SCHEMA } from "./phones.js";
 import { VERSION } from "./version.js";
 
 const DESCRIPTION =
-  "Whether CodeDroid on the Android phone is connected to this computer (the phone's device id and model, " +
-  "the CodeDroid server), and if not, why and how to fix it. Also retries the connection. Once connected " +
-  "it returns the phone's instructions for driving it.";
+  "Which Android phones are paired with this computer (each one's device id, model and CodeDroid server), " +
+  "whether CodeDroid on each is connected, and if not, why and how to fix it. Also retries the connection. " +
+  "Once connected it returns the phones' instructions for driving them. Pass device for one phone alone.";
 
-/**
- * @param {import("./daemon.js").PhoneManager} phoneManager
- * @param {{host?: () => object | null}} [deps] this computer's pairing, for the phone it points at
- */
-export function createStatusTool(phoneManager, { host = readHost } = {}) {
+const statusResult = (status) => ({ content: [{ type: "text", text: JSON.stringify(status, null, 2) }], isError: false });
+
+const DEVICES_DESCRIPTION =
+  "List the Android phones paired with this computer: each one's id and model (what phone tools take as " +
+  "device), its CodeDroid server, and its link now: connected, connecting or disconnected, with the last " +
+  "problem. Instant; it does not connect. codedroid_status connects and says how to fix a problem.";
+
+/** @param {import("./phones.js").Phones} phones */
+export function createDevicesTool(phones) {
+  return {
+    definition: {
+      name: "codedroid_devices",
+      title: "Paired phones",
+      description: DEVICES_DESCRIPTION,
+      inputSchema: { type: "object", properties: {} },
+      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    async handler() {
+      const devices = phones.select().map(({ pairing, manager }) => ({
+        ...pairedDevice(pairing),
+        state: manager.state,
+        ...(manager.state !== "connected" && manager.lastError ? { problem: manager.lastError } : {}),
+      }));
+      return statusResult({
+        devices,
+        ...(devices.length ? {} : { problem: `This computer is not paired with a phone. ${PAIRING_STEPS}` }),
+      });
+    },
+  };
+}
+
+/** @param {import("./phones.js").Phones} phones */
+export function createStatusTool(phones) {
   return {
     definition: {
       name: "codedroid_status",
       title: "CodeDroid connection",
       description: DESCRIPTION,
-      inputSchema: { type: "object", properties: {} },
+      inputSchema: { type: "object", properties: { device: DEVICE_SCHEMA } },
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
     },
-    async handler() {
-      let error = null;
-      let client = null;
+    async handler({ device } = {}) {
+      let entries;
       try {
-        client = await phoneManager.getClient();
+        entries = phones.select(device);
       } catch (e) {
-        error = e.message;
+        return statusResult({ connected: false, bridge: VERSION, devices: [], problem: e.message });
       }
-      const status = {
-        connected: !error,
+      const devices = await Promise.all(
+        entries.map(async ({ pairing, manager }) => {
+          try {
+            await manager.getClient();
+            return { ...pairedDevice(pairing), connected: true };
+          } catch (e) {
+            return { ...pairedDevice(pairing), connected: false, problem: e.message };
+          }
+        }),
+      );
+      const problem = entries.length
+        ? devices
+            .map((d, i) => d.problem && (devices.length > 1 ? `${describeHost(entries[i].pairing)}: ${d.problem}` : d.problem))
+            .filter(Boolean)
+            .join(" ")
+        : `This computer is not paired with a phone. ${PAIRING_STEPS}`;
+      // A session that opened before a phone connected never got these at its handshake.
+      const instructions = phones.getInstructions();
+      return statusResult({
+        connected: devices.length > 0 && devices.every((d) => d.connected),
         bridge: VERSION,
-        // Not connected: the phone this computer is paired with now, which a new pairing may have changed.
-        device: client ? phoneManager.device : pairedDevice(host()),
-        ...(error ? { problem: error } : {}),
-        // A session that opened before the phone connected never got these at its handshake.
-        ...(client?.getInstructions() ? { instructions: client.getInstructions() } : {}),
-      };
-      return { content: [{ type: "text", text: JSON.stringify(status, null, 2) }], isError: false };
+        ...(devices.length === 1 ? { device: pairedDevice(entries[0].pairing) } : {}),
+        devices,
+        ...(problem ? { problem } : {}),
+        ...(instructions ? { instructions } : {}),
+      });
     },
   };
 }
