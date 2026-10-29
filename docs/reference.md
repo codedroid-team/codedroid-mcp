@@ -245,6 +245,7 @@ the app's MCP server through a test relay.
 3. Run `npm publish --access public` **before** merging to `main`: the plugins launch
    `@codedroid/mcp@<version>`, so installs fail until that version is on npm.
 4. Merge to `main`. Anthropic's directory picks up the new commit and scans it.
-5. Run `mcp-publisher login github` (once), then `mcp-publisher publish` to update the
-   [MCP Registry](https://registry.modelcontextprotocol.io).
+5. Run the **Publish to MCP Registry** workflow (`gh workflow run publish-mcp-registry.yml`) to
+   update the [MCP Registry](https://registry.modelcontextprotocol.io). Publishing from a laptop
+   with `mcp-publisher login github` works only for an Owner of the `codedroid-team` org.
 

@@ -1,0 +1,42 @@
+# Publishes server.json to the official MCP Registry under io.github.codedroid-team.
+# GitHub OIDC proves the run comes from this org's repository, so any maintainer who can run
+# workflows can publish; the interactive `mcp-publisher login github` needs an org Owner.
+# Run it after the npm release that server.json names is live.
+name: Publish to MCP Registry
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  MCP_PUBLISHER_VERSION: v1.8.6
+  # registry_1.8.6_checksums.txt, mcp-publisher_linux_amd64.tar.gz
+  MCP_PUBLISHER_SHA256: 1fbe93fc0783c2394d8012c8d6e50a59e98cb2cc2d216264cc69f405d0e21340
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check that npm has the version server.json names
+        run: |
+          version=$(jq -r '.packages[0].version' server.json)
+          name=$(jq -r '.name' server.json)
+          published=$(npm view "@codedroid/mcp@${version}" mcpName)
+          test "$published" = "$name" || { echo "@codedroid/mcp@${version} is not on npm with mcpName ${name}"; exit 1; }
+
+      - name: Install mcp-publisher
+        run: |
+          curl -sSfL -o mcp-publisher.tar.gz \
+            "https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}/mcp-publisher_linux_amd64.tar.gz"
+          echo "${MCP_PUBLISHER_SHA256}  mcp-publisher.tar.gz" | sha256sum -c -
+          tar xzf mcp-publisher.tar.gz mcp-publisher
+
+      - name: Publish
+        run: |
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish
