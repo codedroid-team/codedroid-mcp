@@ -234,3 +234,17 @@ contract tests from `CodeDroid-app/`:
 These tests export `test/fixtures/phone-tools.json` and run `test/phone-contract.mjs` against
 the app's MCP server through a test relay.
 
+### Release
+
+`npm test` fails until every manifest names the same version.
+
+1. Set the new version in `package.json` (`npm version <x.y.z> --no-git-tag-version`),
+   `src/version.js`, `.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`,
+   `gemini-extension.json`, `.mcp.json`, and both versions in `server.json`.
+2. Run `npm test` and `claude plugin validate .claude-plugin/plugin.json`.
+3. Run `npm publish --access public` **before** merging to `main`: the plugins launch
+   `@codedroid/mcp@<version>`, so installs fail until that version is on npm.
+4. Merge to `main`. Anthropic's directory picks up the new commit and scans it.
+5. Run `mcp-publisher login github` (once), then `mcp-publisher publish` to update the
+   [MCP Registry](https://registry.modelcontextprotocol.io).
+
