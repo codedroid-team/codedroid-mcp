@@ -2,7 +2,7 @@
   "mcpServers": {
     "codedroid": {
       "command": "npx",
-      "args": ["-y", "@codedroid/mcp@0.1.2"]
+      "args": ["-y", "@codedroid/mcp@0.1.3"]
     }
   }
 }
