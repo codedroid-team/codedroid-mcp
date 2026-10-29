@@ -15,6 +15,7 @@ const mcp = read(".mcp.json");
 const gemini = read("gemini-extension.json");
 const codex = read(".codex-plugin/plugin.json");
 const marketplace = read(".agents/plugins/marketplace.json");
+const server = read("server.json");
 
 assert.equal(pkg.version, VERSION, "src/version.js and package.json");
 assert.equal(plugin.version, VERSION, "the plugin and package.json");
@@ -38,6 +39,16 @@ assert.equal(codex.mcpServers, "./.mcp.json");
 assert.equal(marketplace.plugins[0].name, codex.name);
 assert.equal(marketplace.plugins[0].source.path, "./", "Codex installs the repository root");
 for (const file of [".codex-plugin", ".agents/plugins/marketplace.json"]) assert.ok(pkg.files.includes(file));
+
+// The MCP Registry checks that the npm release it points at declares the same mcpName.
+assert.equal(server.name, pkg.mcpName, "server.json and package.json mcpName");
+assert.equal(server.version, VERSION, "server.json and package.json");
+assert.deepEqual(
+  server.packages.map((p) => [p.identifier, p.version]),
+  [[pkg.name, VERSION]],
+  "server.json points at this npm release",
+);
+assert.ok(server.description.length <= 100, "the MCP Registry caps descriptions at 100 characters");
 
 for (const icon of [plugin.icon, codex.interface.composerIcon, codex.interface.logo]) {
   assert.ok(fs.existsSync(new URL(`../${icon}`, import.meta.url)), icon);
