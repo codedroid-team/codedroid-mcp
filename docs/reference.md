@@ -244,7 +244,9 @@ the app's MCP server through a test relay.
 2. Run `npm test` and `claude plugin validate .claude-plugin/plugin.json`.
 3. Run `npm publish --access public` **before** merging to `main`: the plugins launch
    `@codedroid/mcp@<version>`, so installs fail until that version is on npm.
-4. Merge to `main`. Anthropic's directory picks up the new commit and scans it.
+4. Merge to `main`, then create the GitHub release:
+   `gh release create v<x.y.z> --target main --title "CodeDroid MCP <x.y.z>" --latest`.
+   Gemini CLI installs the extension from the latest GitHub release, not from `main`.
 5. Run the **Publish to MCP Registry** workflow (`gh workflow run publish-mcp-registry.yml`) to
    update the [MCP Registry](https://registry.modelcontextprotocol.io). Publishing from a laptop
    with `mcp-publisher login github` works only for an Owner of the `codedroid-team` org.
