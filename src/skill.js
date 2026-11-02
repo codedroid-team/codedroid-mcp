@@ -1,6 +1,7 @@
 /**
  * The agent skills that ship with this package: `codedroid-phone` (driving the phone through
- * CodeDroid) and `test-on-device` (the developer loop: build, install, drive, check, report).
+ * CodeDroid), `test-on-device` (the developer loop: build, install, drive, check, report), and
+ * `create-cujs` / `create-tests` (an app's journeys and test cases, as files in its repo).
  *
  * - The Claude Code plugin (plugin/claude) carries them already; `skill install` is for using the
  *   MCP server without the plugin: Claude Code (~/.claude/skills), Codex (--codex: ~/.codex/skills),
@@ -13,7 +14,7 @@ import os from "os";
 import path from "path";
 import { fileURLToPath } from "url";
 
-export const SKILLS = ["codedroid-phone", "test-on-device"];
+export const SKILLS = ["codedroid-phone", "test-on-device", "create-cujs", "create-tests"];
 
 export const SKILLS_SOURCE = fileURLToPath(new URL("../skills/", import.meta.url));
 

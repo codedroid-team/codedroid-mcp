@@ -1,6 +1,6 @@
 ---
 name: test-on-device
-description: Verify an Android app change on the user's real Android phone - build, install, open, drive the changed screens with CodeDroid, check logcat for crashes, run instrumentation tests, and report what was seen. Use after changing Android app code, when asked to test, reproduce or verify something on a device, or before saying an Android change works.
+description: Verify an Android app change on the user's real Android phone - build, install, open, drive the changed screens with CodeDroid, check logcat for crashes, run instrumentation tests, run the app's CUJ test cases from cujs/, and report what was seen. Use after changing Android app code, when asked to test, reproduce or verify something on a device, to run an app's CUJs or test cases, or before saying an Android change works.
 ---
 
 # Testing an Android change on the phone
@@ -70,7 +70,30 @@ with `timeout_s` set for the run (install the test APK first:
 `stack=` comes before its code. Tests that use UiAutomator suspend CodeDroid's accessibility
 while they run: call `codedroid_status` before using its tools again.
 
-## 6. Report
+## 6. CUJ test cases
+
+The app's journeys and their tests are markdown files in its repo, `cujs/` unless the user says
+otherwise (the create-cujs and create-tests skills write them). To run them, all or the ones the
+user names:
+
+1. Read the CUJ file: its Starts line is where every test begins, and each `###` under
+   `## Tests` is one test, with its Steps and Expected lines.
+2. Put the app in the Starts state before each test: `open_app`, then back to its first screen
+   or sign in as Starts says (Back out of the app and `open_app` again is fine too). `open_app`
+   resumes the app where it was, and some screens keep Back for themselves: if Back does not get
+   there, `adb` `shell am force-stop <package>` (the app under test, never com.codedroid.app)
+   and `open_app` again. That keeps its data; don't clear the data to get there without asking.
+3. Follow the Steps one at a time with `get_screen`, `tap`, `type_text` and `swipe`, as section 3
+   does. A step you cannot do as written (the button is not there, the screen differs) fails the
+   test: stop it there and say which step.
+4. Check each Expected line against `get_screen`, or `take_screenshot` for anything visual. Each
+   line passes or fails on what you saw, not on what the steps should have done.
+5. Read the crash buffer after the run, as in section 4.
+
+Report each test as passed or failed, with the failing step or Expected line and what the screen
+showed. Leave the files as they are unless the user asks you to update a test that is out of date.
+
+## 7. Report
 
 Say what you checked and what you saw, step by step, and whether the change works. Include a
 screenshot when the change is visual, and the crash's stack trace (from `logcat -d -b crash`)
