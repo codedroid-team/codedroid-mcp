@@ -10,6 +10,7 @@
  * Modes:
  *   codedroid-mcp                  stdio shim → daemon (auto-starts it)  [default]
  *   codedroid-mcp daemon           run the daemon in the foreground
+ *   codedroid-mcp setup [code]     add CodeDroid to this computer's coding clients, then pair
  *   codedroid-mcp pair <code>      pair with the phone showing <code> too, then connect to it
  *   codedroid-mcp connect [phone]  connect to the phones now (and get it allowed there), then exit
  *   codedroid-mcp unpair <phone>   forget one paired phone
@@ -75,6 +76,9 @@ screen, tap and type, hand CodeDroid a task, and — with --adb — run adb on t
 
 Usage:
   codedroid-mcp                     MCP stdio server (auto-starts the shared daemon)
+  codedroid-mcp setup [code]        Add CodeDroid to the coding clients installed here, then
+                                    pair with the phone showing <code> if given
+                                    (--client=<ids> to choose, --yes to skip the question)
   codedroid-mcp pair <code>         Pair with the phone showing <code>, then connect
                                     (--server=<url> when the phone's command has it).
                                     Pair each phone: earlier pairings stay.
@@ -193,6 +197,14 @@ function notStopped({ status, port, pid }) {
     : `${daemon} did not exit within 5 s. End that process to stop it.`;
 }
 
+async function confirm(question) {
+  const { createInterface } = await import("readline/promises");
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  const answer = await rl.question(question);
+  rl.close();
+  return !/^n/i.test(answer.trim());
+}
+
 function printResult(result) {
   for (const item of result.content ?? []) {
     if (item.type === "text") process.stdout.write(item.text + "\n");
@@ -205,7 +217,7 @@ async function main() {
   if (args.version) return void process.stdout.write(`codedroid-mcp ${VERSION}\n`);
   if (args.help || args._[0] === "help") return void process.stdout.write(HELP);
 
-  const command = args._[0];
+  let command = args._[0];
   const port = resolvePort(args);
   const enableAdbTool = resolveEnableAdb(args);
 
@@ -216,6 +228,36 @@ async function main() {
     const written = installSkills({ dir: args.dir ?? defaultSkillsDir({ codex: !!args.codex }) });
     process.stdout.write(`Installed:\n${written.map((p) => `  ${p}`).join("\n")}\nNew sessions pick them up.\n`);
     return;
+  }
+
+  if (command === "setup") {
+    const { clients, MANUAL_SETUP, pickClients } = await import("./setup.js");
+    let picked;
+    try {
+      picked = pickClients(clients(), args.client);
+    } catch (e) {
+      fatal(e.message);
+    }
+    if (!picked.length) {
+      process.stdout.write(`Found no supported coding client. To add CodeDroid by hand: ${MANUAL_SETUP}\n`);
+    } else if (args.yes || !process.stdin.isTTY || (await confirm(`Add CodeDroid to ${picked.map((c) => c.name).join(", ")}? [Y/n] `))) {
+      const changed = [];
+      for (const client of picked) {
+        process.stdout.write(`${client.name}: `);
+        const { status, detail } = client.setup();
+        process.stdout.write(`${detail}\n`);
+        if (status === "added" || status === "updated") changed.push(client.name);
+        if (status === "failed") process.exitCode = 1;
+      }
+      if (changed.length) process.stdout.write(`Restart ${changed.join(", ")} to load CodeDroid.\n`);
+    }
+    if (args._.length === 1) {
+      const { describeHost, PAIRING_STEPS, readHosts } = await import("./host.js");
+      const hosts = readHosts();
+      process.stdout.write(hosts.length ? `Paired with ${hosts.map(describeHost).join(", ")}.\n` : `Next, pair your phone. ${PAIRING_STEPS}\n`);
+      return;
+    }
+    command = "pair";
   }
 
   if (command === "daemon") {
@@ -306,7 +348,7 @@ async function main() {
     printResult(result);
     await client.close();
     const status = JSON.parse(result.content?.[0]?.text ?? "{}");
-    process.exit(status.connected ? 0 : 1);
+    process.exit(status.connected ? (process.exitCode ?? 0) : 1);
   }
 
   if (command === "call") {

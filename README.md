@@ -11,6 +11,16 @@ its accessibility service enabled. Both devices need internet access.
 
 ### 1. Install for your coding client
 
+**Every client at once** — run in your terminal:
+
+```bash
+npx -y @codedroid/mcp setup
+```
+
+It finds Claude Code, Codex, Gemini CLI, Cursor, VS Code, Claude Desktop, and Windsurf, and adds
+CodeDroid to each one after you confirm. Run it again after an update; it skips clients that are
+already set up. Or install for one client:
+
 **Claude Code** — run inside Claude Code:
 
 ```text

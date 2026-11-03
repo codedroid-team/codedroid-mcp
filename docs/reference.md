@@ -60,6 +60,33 @@ until the daemon next stops, run `npx -y @codedroid/mcp stop`, then
 Use these options when you want the MCP server without a plugin or extension. Configure one
 installation method per client to avoid registering the tools twice.
 
+### Setup command
+
+```bash
+npx -y @codedroid/mcp setup
+npx -y @codedroid/mcp setup --client=cursor,vscode --yes
+npx -y @codedroid/mcp setup ABCD-EFGH
+```
+
+`setup` adds CodeDroid to every supported client it finds, after one confirmation:
+
+| Client | `--client` | What `setup` does |
+| --- | --- | --- |
+| Claude Code | `claude-code` | Installs the plugin with `claude plugin install` |
+| Codex | `codex` | Installs the plugin with `codex plugin add` |
+| Gemini CLI | `gemini` | Installs the extension with `gemini extensions install` |
+| Cursor | `cursor` | Adds the server to `~/.cursor/mcp.json` |
+| VS Code | `vscode` | Adds the server to the user `mcp.json` |
+| Claude Desktop | `claude-desktop` | Adds the server to `claude_desktop_config.json` |
+| Windsurf | `windsurf` | Adds the server to `~/.codeium/windsurf/mcp_config.json` |
+
+Config files get `npx -y @codedroid/mcp@<version>`, pinned like the plugins. Running a newer
+`setup` updates that pin and keeps the entry's other settings, such as `env`. `setup` leaves a
+client alone when it already has a `codedroid` server from somewhere else, and it never rewrites a
+config file it can't parse, such as JSON with comments. `--client` sets up only the listed clients,
+even ones it didn't detect. `--yes` skips the confirmation. With a pairing code, `setup` also pairs,
+like `pair`.
+
 ### Standalone Claude Code server
 
 ```bash
@@ -138,6 +165,7 @@ an HTTP client.
 ## CLI reference
 
 ```bash
+npx -y @codedroid/mcp setup
 npx -y @codedroid/mcp pair ABCD-EFGH
 npx -y @codedroid/mcp connect
 npx -y @codedroid/mcp status
@@ -147,7 +175,7 @@ npx -y @codedroid/mcp unpair "Pixel 9"
 npx -y @codedroid/mcp stop
 ```
 
-`connect` reconnects a paired computer. `stop` shuts down the local daemon.
+`setup` adds CodeDroid to your coding clients ([details](#setup-command)). `connect` reconnects a paired computer. `stop` shuts down the local daemon.
 
 ### Several phones
 
