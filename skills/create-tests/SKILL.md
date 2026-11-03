@@ -22,8 +22,9 @@ checks each expected line on the screen. Nothing is saved on the phone.
 ## 2. Pick the tests
 
 The happy path first, then the edges that matter for this journey: empty or long input, an empty
-or long list, offline, signed out, back or rotation in the middle, a PRD rule (a limit, an error
-message). One goal per test.
+or long list, signed out, back or rotation in the middle, a PRD rule (a limit, an error message).
+One goal per test. Leave out offline: CodeDroid drives the phone over the internet, so it cannot
+run a test with the phone offline.
 
 ## 3. Write them
 
@@ -48,7 +49,7 @@ Expected:
 - Expected: what must be true after, one outcome per line, each something visible on the screen or
   in the app. Not how it got there. It must hold on any phone: no exact coordinates, distances,
   times or other values that change with the screen or the clock; say what must be there instead
-  ("Tap: shows a coordinate pair").
+  ("The episode shows how long it runs").
 
 A test that would send, buy, post or delete something for real: keep it reversible (a draft, a
 cart left unpaid) and say so in its steps, or ask the user before writing it.

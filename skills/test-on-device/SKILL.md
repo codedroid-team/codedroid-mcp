@@ -78,17 +78,21 @@ user names:
 
 1. Read the CUJ file: its Starts line is where every test begins, and each `###` under
    `## Tests` is one test, with its Steps and Expected lines.
-2. Put the app in the Starts state before each test: `open_app`, then back to its first screen
+2. `adb` `logcat -c` before the first test, so the crashes you read later are from this run.
+3. Put the app in the Starts state before each test: `open_app`, then back to its first screen
    or sign in as Starts says (Back out of the app and `open_app` again is fine too). `open_app`
    resumes the app where it was, and some screens keep Back for themselves: if Back does not get
    there, `adb` `shell am force-stop <package>` (the app under test, never com.codedroid.app)
    and `open_app` again. That keeps its data; don't clear the data to get there without asking.
-3. Follow the Steps one at a time with `get_screen`, `tap`, `type_text` and `swipe`, as section 3
-   does. A step you cannot do as written (the button is not there, the screen differs) fails the
-   test: stop it there and say which step.
-4. Check each Expected line against `get_screen`, or `take_screenshot` for anything visual. Each
+   If Starts needs an account you have not been given, ask the user.
+4. Follow the Steps one at a time with `get_screen`, `tap`, `type_text`, `swipe`, `press_key` and
+   `wait_for`, as section 3 does. A step you cannot do as written (the button is not there, the
+   screen differs) fails the test: stop it there and say which step. Before a step that would
+   send, buy, post or delete for real, ask the user, every time, even though the test says to; if
+   they say no, report the test as not run.
+5. Check each Expected line against `get_screen`, or `take_screenshot` for anything visual. Each
    line passes or fails on what you saw, not on what the steps should have done.
-5. Read the crash buffer after the run, as in section 4.
+6. Read the crash buffer after the run, as in section 4.
 
 Report each test as passed or failed, with the failing step or Expected line and what the screen
 showed. Leave the files as they are unless the user asks you to update a test that is out of date.
