@@ -70,7 +70,7 @@ Because it runs commands on your computer:
   or above it has no project directory, and must use absolute paths.
 - `push`, `pull`, `bugreport`, `backup`, and `restore` only use local files in the project or temp
   directory. `install` takes any path.
-- `-H`, `-P`, `-L`, `keygen`, `ppp`, `server`, and `nodaemon` are refused.
+- `-H`, `-P`, `-L`, `keygen`, `ppp`, `server`, `nodaemon`, and `fork-server` are refused.
 
 To turn it off for a client, add `CODEDROID_MCP_ADB=0` to the CodeDroid MCP server's environment in
 the client's MCP settings (or `--no-adb` to its arguments). To turn it off for every client, run

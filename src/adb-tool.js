@@ -21,8 +21,9 @@ const DEFAULT_TIMEOUT_S = 60;
 const TRANSFER_TIMEOUT_S = 300;
 const MAX_TIMEOUT_S = 900;
 
-// adb's global options that take a value: `-s SERIAL`, `-t ID`, `-H host`, `-P port`, `-L socket`.
-const VALUE_OPTIONS = new Set(["-s", "-t", "-H", "-P", "-L"]);
+// adb's global options that take a value: `-s SERIAL`, `-t ID`, `-H host`, `-P port`, `-L socket`,
+// `--one-device SERIAL`, `--reply-fd FD`.
+const VALUE_OPTIONS = new Set(["-s", "-t", "-H", "-P", "-L", "--one-device", "--reply-fd"]);
 // Global options that pick the device, after which CODEDROID_SERIAL must not be added.
 const DEVICE_OPTIONS = new Set(["-s", "-t", "-d", "-e"]);
 // Subcommands whose rest is a command line for the phone's shell.
@@ -30,7 +31,7 @@ const SHELLS = new Set(["shell", "exec-out"]);
 // Subcommands that move whole files, so they get the longer default timeout.
 const TRANSFERS = new Set(["install", "install-multiple", "install-multi-package", "push", "pull", "sideload", "bugreport", "backup", "restore"]);
 // Subcommands that act on this computer rather than the phone.
-const HOST_ONLY = new Set(["keygen", "ppp", "server", "nodaemon"]);
+const HOST_ONLY = new Set(["keygen", "ppp", "server", "nodaemon", "fork-server"]);
 
 /**
  * [command] as adb's argv. Up to the subcommand, and for host-side commands (install, push, pull),
@@ -110,12 +111,16 @@ export function projectDir(cwd, home = os.homedir()) {
 
 /** The files on this computer that [subcommand] copies to the phone or overwrites. */
 function copiedHostFiles(subcommand, rest) {
-  const words = rest.filter((word, i) => !word.startsWith("-") && !["-z", "-f"].includes(rest[i - 1]));
+  // A leading dash does not stop `-/../x` being a path: adb takes it as one after `--`, and bugreport
+  // and restore always do. Without a separator it stays in the directory, so is safe to skip as a flag.
+  const isFlag = (word) => word.startsWith("-") && !/[/\\]/.test(word);
+  const words = rest.filter((word, i) => !isFlag(word) && !["-z", "-f"].includes(rest[i - 1]));
   if (subcommand === "push") return words.slice(0, -1);
   if (subcommand === "pull") return [words.length > 1 ? words.at(-1) : "."];
   if (subcommand === "bugreport") return [words[0] ?? "."];
   if (subcommand === "restore") return words;
-  if (subcommand === "backup") return [rest.includes("-f") ? rest[rest.indexOf("-f") + 1] : "backup.adb"];
+  // adb uses the last -f; one with no file is adb's own error.
+  if (subcommand === "backup") return [rest.includes("-f") ? rest[rest.lastIndexOf("-f") + 1] ?? "." : "backup.adb"];
   return [];
 }
 
