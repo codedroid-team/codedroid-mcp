@@ -10,6 +10,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createInstallTool } from "../src/install-tool.js";
+import { Phones } from "../src/phones.js";
 
 const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "codedroid-install-")));
 const apkBytes = Buffer.concat([Buffer.from("PK"), randomBytes(2_500_000)]);
@@ -87,9 +88,12 @@ try {
   // ── A bad path costs no upload ───────────────────────────────────────
   fs.writeFileSync(path.join(dir, "notes.txt"), "not a zip");
   fs.writeFileSync(path.join(dir, "empty.apk"), "");
+  for (const zip of ["app.aab", "secrets.zip"]) fs.writeFileSync(path.join(dir, zip), "PK");
   for (const [args, pattern] of [
     [{ path: "missing.apk" }, /cannot read.*ENOENT/],
     [{ path: "notes.txt" }, /not an APK/],
+    [{ path: "app.aab" }, /not an APK/],
+    [{ path: "secrets.zip" }, /not an APK/],
     [{ path: "empty.apk" }, /not an APK/],
     [{ path: "out" }, /not an APK/],
     [{}, /must be the path/],
@@ -100,6 +104,20 @@ try {
     assert.equal(result.isError, true, JSON.stringify(args));
     assert.match(result.content[0].text, pattern);
     assert.equal(phones.calls.length, 0);
+  }
+
+  // ── A phone unreachable from the start says so, rather than "still working" ──
+  {
+    const phones = new Phones({ pairings: () => [], createManager: () => assert.fail("nothing is paired") });
+    const result = await tool(phones, { waitMs: 500, retryDelayMs: 1000 }).handler({ path: apk });
+    assert.equal(result.isError, true);
+    assert.match(result.content[0].text, /not paired/);
+  }
+  {
+    const phones = fakePhones({ install_begin: () => { throw new Error("CodeDroid on the phone is not connected: denied"); } });
+    const result = await tool(phones).handler({ path: apk });
+    assert.equal(result.isError, true);
+    assert.deepEqual(phones.calls, ["install_begin"]);
   }
 
   // ── The link drops mid-upload: it carries on from what the phone holds ─
@@ -138,8 +156,10 @@ try {
       install_commit: () => reply({ installed: false, status: "installing" }),
       install_status: () => (++asked < 3 ? reply({ installed: false, status: "installing" }) : null),
     });
-    assert.deepEqual(read(await tool(phones).handler({ path: apk })), INSTALLED);
+    const started = Date.now();
+    assert.deepEqual(read(await tool(phones, { retryDelayMs: 20 }).handler({ path: apk })), INSTALLED);
     assert.equal(asked, 3);
+    assert.ok(Date.now() - started >= 50, "it waits between asking");
   }
 
   // ── The phone's refusal comes back as it is, and stops the install ────

@@ -66,7 +66,7 @@ function checkedApk(file, cwd) {
   } catch (e) {
     throw new Error(`install_apk: cannot read ${resolved}: ${e.code ?? e.message}. Build it first.`);
   }
-  if (!stat.isFile() || stat.size === 0) throw new Error(`install_apk: ${resolved} is not an APK file.`);
+  if (!stat.isFile() || stat.size === 0 || !/\.apk$/i.test(resolved)) throw new Error(`install_apk: ${resolved} is not an APK file.`);
   return { file: resolved, size: stat.size };
 }
 
@@ -92,7 +92,13 @@ class Refused extends Error {}
  * @param {Map<string, object>} options.jobs installs under way on this daemon, shared by its sessions
  */
 export function createInstallTool({ phones, cwd = null, jobs, retryDelayMs = RETRY_DELAY_MS, waitMs = WAIT_MS }) {
-  /** One phone call, sent again while the link is down: every one of them is safe to repeat. */
+  const pause = () => new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+
+  /**
+   * One phone call, sent again while the link is down: every one of them is safe to repeat. Not the
+   * first, install_begin: a phone unreachable from the start (unpaired, denied) will not come back
+   * by waiting, and getClient has already tried to reconnect.
+   */
   const call = async (device, name, args) => {
     const deadline = Date.now() + RECONNECT_MS;
     for (;;) {
@@ -104,8 +110,8 @@ export function createInstallTool({ phones, cwd = null, jobs, retryDelayMs = RET
           { timeout: CALL_TIMEOUT_MS },
         );
       } catch (e) {
-        if (!LOST_LINK.test(e?.message ?? "") || Date.now() >= deadline) throw e;
-        await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+        if (name === "install_begin" || !LOST_LINK.test(e?.message ?? "") || Date.now() >= deadline) throw e;
+        await pause();
         continue;
       }
       const body = result.content?.[0]?.text ?? "";
@@ -124,8 +130,9 @@ export function createInstallTool({ phones, cwd = null, jobs, retryDelayMs = RET
   };
 
   const run = async (job, device) => {
-    const fd = await fs.promises.open(job.file, "r");
+    let fd;
     try {
+      fd = await fs.promises.open(job.file, "r");
       const { sha256, size } = job;
       let { offset } = await call(device, "install_begin", { sha256, size });
       job.sent = offset;
@@ -144,13 +151,14 @@ export function createInstallTool({ phones, cwd = null, jobs, retryDelayMs = RET
         if (Date.now() >= deadline) {
           throw new Refused("Android has not finished the install after 5 minutes. Read the screen with get_screen, then call install_apk again.");
         }
+        await pause();
         state = await call(device, "install_status", { sha256 });
       }
       return text(state);
     } catch (e) {
       return failure(e?.message ?? String(e));
     } finally {
-      await fd.close();
+      await fd?.close();
     }
   };
 
