@@ -35,7 +35,7 @@ Pass the path to one .apk: relative to the working directory, or absolute. An Ap
 - If it says it is still working, call it again with the same path to keep waiting.
 - Android's refusals come back as they are, with what to do. Removing an installed app deletes its data: ask the user first.
 - It confirms Android's own install prompt. The first time, CodeDroid has to be allowed to install apps: the error says how.
-- Google Play Protect can ask about a new build. CodeDroid does not answer it: the error says what to ask the user.
+- It takes Play Protect's Install without scanning when it offers a scan. A warning about a harmful app is left for the user: the error says so.
 `.trim();
 
 function text(value) {

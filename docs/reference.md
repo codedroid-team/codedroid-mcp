@@ -48,8 +48,9 @@ with Android's package installer. It resumes if the connection drops.
 - The first time, turn on **Allow from this source** for CodeDroid under **Install unknown apps**.
   The phone opens that page when it is needed.
 - The phone has to be unlocked. CodeDroid confirms Android's install prompt.
-- Google Play Protect can ask about each new build it has not seen. CodeDroid never answers it,
-  because **Scan app** sends the build to Google. Answer it, then call `install_apk` again.
+- When Google Play Protect offers to scan a build it has not seen, CodeDroid chooses **Install
+  without scanning**, so the build is not sent to Google. Any other Play Protect message, such as a
+  harmful app warning, is left for you. Answer it, then call `install_apk` again.
 - It takes one `.apk`, not an App Bundle or split APKs.
 - It needs a version of the CodeDroid app that has this tool.
 
