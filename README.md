@@ -79,6 +79,8 @@ and a USB or wireless debugging connection. See [adb setup](docs/reference.md#ad
   See the [tool list](docs/reference.md#tools).
 - **Skills**: `codedroid-phone` teaches the agent to drive the phone one checked step at a time,
   and `test-on-device` walks it through building, installing, and verifying an Android app change.
+  `create-cujs` writes an app's critical user journeys as markdown files in its repo (`cujs/`),
+  `create-tests` adds test cases to them, and `test-on-device` runs them on the phone.
 - **An optional `adb` tool**, off by default, that runs adb commands on your computer.
 
 ## Privacy and security

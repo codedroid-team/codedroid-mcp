@@ -11,7 +11,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createAdbTool } from "../src/adb-tool.js";
-import { installSkills, SKILLS, skillSource } from "../src/skill.js";
+import { installSkills, SKILLS, SKILLS_SOURCE, skillSource } from "../src/skill.js";
 import { createDevicesTool, createStatusTool } from "../src/status-tool.js";
 
 const phone = JSON.parse(fs.readFileSync(new URL("./fixtures/phone-tools.json", import.meta.url), "utf8")).tools;
@@ -34,6 +34,10 @@ for (const name of SKILLS) {
   }
   assert.match(source, /com\.codedroid\.app/, `${name}: carries the don't-force-stop-CodeDroid rule`);
 }
+
+// Every skill in skills/ is in SKILLS, so `skill install` copies it too.
+const shipped = fs.readdirSync(SKILLS_SOURCE).filter((d) => fs.existsSync(skillSource(d)));
+assert.deepEqual([...shipped].sort(), [...SKILLS].sort(), "skills/ and SKILLS in src/skill.js differ");
 
 // The driving skill covers every tool there is.
 const driving = fs.readFileSync(skillSource("codedroid-phone"), "utf8");
