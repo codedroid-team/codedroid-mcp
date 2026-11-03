@@ -67,7 +67,7 @@ claude mcp add codedroid -- npx -y @codedroid/mcp
 npx -y @codedroid/mcp skill install
 ```
 
-The optional second command installs the two skills in `~/.claude/skills`.
+The optional second command installs the skills in `~/.claude/skills`.
 
 ### Standalone Codex server
 
