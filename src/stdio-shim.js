@@ -47,29 +47,66 @@ export function assertAuthenticatedDaemon(health, port) {
   }
 }
 
-export async function ensureDaemonRunning(port, log, { enableAdbTool = false } = {}) {
+/**
+ * Stops a running daemon and waits until it is gone. Resolves {status, port, pid}, status being
+ * "stopped"; "none" when no daemon was running; "refused" when it rejected this user's token; or
+ * "stuck" when it accepted but is still up 5 s later.
+ */
+export async function stopDaemon(port = DEFAULT_PORT) {
+  const health = await fetchHealth(port);
+  if (!health) return { status: "none", port };
+  const shutdown = (token) => fetch(`http://127.0.0.1:${port}/shutdown`, {
+    method: "POST",
+    signal: AbortSignal.timeout(5000),
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  }).catch(() => null);
+  // Legacy daemons need no token, including when the new credential file is invalid. Earlier
+  // token-enabled daemons lacked the capability marker; retry those with a token after a 401.
+  const authenticated = health.authentication === DAEMON_AUTHENTICATION;
+  let res = await shutdown(authenticated ? readDaemonToken() : null);
+  if (!authenticated && res?.status === 401) {
+    await res.arrayBuffer();
+    const token = readDaemonToken();
+    if (token) res = await shutdown(token);
+  }
+  if (res?.status === 401) return { status: "refused", port, pid: health.pid };
+  for (let i = 0; i < 50 && (await fetchHealth(port)); i++) await new Promise((r) => setTimeout(r, 100));
+  return { status: (await fetchHealth(port)) ? "stuck" : "stopped", port, pid: health.pid };
+}
+
+/** Why a daemon did not stop, and what to do about it. */
+export function notStopped({ status, port, pid }) {
+  const daemon = `The CodeDroid daemon on port ${port}${pid ? ` (pid ${pid})` : ""}`;
+  return status === "refused"
+    ? `${daemon} refused to stop: it does not accept the token in ~/.codedroid/daemon-token. End that process to stop it.`
+    : `${daemon} did not exit within 5 s. End that process to stop it.`;
+}
+
+export async function ensureDaemonRunning(port, log, { enableAdbTool = true } = {}) {
   const existing = await fetchHealth(port);
   if (existing) {
     assertAuthenticatedDaemon(existing, port);
-    // A daemon's tool set is fixed at startup, so an already-running one can't
-    // be changed by a later client. Say so, or the user has nothing to go on.
-    if (enableAdbTool !== existing.adbToolEnabled) {
-      log(
-        `A daemon is already running on port ${port} with the adb tool ` +
-          `${existing.adbToolEnabled ? "on" : "off"}; this client's adb setting (--adb, --no-adb, CODEDROID_MCP_ADB) had no effect. ` +
-          `Stop that daemon (codedroid-mcp stop --port=${port}) and let this client restart it.`,
-      );
+    if (existing.adbPerClient) {
+      if (enableAdbTool && !existing.adbToolEnabled) {
+        log(`The daemon on port ${port} was started with the adb tool off. Stop it (codedroid-mcp stop --port=${port}) and let this client restart it.`);
+      }
+      return;
     }
-    return;
+    // An older daemon fixes adb for every client and runs it from the wrong directory. Clients of
+    // it lose their session, not their IDE: the next request opens a new one on this daemon.
+    log(`Replacing the older daemon (v${existing.version}) on port ${port}.`);
+    const stopped = await stopDaemon(port);
+    if (stopped.status === "refused" || stopped.status === "stuck") {
+      log(notStopped(stopped));
+      return;
+    }
   }
 
   log(`Daemon not running — starting it on port ${port}...`);
   const indexPath = fileURLToPath(new URL("./index.js", import.meta.url));
-  // The child inherits this environment, but its adb setting comes from argv: this client's own
-  // resolved choice (--adb, --no-adb or CODEDROID_MCP_ADB), so a flag reaches the daemon it starts
-  // and an explicit --no-adb is not undone by an inherited CODEDROID_MCP_ADB=1.
-  const adbArg = enableAdbTool ? "--adb" : "--no-adb";
-  const child = spawn(process.execPath, [indexPath, "daemon", `--port=${port}`, adbArg], {
+  // --adb because the daemon serves every client: this client's own choice goes with its session,
+  // and an inherited CODEDROID_MCP_ADB=0 must not take adb from the others.
+  const child = spawn(process.execPath, [indexPath, "daemon", `--port=${port}`, "--adb"], {
     detached: true,
     stdio: "ignore",
     windowsHide: true,
@@ -109,14 +146,13 @@ export function isLostDaemonSession(e) {
  * @param {object} [options]
  * @param {number} [options.port]
  * @param {(msg: string) => void} [options.log] stderr logger
- * @param {boolean} [options.enableAdbTool] Only used to warn when an already-
- *   running daemon can't honour the request — the shim never registers the
- *   tool itself, it forwards through to whichever daemon owns it.
+ * @param {boolean} [options.enableAdbTool] Whether this client's session gets adb.
+ *   The shim never registers the tool itself: it forwards through to the daemon.
  */
 export async function runStdioShim({
   port = DEFAULT_PORT,
   log = () => {},
-  enableAdbTool = false,
+  enableAdbTool = true,
 } = {}) {
   let server;
   const connectDaemon = async () => {
@@ -133,7 +169,7 @@ export async function runStdioShim({
     // The daemon (ours or one ensureDaemonRunning just started) wrote its token; present it on /mcp.
     // Long initialize budget: the daemon may be doing the first phone connect
     // (including the on-phone approval tap) behind this call.
-    await next.connect(daemonTransport(port, readDaemonToken()), { timeout: 150_000 });
+    await next.connect(daemonTransport(port, readDaemonToken(), { enableAdbTool }), { timeout: 150_000 });
     return next;
   };
 

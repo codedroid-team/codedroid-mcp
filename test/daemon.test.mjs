@@ -255,7 +255,7 @@ try {
   await daemon.close();
 }
 
-// ── Opt in and the daemon serves adb ──────────────────────────────────
+// ── By default the daemon serves adb ──────────────────────────────────
 // Separate daemon rather than a flag on the one above: the gate is a
 // construction-time decision, and this proves both sides of it.
 const armed = await startDaemon({
@@ -263,7 +263,6 @@ const armed = await startDaemon({
   pairings: () => [PAIRING],
   phoneTransportFactory: makeFakePhoneTransport,
   log: () => {},
-  enableAdbTool: true,
   home,
 });
 

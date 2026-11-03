@@ -97,8 +97,8 @@ try {
   // ── One list of tools, each taking the phone to run on ──────────────
   assert.match(client.getInstructions(), /^PHONE RULES\n\nSeveral phones are paired: pass `device`/);
   const tools = (await client.listTools()).tools;
-  assert.deepEqual(tools.map((t) => t.name), ["tap", "get_task", "codedroid_devices", "codedroid_status"], "a tool every phone has is listed once");
-  for (const tool of tools.filter((t) => t.name !== "codedroid_devices")) {
+  assert.deepEqual(tools.map((t) => t.name), ["tap", "get_task", "codedroid_devices", "codedroid_status", "adb"], "a tool every phone has is listed once");
+  for (const tool of tools.filter((t) => !["codedroid_devices", "adb"].includes(t.name))) {
     assert.equal(tool.inputSchema.properties.device.type, "string", `${tool.name} takes device`);
   }
   assert.deepEqual(tools[0].inputSchema.properties.node, { type: "number" }, "the phone's own arguments are kept");
@@ -190,7 +190,7 @@ try {
   assert.equal(partial.connected, false);
   assert.deepEqual(partial.devices.map((d) => d.connected), [true, false, true]);
   assert.match(partial.problem, /^Pixel 9 \(9a1e7c00.*\): Pixel 9 is not online\.$/);
-  assert.deepEqual((await client.listTools()).tools.map((t) => t.name), ["tap", "get_task", "codedroid_devices", "codedroid_status"], "a phone down hides no tools");
+  assert.deepEqual((await client.listTools()).tools.map((t) => t.name), ["tap", "get_task", "codedroid_devices", "codedroid_status", "adb"], "a phone down hides no tools");
 
   // ── Unpaired while the daemon runs: that phone is gone, the rest stay ──
   paired = [XPS];

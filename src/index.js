@@ -19,8 +19,8 @@
  *   codedroid-mcp call <tool> [json]  call one tool and print the result (scripts, CI)
  *   codedroid-mcp skill install|path  the agent skills, for clients without the plugin
  *
- * Options: --port=<n> (or CODEDROID_MCP_PORT), default 4826. --server=<url> for pair. --adb (or
- * CODEDROID_MCP_ADB=1) adds the host-side adb tool, off by default. CODEDROID_SERIAL picks its device.
+ * Options: --port=<n> (or CODEDROID_MCP_PORT), default 4826. --server=<url> for pair. --no-adb (or
+ * CODEDROID_MCP_ADB=0) leaves out the host-side adb tool. CODEDROID_SERIAL picks its device.
  *
  * All log output goes to stderr — stdout is reserved for MCP JSON-RPC frames.
  */
@@ -58,21 +58,20 @@ function resolvePort(args) {
 }
 
 /**
- * The adb tool is OFF unless turned on with --adb or CODEDROID_MCP_ADB=1: it runs commands on this
- * computer, so it is opt-in. The env var reaches a daemon the shim starts (--no-adb stays as an
- * explicit off, e.g. to override the env var). */
+ * The adb tool is ON unless turned off with --no-adb or CODEDROID_MCP_ADB=0, for this client's
+ * session; for the `daemon` command, for every client. An unrecognised value leaves it off. */
 function resolveEnableAdb(args) {
   if (args["no-adb"]) return false;
   if (args["adb"]) return true;
   const raw = process.env.CODEDROID_MCP_ADB;
-  if (raw === undefined) return false;
+  if (!raw) return true;
   return raw === "1" || raw.toLowerCase() === "true";
 }
 
 const HELP = `codedroid-mcp ${VERSION}
 
 Gives an MCP client (Claude Code, Codex, Cursor...) your Android phones through CodeDroid: see the
-screen, tap and type, hand CodeDroid a task, and — with --adb — run adb on this computer.
+screen, tap and type, hand CodeDroid a task, and run adb on this computer.
 
 Usage:
   codedroid-mcp                     MCP stdio server (auto-starts the shared daemon)
@@ -99,9 +98,8 @@ computer's adb. With several phones paired, tools take a device argument naming 
 
 Options:
   --port=<n>   Daemon port (default 4826; env CODEDROID_MCP_PORT)
-  --adb        Start a daemon with the host-side adb tool (env CODEDROID_MCP_ADB=1)
-  --no-adb     Start without adb (overrides --adb and CODEDROID_MCP_ADB)
-               These settings do not change an already-running shared daemon.
+  --no-adb     Leave out the host-side adb tool for this client (env CODEDROID_MCP_ADB=0);
+               with the daemon command, for every client. Overrides --adb.
   --version    Print version
   --help       This text
 
@@ -147,7 +145,7 @@ async function daemonClient(port, enableAdbTool) {
   const effective = port ?? DEFAULT_PORT;
   await ensureDaemonRunning(effective, log, { enableAdbTool });
   const client = new Client({ name: "codedroid-mcp-cli", version: VERSION });
-  await client.connect(daemonTransport(effective, readDaemonToken()), { timeout: 150_000 });
+  await client.connect(daemonTransport(effective, readDaemonToken(), { enableAdbTool }), { timeout: 150_000 });
   return client;
 }
 
@@ -156,45 +154,6 @@ async function daemonHealth(port) {
   const { DEFAULT_PORT } = await import("./daemon.js");
   const { fetchHealth } = await import("./stdio-shim.js");
   return fetchHealth(port ?? DEFAULT_PORT);
-}
-
-/**
- * Stops a running daemon and waits until it is gone. Resolves {status, port, pid}, status being
- * "stopped"; "none" when no daemon was running; "refused" when it rejected this user's token; or
- * "stuck" when it accepted but is still up 5 s later.
- */
-async function stopDaemon(port) {
-  const { DEFAULT_PORT } = await import("./daemon.js");
-  const { readDaemonToken } = await import("./host.js");
-  const effective = port ?? DEFAULT_PORT;
-  const health = await daemonHealth(effective);
-  if (!health) return { status: "none", port: effective };
-  const shutdown = (token) => fetch(`http://127.0.0.1:${effective}/shutdown`, {
-    method: "POST",
-    signal: AbortSignal.timeout(5000),
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  }).catch(() => null);
-  // Legacy daemons need no token, including when the new credential file is invalid. Earlier
-  // token-enabled daemons lacked the capability marker; retry those with a token after a 401.
-  const { DAEMON_AUTHENTICATION } = await import("./daemon.js");
-  const authenticated = health.authentication === DAEMON_AUTHENTICATION;
-  let res = await shutdown(authenticated ? readDaemonToken() : null);
-  if (!authenticated && res?.status === 401) {
-    await res.arrayBuffer();
-    const token = readDaemonToken();
-    if (token) res = await shutdown(token);
-  }
-  if (res?.status === 401) return { status: "refused", port: effective, pid: health.pid };
-  for (let i = 0; i < 50 && (await daemonHealth(effective)); i++) await new Promise((r) => setTimeout(r, 100));
-  return { status: (await daemonHealth(effective)) ? "stuck" : "stopped", port: effective, pid: health.pid };
-}
-
-/** Why a daemon did not stop, and what to do about it; for stop and pair. */
-function notStopped({ status, port, pid }) {
-  const daemon = `The CodeDroid daemon on port ${port}${pid ? ` (pid ${pid})` : ""}`;
-  return status === "refused"
-    ? `${daemon} refused to stop: it does not accept the token in ~/.codedroid/daemon-token. End that process to stop it.`
-    : `${daemon} did not exit within 5 s. End that process to stop it.`;
 }
 
 async function confirm(question) {
@@ -291,6 +250,7 @@ async function main() {
   }
 
   if (command === "stop") {
+    const { notStopped, stopDaemon } = await import("./stdio-shim.js");
     const stopped = await stopDaemon(port);
     if (stopped.status === "refused" || stopped.status === "stuck") fatal(notStopped(stopped));
     process.stdout.write(stopped.status === "stopped" ? "Stopped the daemon.\n" : "No daemon was running.\n");
@@ -308,6 +268,7 @@ async function main() {
     // connecting, holds the old pairing's link; a disconnected one reads the new one.
     const health = await daemonHealth(port);
     if (health && !health.phones && health.phone !== "disconnected") {
+      const { notStopped, stopDaemon } = await import("./stdio-shim.js");
       const stopped = await stopDaemon(port);
       if (stopped.status === "refused" || stopped.status === "stuck") {
         fatal(`Paired, but the running daemon still holds the old pairing. ${notStopped(stopped)}`);
@@ -329,6 +290,7 @@ async function main() {
     // A daemon that serves several phones lets go of it on its next request; an older one holds it until it stops.
     const health = await daemonHealth(port);
     if (health && !health.phones) {
+      const { notStopped, stopDaemon } = await import("./stdio-shim.js");
       const stopped = await stopDaemon(port);
       if (stopped.status === "refused" || stopped.status === "stuck") fatal(`Unpaired, but ${notStopped(stopped)}`);
     }

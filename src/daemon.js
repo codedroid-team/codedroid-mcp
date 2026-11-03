@@ -4,7 +4,7 @@
  * Streamable HTTP on localhost.
  *
  * The phone connection uses a WebSocket relay. /mcp requires this user's daemon token (a bearer
- * token kept in ~/.codedroid), and the host-side adb tool is opt-in.
+ * token kept in ~/.codedroid). Each client chooses whether it gets the host-side adb tool.
  *
  * Every MCP client (Claude Code, Claude Desktop, Cursor, VS Code windows…)
  * connects to http://127.0.0.1:<port>/mcp and gets its own MCP session; tool
@@ -15,7 +15,7 @@
  * Endpoints:
  *   POST/GET/DELETE /mcp   Streamable HTTP MCP (per-session) — needs the daemon token
  *   POST /shutdown         stop the daemon — needs the token
- *   GET /health            {ok, version, pid, authentication, phone, phones, sessions, adbToolEnabled} — unauthenticated
+ *   GET /health            {ok, version, pid, authentication, phone, phones, sessions, adbToolEnabled, adbPerClient} — unauthenticated
  */
 import http from "http";
 import os from "os";
@@ -23,7 +23,8 @@ import { randomUUID, timingSafeEqual } from "crypto";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
-import { adbTool } from "./adb-tool.js";
+import { createAdbTool } from "./adb-tool.js";
+import { CLIENT_ADB_HEADER, CLIENT_CWD_HEADER } from "./daemon-transport.js";
 import { describeHost, ensureDaemonToken, readHosts } from "./host.js";
 import { Phones } from "./phones.js";
 import { buildProxyServer, broadcastNotification } from "./proxy-core.js";
@@ -259,6 +260,15 @@ function sendJson(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
+/** The working directory a client sent, or null. */
+function clientCwd(req) {
+  try {
+    return decodeURIComponent(req.headers[CLIENT_CWD_HEADER] ?? "") || null;
+  } catch (e) {
+    return null;
+  }
+}
+
 function jsonRpcError(res, status, id, code, message) {
   sendJson(res, status, {
     jsonrpc: "2.0",
@@ -278,9 +288,9 @@ function jsonRpcError(res, status, id, code, message) {
  * @param {(pairing: object) => Promise<import("@modelcontextprotocol/sdk/shared/transport.js").Transport> | import("@modelcontextprotocol/sdk/shared/transport.js").Transport} [options.phoneTransportFactory]
  *   A transport to the phone of [pairing]; the relay by default.
  * @param {(msg: string) => void} [options.log]
- * @param {boolean} [options.enableAdbTool]  Serve the host-side `adb` tool. OFF by
- *   default: it runs commands on this computer, so it is opt-in. CODEDROID_MCP_ADB=1
- *   or --adb turns it on (index.js).
+ * @param {boolean} [options.enableAdbTool]  Offer the host-side `adb` tool. A client
+ *   can still decline it for its own session (daemon-transport.js). Off only when the
+ *   daemon itself is started with --no-adb or CODEDROID_MCP_ADB=0 (index.js).
  * @param {string} [options.home]  Where ~/.codedroid lives; overridable for tests.
  * @returns {Promise<{port: number, authToken: string, close: () => Promise<void>, phones: Phones}>}
  *   authToken is this user's daemon token (host.js ensureDaemonToken), which /mcp and /shutdown require.
@@ -291,7 +301,7 @@ export async function startDaemon({
   pairings = () => readHosts({ home }),
   phoneTransportFactory,
   log = () => {},
-  enableAdbTool = false,
+  enableAdbTool = true,
   home = os.homedir(),
 } = {}) {
   /** Set once the port is ours (below); no request is handled before that. */
@@ -346,6 +356,7 @@ export async function startDaemon({
           phones: { paired, connected },
           sessions: sessions.size,
           adbToolEnabled: enableAdbTool,
+          adbPerClient: true,
         });
         return;
       }
@@ -405,7 +416,13 @@ export async function startDaemon({
               // phone — see adb-tool.js. The stdio shim builds its own proxy
               // server without these, so it transparently forwards their
               // calls to here rather than double-registering them.
-              localTools: [createDevicesTool(phones), createStatusTool(phones), ...(enableAdbTool ? [adbTool] : [])],
+              localTools: [
+                createDevicesTool(phones),
+                createStatusTool(phones),
+                ...(enableAdbTool && req.headers[CLIENT_ADB_HEADER] !== "off"
+                  ? [createAdbTool({ cwd: clientCwd(req) })]
+                  : []),
+              ],
               connectWaitMs: CONNECT_WAIT_MS,
               listWaitMs: LIST_WAIT_MS,
             });
@@ -483,7 +500,7 @@ export async function startDaemon({
   }
   log(`CodeDroid MCP daemon listening on http://${host}:${boundPort}/mcp`);
   if (enableAdbTool) log("The adb tool is on: connected MCP clients can run adb commands on this machine.");
-  else log("The adb tool is off (opt in with CODEDROID_MCP_ADB=1 or --adb).");
+  else log("The adb tool is off for every client: this daemon was started with --no-adb or CODEDROID_MCP_ADB=0.");
 
   const close = async () => {
     for (const { transport } of sessions.values()) {

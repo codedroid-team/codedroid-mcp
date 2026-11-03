@@ -1,5 +1,18 @@
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
+/** Tell the daemon, on initialize, this client's working directory and its adb choice. */
+export const CLIENT_CWD_HEADER = "x-codedroid-cwd";
+export const CLIENT_ADB_HEADER = "x-codedroid-adb";
+
+/** The working directory, which can be gone by the time a client starts. */
+function currentDir() {
+  try {
+    return process.cwd();
+  } catch (e) {
+    return null;
+  }
+}
+
 class DaemonTransport extends StreamableHTTPClientTransport {
   async close() {
     // The SDK's close() only aborts HTTP streams. DELETE is what releases the daemon's
@@ -26,7 +39,7 @@ class DaemonTransport extends StreamableHTTPClientTransport {
  * [token] is the running daemon's bearer token (host.js readDaemonToken); the SDK applies these
  * headers to every request on the transport — POST, the GET event stream, and the DELETE teardown.
  */
-export function daemonTransport(port, token) {
+export function daemonTransport(port, token, { enableAdbTool = true } = {}) {
   if (!token) {
     throw new Error(
       `The daemon token is missing from ~/.codedroid/daemon-token. ` +
@@ -34,6 +47,9 @@ export function daemonTransport(port, token) {
     );
   }
   const headers = { Connection: "close", Authorization: `Bearer ${token}` };
+  const cwd = currentDir();
+  if (cwd) headers[CLIENT_CWD_HEADER] = encodeURIComponent(cwd);
+  if (!enableAdbTool) headers[CLIENT_ADB_HEADER] = "off";
   return new DaemonTransport(new URL(`http://127.0.0.1:${port}/mcp`), {
     requestInit: { headers },
   });

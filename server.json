@@ -29,7 +29,7 @@
       "environmentVariables": [
         {
           "name": "CODEDROID_MCP_ADB",
-          "description": "Set to 1 to turn on the adb tool, which runs adb commands on this computer. Off by default.",
+          "description": "Set to 0 to turn off the adb tool, which runs adb commands on this computer.",
           "isRequired": false,
           "format": "string"
         },
