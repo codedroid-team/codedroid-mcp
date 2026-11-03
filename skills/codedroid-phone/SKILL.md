@@ -60,6 +60,7 @@ offline doesn't affect the others.
 | `clipboard` | Read it, or set it with `text` |
 | `device_info` | Model, Android version, Android user, screen, locked, CodeDroid ready and signed in |
 | `run_task`, `get_task`, `cancel_task` | Hand CodeDroid's own phone agent a whole goal (below) |
+| `install_apk` | Install an APK from this computer, with no cable or shared network |
 | `adb` | This computer's adb, when the phone is on USB or Wireless debugging |
 
 ## Handing CodeDroid a task

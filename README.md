@@ -69,8 +69,8 @@ Then try:
 - “Open my app, navigate to sign-in, and take a screenshot.”
 - “Install this APK, launch it, and check for crashes.”*
 
-*Installing APKs and using `adb` also requires Android platform-tools and a USB or wireless
-debugging connection. See [adb setup](docs/reference.md#adb-setup).
+*`install_apk` works over CodeDroid's connection, with [one setting to allow](docs/reference.md#installing-builds). Reading logs with `adb` also requires
+Android platform-tools and a USB or wireless debugging connection. See [adb setup](docs/reference.md#adb-setup).
 
 ## What it includes
 
@@ -81,8 +81,8 @@ debugging connection. See [adb setup](docs/reference.md#adb-setup).
   and `test-on-device` walks it through building, installing, and verifying an Android app change.
   `create-cujs` writes an app's critical user journeys as markdown files in its repo (`cujs/`),
   `create-tests` adds test cases to them, and `test-on-device` runs them on the phone.
-- **An `adb` tool** that runs adb commands on your computer, to install builds, read logs, and run
-  tests. You can [turn it off](docs/reference.md#adb-setup).
+- **`install_apk`** to install a build from your computer, with no cable or shared network.
+- **An `adb` tool** that runs adb commands on your computer, to read logs and run tests. You can [turn it off](docs/reference.md#adb-setup).
 
 ## Privacy and security
 

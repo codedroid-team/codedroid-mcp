@@ -21,6 +21,7 @@ read progress, or `cancel_task` to stop the task.
 | `clipboard` | Read or update the clipboard. |
 | `device_info` | Inspect the device model, Android version, user, screen, lock state, and CodeDroid readiness. |
 | `run_task`, `get_task`, `cancel_task` | Start, monitor, or cancel a task run by CodeDroid's agent. |
+| `install_apk` | Install an APK from this computer through CodeDroid's connection, with no cable or shared network. |
 | `adb` | Run local adb commands against the phone attached to this computer. Turn off with `--no-adb` or `CODEDROID_MCP_ADB=0`. |
 | `codedroid_devices` | List the paired phones (id, model, server) and whether each is connected, without connecting. |
 | `codedroid_status` | Connect to the paired phones, report each connection, and get instructions for resolving problems. |
@@ -38,6 +39,19 @@ Paired computers appear in **Settings → Computers** on the phone.
 - **Allow computers to connect** turns computer access on or off.
 
 CodeDroid displays the computer's name and a Stop button while it acts on the phone.
+
+## Installing builds
+
+`install_apk` sends an APK through the same connection as the other phone tools, and installs it
+with Android's package installer. It resumes if the connection drops.
+
+- The first time, turn on **Allow from this source** for CodeDroid under **Install unknown apps**.
+  The phone opens that page when it is needed.
+- The phone has to be unlocked. CodeDroid confirms Android's install prompt.
+- Google Play Protect can ask about each new build it has not seen. CodeDroid never answers it,
+  because **Scan app** sends the build to Google. Answer it, then call `install_apk` again.
+- It takes one `.apk`, not an App Bundle or split APKs.
+- It needs a version of the CodeDroid app that has this tool.
 
 ## adb setup
 

@@ -26,6 +26,7 @@ import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { createAdbTool } from "./adb-tool.js";
 import { CLIENT_ADB_HEADER, CLIENT_CWD_HEADER } from "./daemon-transport.js";
 import { describeHost, ensureDaemonToken, readHosts } from "./host.js";
+import { createInstallTool } from "./install-tool.js";
 import { Phones } from "./phones.js";
 import { buildProxyServer, broadcastNotification } from "./proxy-core.js";
 import { RelayPhoneTransport } from "./relay-transport.js";
@@ -321,6 +322,8 @@ export async function startDaemon({
   });
   /** sessionId → { transport, server } */
   const sessions = new Map();
+  /** Installs under way: a new session can pick one up. */
+  const installJobs = new Map();
 
   phones.onNotification = (notification) =>
     broadcastNotification(
@@ -419,6 +422,7 @@ export async function startDaemon({
               localTools: [
                 createDevicesTool(phones),
                 createStatusTool(phones),
+                createInstallTool({ phones, cwd: clientCwd(req), jobs: installJobs }),
                 ...(enableAdbTool && req.headers[CLIENT_ADB_HEADER] !== "off"
                   ? [createAdbTool({ cwd: clientCwd(req) })]
                   : []),

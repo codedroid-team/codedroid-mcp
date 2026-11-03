@@ -45,7 +45,15 @@ const DEFAULT_TIMEOUT_MS = 30_000;
  * Phone tools that never touch the screen, so need not wait behind the calls that do: get_task
  * alone can wait 55 s for a task, and holding cancel_task behind it would defeat the point.
  */
-export const UNQUEUED_TOOLS = new Set(["get_task", "cancel_task", "device_info"]);
+export const UNQUEUED_TOOLS = new Set([
+  "get_task",
+  "cancel_task",
+  "device_info",
+  "install_begin",
+  "install_write",
+  "install_commit",
+  "install_status",
+]);
 
 /** The request never reached the phone: the link was already down when it was sent. */
 const NEVER_SENT = /not open|not connected/i;

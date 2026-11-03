@@ -11,11 +11,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createAdbTool } from "../src/adb-tool.js";
+import { createInstallTool } from "../src/install-tool.js";
 import { installSkills, SKILLS, SKILLS_SOURCE, skillSource } from "../src/skill.js";
 import { createDevicesTool, createStatusTool } from "../src/status-tool.js";
 
 const phone = JSON.parse(fs.readFileSync(new URL("./fixtures/phone-tools.json", import.meta.url), "utf8")).tools;
-const local = [createAdbTool({ env: {} }).definition, createDevicesTool({}).definition, createStatusTool({}).definition];
+const local = [createAdbTool({ env: {} }).definition, createDevicesTool({}).definition, createStatusTool({}).definition, createInstallTool({}).definition];
 const tools = new Set([...phone, ...local].map((t) => t.name));
 const params = new Set([...phone, ...local].flatMap((t) => Object.keys(t.inputSchema.properties ?? {})));
 // What the phone's replies carry: error codes and the `after` observation.

@@ -102,7 +102,7 @@ function isInside(dir, file) {
  * The client's project directory, or null without one. A client started in the home directory or
  * above it (GUI clients often are) has none: that would let push and pull reach every file.
  */
-function projectDir(cwd, home) {
+export function projectDir(cwd, home = os.homedir()) {
   if (!cwd || !path.isAbsolute(cwd) || !fs.existsSync(cwd)) return null;
   const dir = realPath(cwd);
   return isInside(dir, realPath(home)) ? null : dir;
@@ -165,7 +165,7 @@ function adbLocations(env) {
 
 const CONNECT_PHONE =
   "On the phone turn on USB debugging and connect the cable, or use Wireless debugging (`pair <ip:port>`, then `connect <ip:port>`). " +
-  "CodeDroid's own tools work without this.";
+  "CodeDroid's own tools, and install_apk to install a build, work without this.";
 
 /** What to do about the failures adb's own message does not explain. */
 const HINTS = [
@@ -193,8 +193,8 @@ function truncate(text) {
  */
 const INSTRUCTIONS =
   "You also have `adb`: this computer's adb, for the phone when it is on USB or Wireless debugging. Use " +
-  "it to install builds, read logs (logcat -d), inspect state (dumpsys), start activities, and run " +
-  "instrumentation tests; use CodeDroid's tools to see and drive the screen. Never force-stop or " +
+  "it to read logs (logcat -d), inspect state (dumpsys), start activities, and run instrumentation " +
+  "tests; use install_apk to install builds and CodeDroid's tools to see and drive the screen. Never force-stop or " +
   "instrument com.codedroid.app.";
 
 /** The tool's full guidance: read right before calling it. */

@@ -7,7 +7,7 @@ description: Verify an Android app change on the user's real Android phone - bui
 
 You have two kinds of tools: CodeDroid's (`get_screen`, `tap`, `type_text`, `wait_for`,
 `take_screenshot`, ...), which see and drive the screen exactly as it is, and `adb`, which runs
-this computer's adb. Use adb to build, install, start and inspect; use CodeDroid to look and act.
+this computer's adb. Use `install_apk` to install; use adb to start and inspect; use CodeDroid to look and act.
 The codedroid-phone skill covers driving the screen.
 
 If `adb` is not in your tool list, the user turned it off (`--no-adb` or `CODEDROID_MCP_ADB=0`): ask
@@ -17,8 +17,8 @@ them to turn it back on, or to run the adb commands themselves.
 
 CodeDroid reaches the phone through the CodeDroid server; adb needs it on this computer, over USB
 or Wireless debugging. Call `codedroid_status` and `device_info` for the phone's model and
-Android `user`, and `adb` `devices -l` to find the same model there. If adb lists none, ask the
-user to connect it; if it lists several, pass `-s <serial>` to each adb command. On a phone with
+Android `user`, and `adb` `devices -l` to find the same model there. If adb lists none, go on
+without it, or ask the user to connect it for logs and instrumentation tests; if it lists several, pass `-s <serial>` to each adb command. On a phone with
 several users (a Googlebook runs as user 10), adb's `settings`, `content`, `pm grant` and
 `appops` default to user 0: add `--user <user>` to them. `adb install` covers every user.
 
@@ -26,10 +26,11 @@ several users (a Googlebook runs as user 10), adb's `settings`, `content`, `pm g
 
 1. Build with the project's own task, e.g. `./gradlew :app:assembleDebug` (check the module and
    variant names in the project first).
-2. Install with `adb`: `install -r -g app/build/outputs/apk/debug/app-debug.apk`. `-r` keeps the
-   app's data, `-g` grants its runtime permissions. A signature mismatch means the phone has
-   another build: ask the user before `uninstall`, which deletes the app's data.
-3. `adb` `logcat -c` to clear the logs, so what you read later is from this run.
+2. Install with `install_apk`: `app/build/outputs/apk/debug/app-debug.apk`. It needs no cable, keeps
+   the app's data, and says what went in. A signature mismatch means the phone has another build:
+   ask the user before removing it, which deletes the app's data. On a phone attached to adb,
+   `install -r -g <apk>` also grants the runtime permissions.
+3. If the phone is on adb, `adb` `logcat -c` to clear the logs, so what you read later is from this run.
 
 ## 3. Open it and drive the change
 

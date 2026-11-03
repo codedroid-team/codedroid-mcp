@@ -102,7 +102,7 @@ try {
   const tools = await client.listTools();
   assert.deepEqual(
     tools.tools.map((t) => t.name).sort(),
-    ["adb", "codedroid_devices", "codedroid_status", "echo"],
+    ["adb", "codedroid_devices", "codedroid_status", "echo", "install_apk"],
     "the shim forwards the daemon's local tool without re-registering it",
   );
 
@@ -127,7 +127,7 @@ try {
   daemon = await startDaemon({ port, pairings: () => [PAIRING], phoneTransportFactory: makeFakePhoneTransport, enableAdbTool: true, home });
   const afterRestart = await client.callTool({ name: "echo", arguments: { text: "after-restart" } });
   assert.equal(afterRestart.content[0].text, "echo: after-restart", "the shim opens a new daemon session and sends the call again");
-  assert.deepEqual((await client.listTools()).tools.map((t) => t.name).sort(), ["adb", "codedroid_devices", "codedroid_status", "echo"]);
+  assert.deepEqual((await client.listTools()).tools.map((t) => t.name).sort(), ["adb", "codedroid_devices", "codedroid_status", "echo", "install_apk"]);
 
   // ── A reconnect that fails does not strand the shim: the next request tries again ──
   // What answers the port meanwhile drops the shim's session and refuses a new one (a legacy daemon).
