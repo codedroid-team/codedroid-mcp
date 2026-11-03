@@ -1,7 +1,7 @@
 /**
  * The CLI against real daemons it starts itself — no phone required.
  *
- * A client's adb setting (flag or env) must reach the daemon it starts, and `stop` must say so when
+ * A client's adb setting (flag or env) must decide its own session, and `stop` must say so when
  * a daemon refuses it rather than claim it stopped. Each CLI run has its own home, so this never
  * touches the real ~/.codedroid or a running daemon.
  *
@@ -30,9 +30,9 @@ function sandbox(name) {
   return { home, env };
 }
 
-function cli(args, env) {
+function cli(args, env, cwd) {
   return new Promise((resolve) => {
-    execFile(process.execPath, [indexPath, ...args], { env, timeout: 60_000 }, (error, stdout, stderr) => {
+    execFile(process.execPath, [indexPath, ...args], { env, cwd, timeout: 60_000 }, (error, stdout, stderr) => {
       resolve({ code: error ? (error.code ?? 1) : 0, stdout, stderr });
     });
   });
@@ -58,48 +58,114 @@ async function health(port) {
 const started = [];
 
 try {
-  // ── --adb reaches the daemon a client starts, and stop stops it ─────
+  // ── adb is on by default, per client, and stop stops the daemon ─────
   {
-    const { env } = sandbox("flag");
+    const { home, env } = sandbox("default");
     const port = await freePort();
-    const result = await cli(["--adb", `--port=${port}`, "call", "codedroid_status"], env);
+    // Each client's relative paths start from its own directory, not the daemon's.
+    const fakeAdb = path.join(home, "fake-adb");
+    fs.writeFileSync(fakeAdb, "#!/bin/sh\npwd -P\n", { mode: 0o755 });
+    const adbEnv = { ...env, ADB: fakeAdb };
+    const [dirA, dirB] = ["a", "b"].map((name) => {
+      fs.mkdirSync(path.join(home, name));
+      return fs.realpathSync(path.join(home, name));
+    });
+    const on = await cli([`--port=${port}`, "call", "adb", '{"command":"version"}'], adbEnv, dirA);
     const running = await health(port);
     started.push(running?.pid);
-    assert.equal(result.code, 0, result.stderr);
-    assert.equal(JSON.parse(result.stdout).connected, false);
-    assert.equal(running?.adbToolEnabled, true, "--adb must reach the daemon the client starts");
+    assert.equal(on.code, 0, on.stderr);
+    assert.equal(on.stdout.trim(), dirA);
+    assert.equal((await cli([`--port=${port}`, "call", "adb", '{"command":"version"}'], adbEnv, dirB)).stdout.trim(), dirB);
+    assert.equal(running?.adbToolEnabled, true, "a client starts the daemon with adb");
+    assert.equal(running?.adbPerClient, true);
+    // A client that declines adb does not lose it for the others, and the others do not force it on it.
+    for (const [args, extra] of [[["--no-adb"], {}], [[], { CODEDROID_MCP_ADB: "0" }], [["--adb", "--no-adb"], {}], [[], { CODEDROID_MCP_ADB: "nope" }]]) {
+      const off = await cli([...args, `--port=${port}`, "call", "adb", '{"command":"version"}'], { ...env, ...extra });
+      assert.notEqual(off.code, 0, `${args} ${JSON.stringify(extra)} must not get adb`);
+    }
+    assert.equal((await health(port))?.adbToolEnabled, true);
     const stop = await cli([`--port=${port}`, "stop"], env);
     assert.equal(stop.code, 0, stop.stderr);
     assert.match(stop.stdout, /Stopped the daemon/);
     assert.equal(await health(port), null, "and stop must really stop it");
   }
 
-  // ── --no-adb wins over an inherited CODEDROID_MCP_ADB=1 ──────────────
+  // ── A client that starts the daemon declining adb keeps it for the next client ─
   {
-    const { env } = sandbox("no-adb");
+    const { env } = sandbox("no-adb-first");
     const port = await freePort();
-    const result = await cli(["--no-adb", `--port=${port}`, "call", "codedroid_status"], { ...env, CODEDROID_MCP_ADB: "1" });
+    const result = await cli([`--port=${port}`, "call", "codedroid_status"], { ...env, CODEDROID_MCP_ADB: "0" });
     const running = await health(port);
     started.push(running?.pid);
     assert.equal(result.code, 0, result.stderr);
-    assert.equal(JSON.parse(result.stdout).connected, false);
-    assert.equal(running?.adbToolEnabled, false, "--no-adb must reach the daemon the client starts");
-    const stop = await cli([`--port=${port}`, "stop"], env);
-    assert.equal(stop.code, 0, stop.stderr);
+    assert.equal(running?.adbToolEnabled, true);
+    await cli([`--port=${port}`, "stop"], env);
   }
 
-  // Conflicting flags leave adb off, regardless of argv order.
-  for (const flags of [["--adb", "--no-adb"], ["--no-adb", "--adb"]]) {
-    const { env } = sandbox(`conflict-${flags[0]}`);
+  // ── The daemon command itself can turn adb off for every client ─────
+  {
+    const { home, env } = sandbox("daemon-off");
+    const daemon = await startDaemon({ port: 0, home, enableAdbTool: false });
+    try {
+      const result = await cli([`--port=${daemon.port}`, "call", "adb", '{"command":"version"}'], env);
+      assert.notEqual(result.code, 0);
+      assert.match(result.stderr, /started with the adb tool off/);
+    } finally {
+      await daemon.close();
+    }
+  }
+
+  // ── A daemon from before per-client adb is replaced, not used ───────
+  {
+    const { home, env } = sandbox("older-daemon");
+    const token = ensureDaemonToken({ home });
     const port = await freePort();
-    const result = await cli([...flags, `--port=${port}`, "call", "codedroid_status"], env);
+    let shutdowns = 0;
+    const older = http.createServer((req, res) => {
+      res.setHeader("Content-Type", "application/json");
+      if (req.url === "/health") {
+        res.end(JSON.stringify({ service: "codedroid-mcp-daemon", version: "0.1.3", authentication: "bearer-v1", adbToolEnabled: false }));
+      } else if (req.url === "/shutdown" && req.headers.authorization === `Bearer ${token}`) {
+        shutdowns++;
+        res.end("{}");
+        setImmediate(() => {
+          older.close();
+          older.closeAllConnections();
+        });
+      } else {
+        res.writeHead(401);
+        res.end("{}");
+      }
+    });
+    await new Promise((resolve) => older.listen(port, "127.0.0.1", resolve));
+    const result = await cli([`--port=${port}`, "call", "codedroid_status"], env);
     const running = await health(port);
     started.push(running?.pid);
     assert.equal(result.code, 0, result.stderr);
-    assert.equal(JSON.parse(result.stdout).connected, false);
-    assert.equal(running?.adbToolEnabled, false);
-    const stop = await cli([`--port=${port}`, "stop"], env);
-    assert.equal(stop.code, 0, stop.stderr);
+    assert.equal(shutdowns, 1);
+    assert.match(result.stderr, /Replacing the older daemon \(v0\.1\.3\)/);
+    assert.equal(running?.adbPerClient, true);
+    await cli([`--port=${port}`, "stop"], env);
+  }
+
+  // ── An older daemon that refuses to stop is left running, and said so ─
+  {
+    const { env } = sandbox("older-refuses");
+    const older = http.createServer((req, res) => {
+      res.setHeader("Content-Type", "application/json");
+      if (req.url === "/health") res.end(JSON.stringify({ service: "codedroid-mcp-daemon", version: "0.1.3", authentication: "bearer-v1", adbToolEnabled: false }));
+      else {
+        res.writeHead(401);
+        res.end("{}");
+      }
+    });
+    await new Promise((resolve) => older.listen(0, "127.0.0.1", resolve));
+    try {
+      const result = await cli([`--port=${older.address().port}`, "call", "codedroid_status"], env);
+      assert.match(result.stderr, /refused to stop/);
+    } finally {
+      await new Promise((resolve) => older.close(resolve));
+    }
   }
 
   // Legacy discovery is insufficient: refuse to connect, but keep `stop` usable for migration.

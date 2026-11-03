@@ -70,7 +70,7 @@ async function connect(port, token) {
   try {
     const client = await connect(daemon.port, daemon.authToken);
     assert.match(client.getInstructions(), /not connected yet: This computer is not paired/);
-    assert.deepEqual((await client.listTools()).tools.map((t) => t.name), ["codedroid_devices", "codedroid_status"]);
+    assert.deepEqual((await client.listTools()).tools.map((t) => t.name), ["codedroid_devices", "codedroid_status", "install_apk"]);
     const call = await client.callTool({ name: "get_screen", arguments: {} });
     assert.equal(call.isError, true);
     assert.match(call.content[0].text, /not connected: This computer is not paired/);
@@ -106,7 +106,7 @@ async function connect(port, token) {
       (await import("@modelcontextprotocol/sdk/types.js")).ToolListChangedNotificationSchema,
       () => void (changed = true),
     );
-    assert.deepEqual((await client.listTools()).tools.map((t) => t.name), ["codedroid_devices", "codedroid_status"]);
+    assert.deepEqual((await client.listTools()).tools.map((t) => t.name), ["codedroid_devices", "codedroid_status", "install_apk"]);
     assert.ok(Date.now() - started < 8_000, "neither initialize nor tools/list waits for the tap");
     allow();
     const status = JSON.parse((await client.callTool({ name: "codedroid_status", arguments: {} })).content[0].text);
@@ -114,7 +114,7 @@ async function connect(port, token) {
     assert.equal(status.instructions, "PHONE RULES", "the phone's rules reach a session that opened before it");
     await new Promise((r) => setTimeout(r, 100));
     assert.ok(changed, "the session hears that the phone's tools arrived");
-    assert.deepEqual((await client.listTools()).tools.map((t) => t.name).sort(), ["codedroid_devices", "codedroid_status", "get_screen"]);
+    assert.deepEqual((await client.listTools()).tools.map((t) => t.name).sort(), ["codedroid_devices", "codedroid_status", "get_screen", "install_apk"]);
     await client.close();
   } finally {
     await daemon.close();

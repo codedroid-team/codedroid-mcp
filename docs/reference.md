@@ -21,7 +21,8 @@ read progress, or `cancel_task` to stop the task.
 | `clipboard` | Read or update the clipboard. |
 | `device_info` | Inspect the device model, Android version, user, screen, lock state, and CodeDroid readiness. |
 | `run_task`, `get_task`, `cancel_task` | Start, monitor, or cancel a task run by CodeDroid's agent. |
-| `adb` | Run local adb commands against the connected phone. Off by default; enable with `--adb` or `CODEDROID_MCP_ADB=1`. |
+| `install_apk` | Install an APK from this computer through CodeDroid's connection, with no cable or shared network. |
+| `adb` | Run local adb commands against the phone attached to this computer. Turn off with `--no-adb` or `CODEDROID_MCP_ADB=0`. |
 | `codedroid_devices` | List the paired phones (id, model, server) and whether each is connected, without connecting. |
 | `codedroid_status` | Connect to the paired phones, report each connection, and get instructions for resolving problems. |
 
@@ -39,21 +40,41 @@ Paired computers appear in **Settings → Computers** on the phone.
 
 CodeDroid displays the computer's name and a Stop button while it acts on the phone.
 
+## Installing builds
+
+`install_apk` sends an APK through the same connection as the other phone tools, and installs it
+with Android's package installer. It resumes if the connection drops.
+
+- The first time, turn on **Allow from this source** for CodeDroid under **Install unknown apps**.
+  The phone opens that page when it is needed.
+- The phone has to be unlocked. CodeDroid confirms Android's install prompt.
+- When Google Play Protect offers to scan a build it has not seen, CodeDroid chooses **Install
+  without scanning**, so the build is not sent to Google. Any other Play Protect message, such as a
+  harmful app warning, is left for you. Answer it, then call `install_apk` again.
+- It takes one `.apk`, not an App Bundle or split APKs.
+- It needs a version of the CodeDroid app that has this tool.
+
 ## adb setup
 
-The optional `adb` tool requires [Android platform-tools](https://developer.android.com/tools/releases/platform-tools)
+The `adb` tool requires [Android platform-tools](https://developer.android.com/tools/releases/platform-tools)
 on your computer and a USB or wireless debugging connection to your phone.
 
 For USB, enable **USB debugging** in the phone's Developer options, connect the cable, and
 accept the debugging prompt on the phone. Run `adb devices` to check the connection.
 For wireless debugging, see [troubleshooting](#troubleshooting).
 
-The `adb` tool is off by default because it runs commands on your computer. To turn it on, add
-`CODEDROID_MCP_ADB=1` to the CodeDroid MCP server's environment in your client's MCP settings (or
-`--adb` to its arguments), or start your client with it set. The shared daemon keeps the setting it
-started with, so run `npx -y @codedroid/mcp stop` once afterwards. To turn it on for every client
-until the daemon next stops, run `npx -y @codedroid/mcp stop`, then
-`CODEDROID_MCP_ADB=1 npx -y @codedroid/mcp connect`.
+Because it runs commands on your computer:
+
+- It is marked destructive, so clients that honor that ask before running it.
+- Relative paths start from the client's working directory. A client started in your home directory
+  or above it has no project directory, and must use absolute paths.
+- `push`, `pull`, `bugreport`, `backup`, and `restore` only use local files in the project or temp
+  directory. `install` takes any path.
+- `-H`, `-P`, `-L`, `keygen`, `ppp`, `server`, `nodaemon`, and `fork-server` are refused.
+
+To turn it off for a client, add `CODEDROID_MCP_ADB=0` to the CodeDroid MCP server's environment in
+the client's MCP settings (or `--no-adb` to its arguments). To turn it off for every client, run
+`npx -y @codedroid/mcp stop`, then start the daemon yourself with `npx -y @codedroid/mcp daemon --no-adb`.
 
 ## MCP configuration
 
@@ -157,9 +178,9 @@ an HTTP client.
 | --- | --- |
 | `CODEDROID_SERIAL` | Select an adb device when several are connected. `ANDROID_SERIAL` is also supported. |
 | `CODEDROID_MCP_PORT` | Set the local daemon port. Default: `4826`. |
-| `CODEDROID_MCP_ADB=1` | Start a daemon with the host-side `adb` tool (off by default; `--adb` does the same, `--no-adb` overrides both). Existing daemons keep their startup setting for all clients. |
+| `CODEDROID_MCP_ADB=0` | Leave out the host-side `adb` tool for this client (`--no-adb` does the same); with the `daemon` command, for every client. |
 | `CODEDROID_MCP_CLIENT` | Set the client name shown on the phone. |
-| `ADB` | Set the path to the adb executable. |
+| `ADB` | Set the path to the adb executable. Otherwise it is looked for on `PATH`, in `ANDROID_HOME`, `ANDROID_SDK_ROOT`, and the usual install locations. |
 | `CODEDROID_DEBUG=1` | Include stack traces in diagnostic output. |
 
 ## CLI reference
@@ -208,7 +229,7 @@ connection problem.
 | Connection was denied | Wait one minute, run `npx -y @codedroid/mcp connect`, then tap **Allow**. |
 | Connection was stopped on the phone | Wait one minute before reconnecting. |
 | adb cannot find the phone | Connect it over USB, or run `adb pair <ip:port>` followed by `adb connect <ip:port>` for wireless debugging. |
-| The agent has no `adb` tool | It is off by default: see [adb setup](#adb-setup). |
+| The agent has no `adb` tool | Check that `--no-adb` or `CODEDROID_MCP_ADB=0` is not set for the client or the daemon: see [adb setup](#adb-setup). |
 | Daemon needs an authentication upgrade | Run `npx -y @codedroid/mcp stop` (with `--port=<n>` for a custom port), then reconnect. |
 | `Unauthorized: send this user's daemon token` | Update the client (`npx -y @codedroid/mcp@latest`). An HTTP client must send the token in `~/.codedroid/daemon-token`. |
 
@@ -237,8 +258,8 @@ Pairing credentials, one per phone, are stored in `~/.codedroid/host.json`, read
 daemon serves MCP on loopback only and requires your daemon token, kept in
 `~/.codedroid/daemon-token` (0600): the daemon creates it the first time it starts, and clients on
 this computer read it. A process that cannot read your home directory cannot drive the phone or the
-`adb` tool. The host-side `adb` tool, which runs commands on this computer, is off unless you turn
-it on (see [adb setup](#adb-setup)). Daemon logs are written to `~/.codedroid/daemon.log`.
+`adb` tool. The host-side `adb` tool runs commands on this computer, within the limits in
+[adb setup](#adb-setup). Daemon logs are written to `~/.codedroid/daemon.log`.
 
 ## Development
 

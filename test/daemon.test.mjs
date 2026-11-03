@@ -102,7 +102,7 @@ try {
   // The phone's "echo" and the daemon's own codedroid_status; no adb with CODEDROID_MCP_ADB=0.
   assert.deepEqual(
     toolsA.tools.map((t) => t.name).sort(),
-    ["codedroid_devices", "codedroid_status", "echo"],
+    ["codedroid_devices", "codedroid_status", "echo", "install_apk"],
     "adb must not appear in tools/list when turned off",
   );
 
@@ -255,7 +255,7 @@ try {
   await daemon.close();
 }
 
-// ── Opt in and the daemon serves adb ──────────────────────────────────
+// ── By default the daemon serves adb ──────────────────────────────────
 // Separate daemon rather than a flag on the one above: the gate is a
 // construction-time decision, and this proves both sides of it.
 const armed = await startDaemon({
@@ -263,7 +263,6 @@ const armed = await startDaemon({
   pairings: () => [PAIRING],
   phoneTransportFactory: makeFakePhoneTransport,
   log: () => {},
-  enableAdbTool: true,
   home,
 });
 
@@ -273,7 +272,7 @@ try {
   const tools = await c.client.listTools();
   assert.deepEqual(
     tools.tools.map((t) => t.name).sort(),
-    ["adb", "codedroid_devices", "codedroid_status", "echo"],
+    ["adb", "codedroid_devices", "codedroid_status", "echo", "install_apk"],
     "the daemon merges the host-side adb tool into tools/list",
   );
 

@@ -69,8 +69,8 @@ Then try:
 - “Open my app, navigate to sign-in, and take a screenshot.”
 - “Install this APK, launch it, and check for crashes.”*
 
-*Installing APKs and using `adb` also requires turning the `adb` tool on, Android platform-tools,
-and a USB or wireless debugging connection. See [adb setup](docs/reference.md#adb-setup).
+*`install_apk` works over CodeDroid's connection, with [one setting to allow](docs/reference.md#installing-builds). Reading logs with `adb` also requires
+Android platform-tools and a USB or wireless debugging connection. See [adb setup](docs/reference.md#adb-setup).
 
 ## What it includes
 
@@ -81,7 +81,8 @@ and a USB or wireless debugging connection. See [adb setup](docs/reference.md#ad
   and `test-on-device` walks it through building, installing, and verifying an Android app change.
   `create-cujs` writes an app's critical user journeys as markdown files in its repo (`cujs/`),
   `create-tests` adds test cases to them, and `test-on-device` runs them on the phone.
-- **An optional `adb` tool**, off by default, that runs adb commands on your computer.
+- **`install_apk`** to install a build from your computer, with no cable or shared network.
+- **An `adb` tool** that runs adb commands on your computer, to read logs and run tests. You can [turn it off](docs/reference.md#adb-setup).
 
 ## Privacy and security
 
@@ -97,7 +98,7 @@ unless the pairing command shown on your phone names another:
 
 The local server listens on `127.0.0.1` only and requires a per-user token. Pairing credentials,
 the token, and logs stay in `~/.codedroid` on your computer. The `adb` tool runs only on your
-computer and is off unless you turn it on. The plugin collects no analytics. See
+computer, and its `push` and `pull` stay within your project and temp directories. The plugin collects no analytics. See
 [Architecture](docs/reference.md#architecture) for details.
 
 ## Need help?
