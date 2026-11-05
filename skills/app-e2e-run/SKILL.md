@@ -16,6 +16,8 @@ case beside it.
    user approved: ask first. Read it again after every pause.
 3. `adb` `logcat -c -b crash`, so crashes read later are from this run.
 4. Cases that run a CodeDroid task only with the user's OK for this run.
+5. Create `e2e/reports/<date>/` with your own file tools: `adb` pull cannot create a folder, so
+   every screenshot would fail without it.
 
 ## Each case
 

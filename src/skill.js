@@ -26,6 +26,9 @@ export const SKILLS = [
   "app-e2e-run",
 ];
 
+/** Skills earlier releases shipped and this one does not: an install removes its own old copies. */
+export const RETIRED_SKILLS = ["create-cujs", "create-tests"];
+
 export const SKILLS_SOURCE = fileURLToPath(new URL("../skills/", import.meta.url));
 
 export function skillSource(name) {
@@ -36,8 +39,18 @@ export function defaultSkillsDir({ codex = false } = {}) {
   return codex ? path.join(os.homedir(), ".codex", "skills") : path.join(os.homedir(), ".claude", "skills");
 }
 
-/** Copies every skill to <dir>/<name>/SKILL.md, overwriting older copies; returns the written paths. */
+/**
+ * Copies every skill to <dir>/<name>/SKILL.md, overwriting older copies, and removes the retired
+ * ones this package installed (a same-named skill of the user's own stays); returns the written paths.
+ */
 export function installSkills({ dir = defaultSkillsDir() } = {}) {
+  for (const name of RETIRED_SKILLS) {
+    const file = path.join(dir, name, "SKILL.md");
+    // Ours: every skill this package ships carries its don't-force-stop-CodeDroid rule.
+    if (fs.existsSync(file) && fs.readFileSync(file, "utf8").includes("com.codedroid.agent")) {
+      fs.rmSync(path.join(dir, name), { recursive: true, force: true });
+    }
+  }
   return SKILLS.map((name) => {
     const target = path.join(dir, name, "SKILL.md");
     fs.mkdirSync(path.dirname(target), { recursive: true });

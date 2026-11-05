@@ -54,4 +54,24 @@ try {
   fs.rmSync(dir, { recursive: true, force: true });
 }
 
+// An upgrade's install removes the skills a release retired, when they are this package's own copies:
+// left behind, an old create-cujs would still load and point agents at steps that are gone.
+const upgraded = fs.mkdtempSync(path.join(os.tmpdir(), "codedroid-skill-upgrade-"));
+try {
+  const seed = (name, body) => {
+    fs.mkdirSync(path.join(upgraded, name), { recursive: true });
+    fs.writeFileSync(path.join(upgraded, name, "SKILL.md"), body);
+  };
+  seed("create-cujs", "---\nname: create-cujs\ndescription: old\n---\nNever force-stop com.codedroid.agent.\n");
+  seed("create-tests", "---\nname: create-tests\ndescription: the user's own\n---\nNothing of CodeDroid's.\n");
+  seed("my-skill", "---\nname: my-skill\ndescription: unrelated\n---\ncom.codedroid.agent\n");
+  installSkills({ dir: upgraded });
+  assert.ok(!fs.existsSync(path.join(upgraded, "create-cujs")), "a retired skill of ours is removed");
+  assert.ok(fs.existsSync(path.join(upgraded, "create-tests", "SKILL.md")), "a same-named skill that is not ours stays");
+  assert.ok(fs.existsSync(path.join(upgraded, "my-skill", "SKILL.md")), "other skills stay");
+  for (const name of SKILLS) assert.ok(fs.existsSync(path.join(upgraded, name, "SKILL.md")), name);
+} finally {
+  fs.rmSync(upgraded, { recursive: true, force: true });
+}
+
 console.log("skill.test.mjs: ALL PASS");
