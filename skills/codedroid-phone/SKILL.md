@@ -59,7 +59,7 @@ offline doesn't affect the others.
 | `wait_for` | Until `text` shows, `gone_text` goes, or `package` is in front, up to `timeout_ms` (30 s). Use it instead of sleeping |
 | `clipboard` | Read it, or set it with `text` |
 | `device_info` | Model, Android version, Android user, screen, locked, CodeDroid ready and signed in |
-| `run_task`, `get_task`, `cancel_task` | Hand CodeDroid's own phone agent a whole goal (below) |
+| `run_task`, `get_task`, `answer_task`, `cancel_task` | Hand CodeDroid's own phone agent a whole goal (below) |
 | `install_apk` | Install an APK from this computer, with no cable or shared network |
 | `adb` | This computer's adb, when the phone is on USB or Wireless debugging |
 
@@ -73,6 +73,9 @@ Lovelace with 555-0100", "turn on dark theme in Settings"). It returns a `task_i
 - Use it for setup and checks in other apps around the app you are testing. Drive the app under
   test yourself, step by step, so you see each screen.
 - While it runs, acting tools answer `busy`. `cancel_task` stops it.
+- When `get_task` shows a `question`, the task waits for the user. Reply with `answer_task`
+  (`task_id`, `text`); nobody can answer it on the phone. Ask the user first when the answer is
+  theirs to give, such as deleting or sending.
 - When it ends, CodeDroid comes back to the front: `open_app` your app before acting again.
 - It needs CodeDroid signed in on the phone, and it uses the user's CodeDroid account.
 
