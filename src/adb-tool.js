@@ -200,7 +200,7 @@ const INSTRUCTIONS =
   "You also have `adb`: this computer's adb, for the phone when it is on USB or Wireless debugging. Use " +
   "it to read logs (logcat -d), inspect state (dumpsys), start activities, and run instrumentation " +
   "tests; use install_apk to install builds and CodeDroid's tools to see and drive the screen. Never force-stop or " +
-  "instrument com.codedroid.app.";
+  "instrument com.codedroid.agent.";
 
 /** The tool's full guidance: read right before calling it. */
 const DESCRIPTION = `
@@ -214,7 +214,7 @@ USEFUL:
 
 RULES:
 - On a phone with several users, \`settings\`, \`content\`, \`pm grant\` and \`appops\` need \`--user $(adb shell am get-current-user)\`; adb defaults to user 0.
-- Do not force-stop, clear or instrument com.codedroid.app: it switches CodeDroid's accessibility off and its tools stop working.
+- Do not force-stop, clear or instrument com.codedroid.agent: it switches CodeDroid's accessibility off and its tools stop working.
 - \`uiautomator dump\` and UiAutomator-based tests suspend CodeDroid's accessibility while they run; use get_screen to read the screen.
 - Never stream: \`logcat\` without \`-d\`, \`screenrecord\` without \`--time-limit\` run until timeout_s.
 - Ask the user before uninstalling, clearing data, rebooting or deleting files.

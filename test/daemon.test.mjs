@@ -290,7 +290,7 @@ try {
     "the phone's instructions must come first and stay unedited",
   );
   assert.match(armedInstructions, /`adb`/, "adb guidance must reach the client");
-  assert.match(armedInstructions, /com\.codedroid\.app/, "agents must be told not to force-stop CodeDroid");
+  assert.match(armedInstructions, /com\.codedroid\.agent/, "agents must be told not to force-stop CodeDroid");
   const appendedBytes =
     Buffer.byteLength(armedInstructions, "utf8") - Buffer.byteLength(FAKE_INSTRUCTIONS, "utf8");
   assert.ok(

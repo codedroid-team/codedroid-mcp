@@ -62,5 +62,5 @@ could not reach, a PRD goal with no code yet).
 
 ## Never
 
-- Force-stop, clear or uninstall com.codedroid.app: it switches CodeDroid off.
+- Force-stop, clear or uninstall com.codedroid.agent: it switches CodeDroid off.
 - Write passwords, card numbers or other secrets into a file.

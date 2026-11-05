@@ -95,7 +95,7 @@ try {
   );
   assert.match(
     instructions,
-    /com\.codedroid\.app/,
+    /com\.codedroid\.agent/,
     "the do-not-force-stop-CodeDroid rule must survive both hops",
   );
 

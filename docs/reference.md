@@ -233,7 +233,7 @@ connection problem.
 | Daemon needs an authentication upgrade | Run `npx -y @codedroid/mcp stop` (with `--port=<n>` for a custom port), then reconnect. |
 | `Unauthorized: send this user's daemon token` | Update the client (`npx -y @codedroid/mcp@latest`). An HTTP client must send the token in `~/.codedroid/daemon-token`. |
 
-Force-stopping or running instrumentation against `com.codedroid.app` disables its accessibility
+Force-stopping or running instrumentation against `com.codedroid.agent` disables its accessibility
 service. Re-enable it in Android Accessibility settings afterward. Clearing the app's data also
 signs it out. UiAutomator tests and `uiautomator dump` temporarily suspend CodeDroid's
 accessibility access while they run.
@@ -277,7 +277,7 @@ fixture used by the skill tests. Install the package's npm dependencies before r
 contract tests from `CodeDroid-app/`:
 
 ```bash
-./gradlew :app:testDebugUnitTest --tests 'com.codedroid.app.mcp.*'
+./gradlew :app:testDebugUnitTest --tests 'com.codedroid.agent.mcp.*'
 ```
 
 These tests export `test/fixtures/phone-tools.json` and run `test/phone-contract.mjs` against

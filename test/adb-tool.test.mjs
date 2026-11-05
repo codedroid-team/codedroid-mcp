@@ -171,8 +171,8 @@ for (const command of ["-s OTHER logcat -d", "-d shell ls", "-e devices"]) {
   const tool = createAdbTool({ env: {} });
   const bytes = Buffer.byteLength(tool.instructions, "utf8");
   assert.ok(bytes <= 400, `adb handshake line is ${bytes} bytes; budget is 400`);
-  assert.match(tool.instructions, /com\.codedroid\.app/, "the handshake line must carry the don't-force-stop rule");
-  assert.match(tool.definition.description, /com\.codedroid\.app/, "so must the description, where the detail lives");
+  assert.match(tool.instructions, /com\.codedroid\.agent/, "the handshake line must carry the don't-force-stop rule");
+  assert.match(tool.definition.description, /com\.codedroid\.agent/, "so must the description, where the detail lives");
   assert.equal(tool.definition.annotations.destructiveHint, true, "clients must ask before running adb");
 }
 
