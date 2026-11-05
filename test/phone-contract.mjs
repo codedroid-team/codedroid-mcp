@@ -78,7 +78,7 @@ try {
 
   // Handshake: the phone's rules first, adb's after, inside what Claude Code keeps.
   const instructions = client.getInstructions();
-  assert.ok(instructions.startsWith("CodeDroid drives a REAL Android phone"), instructions);
+  assert.ok(instructions.startsWith("CodeDroid drives a REAL Android device"), instructions);
   assert.ok(Buffer.byteLength(instructions) <= 2000, `instructions are ${Buffer.byteLength(instructions)} bytes`);
   assert.equal(client.getServerVersion().name, "codedroid (via daemon)");
 
@@ -126,7 +126,7 @@ try {
   const resources = (await client.listResources()).resources.map((r) => r.uri);
   assert.deepEqual(resources, ["codedroid://guide", "codedroid://device"]);
   const guide = await client.readResource({ uri: "codedroid://guide" });
-  assert.match(guide.contents[0].text, /^# Driving a phone with CodeDroid/);
+  assert.match(guide.contents[0].text, /^# Driving a device with CodeDroid/);
   await assert.rejects(client.readResource({ uri: "codedroid://nope" }), /No resource/);
 
   await client.ping();
