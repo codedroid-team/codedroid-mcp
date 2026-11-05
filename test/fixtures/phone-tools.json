@@ -8,7 +8,7 @@
       }}
     },
     "name": "get_screen",
-    "description": "The phone's screen as numbered elements (node), with the app in front and what has focus. Read it before tapping by node.",
+    "description": "The device's screen as numbered elements (node), with the app in front and what has focus. Read it before tapping by node.",
     "annotations": {
       "idempotentHint": true,
       "openWorldHint": false,
@@ -265,7 +265,7 @@
       "properties": {}
     },
     "name": "device_info",
-    "description": "The phone: model, Android version, user, screen, locked, and whether CodeDroid is set up and signed in.",
+    "description": "The device: model, Android version, user, screen, locked, and whether CodeDroid is set up and signed in.",
     "annotations": {
       "idempotentHint": true,
       "openWorldHint": false,
@@ -285,7 +285,7 @@
       "required": ["goal"]
     },
     "name": "run_task",
-    "description": "CodeDroid's own phone agent does goal on the phone, across apps, and replies. Returns task_id at once; wait with get_task.",
+    "description": "CodeDroid's own device agent does goal on the device, across apps, and replies. Returns task_id at once; wait with get_task.",
     "annotations": {
       "idempotentHint": false,
       "openWorldHint": false,
