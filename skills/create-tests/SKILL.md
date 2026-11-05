@@ -60,5 +60,5 @@ List the tests added, by CUJ file. Offer to run them with test-on-device.
 
 ## Never
 
-- Force-stop, clear or uninstall com.codedroid.app: it switches CodeDroid off.
+- Force-stop, clear or uninstall com.codedroid.agent: it switches CodeDroid off.
 - Write passwords, card numbers or other secrets into a test; say which test account to use instead.

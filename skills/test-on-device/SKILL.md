@@ -74,7 +74,7 @@ user names:
 3. Put the app in the Starts state before each test: `open_app`, then back to its first screen
    or sign in as Starts says (Back out of the app and `open_app` again is fine too). `open_app`
    resumes the app where it was, and some screens keep Back for themselves: if Back does not get
-   there, `adb` `shell am force-stop <package>` (the app under test, never com.codedroid.app)
+   there, `adb` `shell am force-stop <package>` (the app under test, never com.codedroid.agent)
    and `open_app` again. That keeps its data; don't clear the data to get there without asking.
    If Starts needs an account you have not been given, ask the user.
 4. Follow the Steps one at a time with `get_screen`, `tap`, `type_text`, `swipe`, `press_key` and
@@ -98,7 +98,7 @@ be reached), say so rather than guessing.
 
 ## Never
 
-- Force-stop, clear, uninstall or `am instrument` com.codedroid.app: it switches CodeDroid off.
+- Force-stop, clear, uninstall or `am instrument` com.codedroid.agent: it switches CodeDroid off.
 - Uninstall an app, clear its data, reboot or delete files without asking the user first.
 - Stream: `logcat` without `-d` and `screenrecord` without `--time-limit` run until the call
   times out.

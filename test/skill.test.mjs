@@ -33,7 +33,7 @@ for (const name of SKILLS) {
   for (const [, span] of source.matchAll(/`([a-z][a-z0-9]*(?:_[a-z0-9]+)+)`/g)) {
     assert.ok(tools.has(span) || params.has(span) || replyWords.has(span), `${name}: \`${span}\` is not a tool, a parameter or a reply field`);
   }
-  assert.match(source, /com\.codedroid\.app/, `${name}: carries the don't-force-stop-CodeDroid rule`);
+  assert.match(source, /com\.codedroid\.agent/, `${name}: carries the don't-force-stop-CodeDroid rule`);
 }
 
 // Every skill in skills/ is in SKILLS, so `skill install` copies it too.
