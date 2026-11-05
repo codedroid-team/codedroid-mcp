@@ -309,7 +309,7 @@
       "required": ["task_id"]
     },
     "name": "get_task",
-    "description": "Where a run_task task stands, waiting up to wait_s for it to finish: its steps, then its reply.",
+    "description": "Where a run_task task stands, waiting up to wait_s for it to finish: its steps, then its reply. question: what it asks the user; reply with answer_task.",
     "annotations": {
       "idempotentHint": true,
       "openWorldHint": false,
@@ -335,5 +335,28 @@
       "readOnlyHint": false
     },
     "title": "Stop a task"
+  },
+  {
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "task_id": {"type": "string"},
+        "text": {"type": "string"}
+      },
+      "required": [
+        "task_id",
+        "text"
+      ]
+    },
+    "name": "answer_task",
+    "description": "Say text to a running run_task task, as the user would: the answer to the question get_task shows. Ask the user anything that is theirs to decide.",
+    "annotations": {
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "title": "Answer a task",
+      "destructiveHint": false,
+      "readOnlyHint": false
+    },
+    "title": "Answer a task"
   }
 ]}
