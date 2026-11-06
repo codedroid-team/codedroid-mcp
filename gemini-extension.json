@@ -1,13 +1,13 @@
 {
   "name": "codedroid",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Drive your Android phone through CodeDroid, with MCP tools and device testing skills.",
   "mcpServers": {
     "codedroid": {
       "command": "npx",
       "args": [
         "-y",
-        "@codedroid/mcp@0.1.6"
+        "@codedroid/mcp@0.1.7"
       ]
     }
   }
