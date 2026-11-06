@@ -214,8 +214,9 @@ npx -y @codedroid/mcp stop
 ### Several phones
 
 Run `pair` on each phone to add it. Pairing another phone keeps the earlier ones. Pairing the same
-phone again replaces its old pairing. The running daemon picks up `pair` and `unpair` on its next
-request, so clients stay connected.
+phone again replaces its old pairing. Reinstalling CodeDroid or clearing its data gives the phone a
+new id, so its old pairing stays until you `unpair` it. The running daemon picks up `pair` and
+`unpair` on its next request, so clients stay connected.
 
 Every phone tool takes a `device` argument. It can be a phone's id, the start of its id, or its
 model or part of the model ("Pixel" for "Google Pixel 5"), as long as it names only one paired
@@ -238,6 +239,7 @@ connection problem.
 | --- | --- |
 | Computer is not paired, or pairing was removed | Create a new code in **Settings → Computers → Pair a computer** and run the displayed command. |
 | Phone is not connected | Open CodeDroid, check its internet connection and sign-in, and enable **Allow computers to connect**. |
+| A phone is listed twice, and one never connects | CodeDroid was reinstalled, so that pairing is old. Run `npx -y @codedroid/mcp unpair <id>` with the id from `status`. |
 | Connection is awaiting approval | Tap **Allow** on the phone. |
 | Connection was denied | Wait one minute, run `npx -y @codedroid/mcp connect`, then tap **Allow**. |
 | Connection was stopped on the phone | Wait one minute before reconnecting. |
@@ -262,7 +264,8 @@ All clients on a computer share a local daemon and its connection to each paired
 phone and daemon each open an outbound WebSocket to the CodeDroid server. The phone reconnects
 after a restart or network change. MCP screen interactions are serialized on each phone. If the
 daemon restarts, the stdio bridge opens a new session on its next request, so the MCP client
-doesn't need to reconnect.
+doesn't need to reconnect. A client newer than the running daemon replaces it, keeping `--no-adb`,
+so an upgrade reaches every client on the computer. A call in flight at that moment gets an error.
 
 Calls interrupted by a connection loss are not automatically replayed: an action may have
 completed before its response was lost. Read the screen before deciding whether to retry.
@@ -281,8 +284,13 @@ From the package directory:
 ```bash
 npm install
 npm test
-claude mcp add codedroid -- node "$PWD/src/index.js"
+claude mcp add -s local codedroid -- node "$PWD/src/index.js"
 ```
+
+Run a client from this repository with that local server. `.mcp.json` here is the plugin's, and
+`npx @codedroid/mcp` can't start inside this package: npm finds the package in the project itself
+and looks for a `codedroid-mcp` bin that was never linked, so the server exits with
+`command not found`. The plugin needs the file at the root, so it stays.
 
 The npm tests run without a phone, relay server, or adb. In the monorepo, the Android app's MCP
 JVM tests also verify the bridge against the app's server implementation and export the tool
