@@ -44,15 +44,19 @@ export function defaultSkillsDir({ codex = false } = {}) {
 }
 
 /**
- * Copies every skill to <dir>/<name>/SKILL.md, overwriting older copies, and removes the retired
- * ones this package installed (a same-named skill of the user's own stays); returns the written paths.
+ * Copies every skill to <dir>/<name>/SKILL.md, overwriting older copies, and removes the SKILL.md of
+ * each retired one this package installed (a same-named skill of the user's own, and any other file in
+ * its folder, stays); returns the written paths.
  */
 export function installSkills({ dir = defaultSkillsDir() } = {}) {
   for (const name of RETIRED_SKILLS) {
     const file = path.join(dir, name, "SKILL.md");
-    // Ours: every skill this package ships carries its don't-force-stop-CodeDroid rule.
-    if (fs.existsSync(file) && fs.readFileSync(file, "utf8").includes("com.codedroid.agent")) {
-      fs.rmSync(path.join(dir, name), { recursive: true, force: true });
+    // Ours: every skill this package shipped carries its don't-force-stop-CodeDroid rule, naming the
+    // app com.codedroid.app before 0.1.5 and com.codedroid.agent since.
+    if (fs.existsSync(file) && /com\.codedroid\.(app|agent)\b/.test(fs.readFileSync(file, "utf8"))) {
+      fs.rmSync(file);
+      // Only the file it wrote: anything else the user keeps there stays, and so does the folder.
+      if (fs.readdirSync(path.dirname(file)).length === 0) fs.rmdirSync(path.dirname(file));
     }
   }
   return SKILLS.map((name) => {

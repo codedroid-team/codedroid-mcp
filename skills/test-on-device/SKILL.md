@@ -66,7 +66,7 @@ while they run: call `codedroid_status` before using its tools again.
 
 An app's journeys and test cases, and running them all with a report, are the app-e2e skills'
 (`e2e/` in the app's repo). To check one change against them, run just the cases for the journeys
-it touches, as app-e2e-run says.
+it touches, as app-e2e-rerun's "The cases a change touches" says.
 
 ## 7. Report
 

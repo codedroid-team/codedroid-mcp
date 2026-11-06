@@ -17,7 +17,9 @@ or in the source is a guess.
 2. Behavior changed, not just wording? That may be a bug or a product decision: ask the user before
    rewriting the Expected lines to match what the app does now.
 3. Update the steps and Expected lines with the labels you saw, and `EXPLORE.md` with them.
-4. Run the case twice, as app-e2e-run does; it must pass both times.
+4. Run the case twice, as app-e2e-run does (its "Before the run" too), with its screenshots in a
+   folder of its own, `e2e/reports/<date>-maintain/`, so a full run's report of the same day stays
+   as it was; it must pass both times.
 
 ## A feature was added or removed
 

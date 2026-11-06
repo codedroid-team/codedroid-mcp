@@ -31,7 +31,9 @@ now and passes once fixed. Everything it creates is named `e2e-...` and removed 
 
 ## 4. Prove it red
 
-Run the case twice, as app-e2e-run does. It must fail both times, at the Expected line the bug
+Run the case twice, as app-e2e-run does (its "Before the run" too), with its screenshots and notes
+in a folder of its own, `e2e/reports/<date>-bug-<case>/`, so a full run's report of the same day
+stays as it was. It must fail both times, at the Expected line the bug
 breaks, with the evidence (screen text, screenshot, crash line). Failing elsewhere means the case
 is wrong: fix it and run again.
 
