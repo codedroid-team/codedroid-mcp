@@ -93,13 +93,20 @@ unless the pairing command shown on your phone names another:
 - **Pairing** sends the one-time code, your computer's name, and its OS (for example `darwin`),
   so the phone can show which computer is connected.
 - **Tool calls** are relayed between your agent and the phone: screen contents, screenshots, text
-  you ask it to type, clipboard reads and writes, and task progress. The phone asks you to
-  **Allow** a computer the first time, shows when one is in use, and can stop or revoke it.
+  you ask it to type, clipboard reads and writes, and task progress. Each call also names the MCP
+  client that made it and its version. The phone asks you to **Allow** a computer the first time,
+  shows when one is in use, and can stop or revoke it.
 
 The local server listens on `127.0.0.1` only and requires a per-user token. Pairing credentials,
 the token, and logs stay in `~/.codedroid` on your computer. The `adb` tool runs only on your
-computer, and its `push` and `pull` stay within your project and temp directories. The plugin collects no analytics. See
+computer, and its `push` and `pull` stay within your project and temp directories. See
 [Architecture](docs/reference.md#architecture) for details.
+
+The plugin itself collects no analytics. The CodeDroid app and server keep usage records under
+your CodeDroid account: pairing and connecting, whether a computer was allowed, and for each phone
+tool call its name, whether it worked and its error code, how long it took, the MCP client,
+session and versions involved, your computer's OS and a random id for it, and the task id of a
+`run_task`. Usage records never include tool arguments, screen contents, or text you type.
 
 ## Need help?
 

@@ -179,7 +179,7 @@ an HTTP client.
 | `CODEDROID_SERIAL` | Select an adb device when several are connected. `ANDROID_SERIAL` is also supported. |
 | `CODEDROID_MCP_PORT` | Set the local daemon port. Default: `4826`. |
 | `CODEDROID_MCP_ADB=0` | Leave out the host-side `adb` tool for this client (`--no-adb` does the same); with the `daemon` command, for every client. |
-| `CODEDROID_MCP_CLIENT` | Set the client name shown on the phone. |
+| `CODEDROID_MCP_CLIENT` | Set the client name shown on the phone. Usage records also use it for a call that names no client. |
 | `ADB` | Set the path to the adb executable. Otherwise it is looked for on `PATH`, in `ANDROID_HOME`, `ANDROID_SDK_ROOT`, and the usual install locations. |
 | `CODEDROID_DEBUG=1` | Include stack traces in diagnostic output. |
 

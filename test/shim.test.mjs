@@ -21,8 +21,10 @@ import {
   CallToolRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { startDaemon } from "../src/daemon.js";
+import { CLIENT_INFO_META_KEY, SESSION_META_KEY } from "../src/proxy-core.js";
 
 const FAKE_INSTRUCTIONS = "FAKE PHONE INSTRUCTIONS";
+let lastCallMeta;
 
 function makeFakePhoneTransport() {
   const phone = new Server(
@@ -43,6 +45,7 @@ function makeFakePhoneTransport() {
     ],
   }));
   phone.setRequestHandler(CallToolRequestSchema, async (req) => {
+    lastCallMeta = req.params._meta;
     if (req.params.name === "get_task") await new Promise((resolve) => setTimeout(resolve, 300));
     return { content: [{ type: "text", text: `echo: ${req.params.arguments?.text}` }] };
   });
@@ -111,6 +114,9 @@ try {
     arguments: { text: "via-shim" },
   });
   assert.equal(result.content[0].text, "echo: via-shim");
+  assert.equal(lastCallMeta[CLIENT_INFO_META_KEY].name, "shim-test-client", "the phone hears of the shim's client, past both proxies");
+  assert.equal(lastCallMeta[CLIENT_INFO_META_KEY].version, "0.0.1");
+  assert.match(lastCallMeta[SESSION_META_KEY], /^ses_/);
 
   const order = [];
   await Promise.all([

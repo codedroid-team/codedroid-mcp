@@ -13,7 +13,7 @@ import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { buildProxyServer } from "./proxy-core.js";
+import { buildProxyServer, SHIM_CLIENT_NAME } from "./proxy-core.js";
 import { DEFAULT_PORT, DAEMON_AUTHENTICATION } from "./daemon.js";
 import { daemonTransport } from "./daemon-transport.js";
 import { readDaemonToken } from "./host.js";
@@ -157,7 +157,7 @@ export async function runStdioShim({
   let server;
   const connectDaemon = async () => {
     await ensureDaemonRunning(port, log, { enableAdbTool });
-    const next = new Client({ name: "codedroid-mcp-shim", version: VERSION });
+    const next = new Client({ name: SHIM_CLIENT_NAME, version: VERSION });
     // Pass phone/daemon notifications through to the IDE.
     next.fallbackNotificationHandler = async (notification) => {
       try {

@@ -14,6 +14,7 @@
  * so downstream agents get the same tool context at handshake as a direct
  * connection would give them.
  */
+import { randomUUID } from "crypto";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import {
   ListToolsRequestSchema,
@@ -54,6 +55,17 @@ export const UNQUEUED_TOOLS = new Set([
   "install_commit",
   "install_status",
 ]);
+
+/**
+ * In a tool call's _meta, whose it is: one relay link serves every MCP client on a computer, so only
+ * the call can say. {name, version} under MCP's own key, and a session that is that client's alone.
+ */
+export const CLIENT_INFO_META_KEY = "io.modelcontextprotocol/clientInfo";
+export const SESSION_META_KEY = "com.codedroid/session";
+/** The stdio shim as a client of the daemon: it forwards for the real client, and is not one. */
+export const SHIM_CLIENT_NAME = "codedroid-mcp-shim";
+/** One long-lived client serves many chats: a call after this long idle starts a new session. */
+const SESSION_IDLE_MS = 30 * 60_000;
 
 /** The request never reached the phone: the link was already down when it was sent. */
 const NEVER_SENT = /not open|not connected/i;
@@ -169,6 +181,18 @@ export async function buildProxyServer({
   if (backendCaps.completions) capabilities.completions = backendCaps.completions;
 
   const server = new Server({ name, version }, { capabilities, instructions });
+  const clientInfo = () => {
+    const { name, version } = server.getClientVersion() ?? {};
+    return name && name !== SHIM_CLIENT_NAME ? { name, version } : undefined;
+  };
+  let session;
+  let lastCallAt = 0;
+  const currentSession = () => {
+    const now = Date.now();
+    if (now - lastCallAt >= SESSION_IDLE_MS) session = `ses_${randomUUID()}`;
+    lastCallAt = now;
+    return session;
+  };
 
   const forward = (requestSchema, resultSchema, options = {}) => {
     server.setRequestHandler(requestSchema, async (request) => {
@@ -238,6 +262,15 @@ export async function buildProxyServer({
       const local = localToolsByName.get(request.params.name);
       if (local) return local.handler(request.params.arguments ?? {});
 
+      // The first proxy a call passes is the one its real client connected to: a later one keeps its stamp.
+      const params = {
+        ...request.params,
+        _meta: {
+          [CLIENT_INFO_META_KEY]: clientInfo(),
+          [SESSION_META_KEY]: currentSession(),
+          ...request.params._meta,
+        },
+      };
       // A failure comes back as a tool error, not a protocol one, so the model reads why. Only a
       // call that never left is tried again: a tap whose answer was lost still happened, and
       // replaying it is worse than saying so.
@@ -249,7 +282,7 @@ export async function buildProxyServer({
           return { unreachable: e };
         }
         return client.request(
-          { method: request.method, params: request.params },
+          { method: request.method, params },
           CallToolResultSchema,
           { timeout: CALL_TOOL_TIMEOUT_MS, resetTimeoutOnProgress: true },
         );
