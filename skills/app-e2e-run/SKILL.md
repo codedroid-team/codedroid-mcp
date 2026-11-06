@@ -11,7 +11,8 @@ case beside it.
 ## Before the run
 
 1. `codedroid_status`, `device_info`: connected, unlocked, CodeDroid ready, signed in, no task
-   running. Not ready: tell the user; pairing and sign-in are theirs.
+   running. Not ready: tell the user; pairing and sign-in are theirs. Locked behind a PIN, pattern or
+   password: ask the user to unlock it, and never type it yourself.
 2. Read the installed build (`adb` `shell dumpsys package <package>`). Different from the one the
    user approved: ask first. Read it again after every pause.
 3. `adb` `logcat -c -b crash`, so crashes read later are from this run.
@@ -28,14 +29,22 @@ case beside it.
    reading `after` each time. A step you cannot do as written fails the case: stop there.
 3. While a step runs CodeDroid's own agent (`run_task`), poll `get_task`; when it shows a
    `question`, answer with `answer_task` as the case says, or ask the user if the case does not.
-4. Check each Expected line on `get_screen`, or `take_screenshot` for anything visual.
-5. Save the end state, pass or fail: `adb` `shell screencap -p /sdcard/e2e-shot.png`, then `adb`
+   A task started from the composer keeps acting tools `busy`, so its steps tap with `adb` `shell
+   input tap`: check in the same command that CodeDroid is in front, e.g. `shell dumpsys window |
+   grep "mCurrentFocus=.*<package>" >/dev/null && input tap <x> <y>` (`grep -q` makes dumpsys
+   print a harmless "Broken pipe"), with the position from a `get_screen`
+   read just before. The agent can switch apps between your read and your tap, and a tap that lands
+   in another app does something real there.
+4. Hide the keyboard (`press_key` back) only when `after` says it is up: Back with no keyboard
+   leaves the screen. It covers the tab bar, so hide it before tapping a tab.
+5. Check each Expected line on `get_screen`, or `take_screenshot` for anything visual.
+6. Save the end state, pass or fail: `adb` `shell screencap -p /sdcard/e2e-shot.png`, then `adb`
    `pull /sdcard/e2e-shot.png <absolute path of the report folder>/<case>.png`. Use the absolute path
    of the folder you write REPORT.md in: `adb` resolves a relative one from the folder its server was
    started in, which can be another checkout (a git worktree's main repo). If `adb` refuses the path
    as outside the project, pull into the temp directory and move the file with your file tools.
    Without adb, describe the screen.
-6. Run the cleanup even after a failure, then `adb` `logcat -d -b crash`: a new line for the app
+7. Run the cleanup even after a failure, then `adb` `logcat -d -b crash`: a new line for the app
    fails the case.
 
 ## Each failure: read before you judge
