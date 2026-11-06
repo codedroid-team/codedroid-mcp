@@ -20,7 +20,7 @@ const local = [createAdbTool({ env: {} }).definition, createDevicesTool({}).defi
 const tools = new Set([...phone, ...local].map((t) => t.name));
 const params = new Set([...phone, ...local].flatMap((t) => Object.keys(t.inputSchema.properties ?? {})));
 // What the phone's replies carry: error codes and the `after` observation.
-const replyWords = new Set(["stale_node", "not_found", "needs_setup", "bad_args", "screen_changed"]);
+const replyWords = new Set(["stale_node", "not_found", "needs_setup", "bad_args", "screen_changed", "at_end", "not_confirmed"]);
 
 for (const name of SKILLS) {
   const source = fs.readFileSync(skillSource(name), "utf8");

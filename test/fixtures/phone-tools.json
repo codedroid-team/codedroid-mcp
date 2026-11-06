@@ -2,13 +2,19 @@
   {
     "inputSchema": {
       "type": "object",
-      "properties": {"screenshot": {
-        "description": "Also return a screenshot",
-        "type": "boolean"
-      }}
+      "properties": {
+        "query": {
+          "description": "Only elements whose text, description, hint or id contains this",
+          "type": "string"
+        },
+        "screenshot": {
+          "description": "Also return a screenshot",
+          "type": "boolean"
+        }
+      }
     },
     "name": "get_screen",
-    "description": "The device's screen as numbered elements (node), with the app in front and what has focus. Read it before tapping by node.",
+    "description": "The device's screen as numbered elements (node), with the app in front and what has focus. Read it before tapping by node. query lists only the elements that mention it.",
     "annotations": {
       "idempotentHint": true,
       "openWorldHint": false,
@@ -117,7 +123,7 @@
       ]
     },
     "name": "swipe",
-    "description": "Swipe from x1,y1 to x2,y2 in screen pixels; also how to scroll (swipe up to scroll down).",
+    "description": "Swipe from x1,y1 to x2,y2 in screen pixels, for gestures scroll does not cover.",
     "annotations": {
       "idempotentHint": false,
       "openWorldHint": false,
@@ -126,6 +132,76 @@
       "readOnlyHint": false
     },
     "title": "Swipe"
+  },
+  {
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "node": {
+          "description": "Number from the last get_screen",
+          "type": "integer"
+        },
+        "resource_id": {"type": "string"},
+        "text": {
+          "description": "Visible text or label",
+          "type": "string"
+        },
+        "direction": {
+          "description": "Where the content you want lies",
+          "type": "string",
+          "enum": [
+            "up",
+            "down",
+            "left",
+            "right"
+          ]
+        },
+        "content_description": {"type": "string"}
+      },
+      "required": ["direction"]
+    },
+    "name": "scroll",
+    "description": "Scroll toward direction by half a page: the list an element names (same selectors as tap, without x,y), or the largest on screen. Returns new, what came into view, and at_end when nothing moved.",
+    "annotations": {
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "title": "Scroll",
+      "destructiveHint": false,
+      "readOnlyHint": false
+    },
+    "title": "Scroll"
+  },
+  {
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "node": {
+          "description": "Number from the last get_screen",
+          "type": "integer"
+        },
+        "resource_id": {"type": "string"},
+        "checked": {"type": "boolean"},
+        "text": {
+          "description": "Visible text or label",
+          "type": "string"
+        },
+        "value": {
+          "description": "The field's whole new text",
+          "type": "string"
+        },
+        "content_description": {"type": "string"}
+      }
+    },
+    "name": "set_value",
+    "description": "Set a switch or checkbox (checked) or a text field (value) to this and confirm it by reading it back. Finds the control by the element or the label beside it. Already so: touches nothing, safe to repeat.",
+    "annotations": {
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "title": "Set a value",
+      "destructiveHint": false,
+      "readOnlyHint": false
+    },
+    "title": "Set a value"
   },
   {
     "inputSchema": {
@@ -198,6 +274,32 @@
       "readOnlyHint": false
     },
     "title": "Open an app"
+  },
+  {
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "package": {
+          "description": "The app that must open it",
+          "type": "string"
+        },
+        "uri": {
+          "description": "The whole link, with its scheme",
+          "type": "string"
+        }
+      },
+      "required": ["uri"]
+    },
+    "name": "open_uri",
+    "description": "Open a web address or an app's deep link, by whichever app handles it, or by package. Refuses intent:, file:, content: and the like.",
+    "annotations": {
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "title": "Open a link",
+      "destructiveHint": false,
+      "readOnlyHint": false
+    },
+    "title": "Open a link"
   },
   {
     "inputSchema": {

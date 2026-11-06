@@ -6,21 +6,24 @@
 
 The agent can interact with the phone one step at a time or use `run_task` to delegate a goal
 to CodeDroid's agent. `run_task` returns a task ID. Use `get_task` to wait for completion and
-read progress, or `cancel_task` to stop the task.
+read progress, `answer_task` to reply when it asks a question, or `cancel_task` to stop the task.
 
 | Tool | Description |
 | --- | --- |
-| `get_screen` | Read the current app and screen as numbered accessibility elements; optionally include a screenshot. |
+| `get_screen` | Read the current app and screen as numbered accessibility elements; optionally only those mentioning a `query`, or with a screenshot. |
 | `take_screenshot` | Capture a JPEG screenshot. |
 | `tap`, `long_press` | Interact with an element by node, text, resource ID, content description, or screen coordinates. |
 | `type_text` | Enter text in the focused field; optionally clear it first or press Enter afterward. |
-| `swipe` | Swipe or scroll between screen coordinates. |
+| `scroll` | Scroll a list by half a page in a direction, and see what came into view or that it is at its end. |
+| `set_value` | Set a switch, checkbox, or text field to a value and confirm it by reading it back. Does nothing if it is already so. |
+| `swipe` | Swipe between screen coordinates. |
 | `press_key` | Press Back, Home, Enter, or Recents. |
 | `open_app`, `list_apps` | Launch an app by package name or list installed apps. |
+| `open_uri` | Open a web address or deep link, optionally in a named app. `intent:`, `file:`, `content:`, `javascript:`, `data:`, and `android-app:` links are refused. |
 | `wait_for` | Wait for text to appear or disappear, or for an app to open. |
 | `clipboard` | Read or update the clipboard. |
 | `device_info` | Inspect the device model, Android version, user, screen, lock state, and CodeDroid readiness. |
-| `run_task`, `get_task`, `cancel_task` | Start, monitor, or cancel a task run by CodeDroid's agent. |
+| `run_task`, `get_task`, `answer_task`, `cancel_task` | Start, monitor, answer, or cancel a task run by CodeDroid's agent. |
 | `install_apk` | Install an APK from this computer through CodeDroid's connection, with no cable or shared network. |
 | `adb` | Run local adb commands against the phone attached to this computer. Turn off with `--no-adb` or `CODEDROID_MCP_ADB=0`. |
 | `codedroid_devices` | List the paired phones (id, model, server) and whether each is connected, without connecting. |

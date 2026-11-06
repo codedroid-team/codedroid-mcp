@@ -84,7 +84,7 @@ try {
 
   const tools = (await client.listTools()).tools;
   const names = tools.map((t) => t.name);
-  for (const name of ["get_screen", "tap", "type_text", "swipe", "run_task", "get_task", "adb", "codedroid_devices", "codedroid_status"]) {
+  for (const name of ["get_screen", "tap", "scroll", "set_value", "open_uri", "type_text", "swipe", "run_task", "get_task", "adb", "codedroid_devices", "codedroid_status"]) {
     assert.ok(names.includes(name), `tools/list lacks ${name}: ${names}`);
   }
   assert.equal(tools.find((t) => t.name === "get_screen").annotations.readOnlyHint, true);
@@ -97,6 +97,16 @@ try {
   const withShot = await client.callTool({ name: "get_screen", arguments: { screenshot: true } });
   assert.equal(withShot.content[1].type, "image");
   assert.equal(withShot.content[1].mimeType, "image/jpeg");
+  const narrowed = text(await client.callTool({ name: "get_screen", arguments: { query: "display" } }));
+  assert.match(narrowed, /\[3\] TextView "Display"/);
+  assert.doesNotMatch(narrowed, /Sound/);
+
+  // Scrolling, setting a value and opening a link, before the tap below changes the screen.
+  const scrolled = JSON.parse(text(await client.callTool({ name: "scroll", arguments: { direction: "down" } })).split("\n").at(-1)).after;
+  assert.equal(scrolled.at_end, true);
+  assert.deepEqual(scrolled.new, []);
+  assert.equal(errorOf(await client.callTool({ name: "set_value", arguments: { text: "Display", checked: true } })).error, "not_found");
+  assert.equal(errorOf(await client.callTool({ name: "open_uri", arguments: { uri: "file:///sdcard/a" } })).error, "bad_args");
 
   // Acting, and what it says changed.
   const tapped = await client.callTool({ name: "tap", arguments: { node: 3 } });

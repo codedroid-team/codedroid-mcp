@@ -35,10 +35,10 @@ several users (a Googlebook runs as user 10), adb's `settings`, `content`, `pm g
 ## 3. Open it and drive the change
 
 1. `open_app` with the package, or `adb` `shell am start -W -n <package>/<activity>`. For a deep
-   link: `shell am start -W -a android.intent.action.VIEW -d "<uri>" <package>`.
+   link: `open_uri` with the link and `package`.
 2. `wait_for` text on the first screen, rather than sleeping.
-3. Walk to the changed screen with `get_screen` and `tap` / `type_text` / `swipe`, reading
-   `after` each time.
+3. Walk to the changed screen with `get_screen` and `tap` / `scroll` / `set_value` / `type_text`,
+   reading `after` each time.
 4. Check what the change should show: the text and state in `get_screen` (a switch is `checked`
    or `unchecked`, a field shows its text), and `take_screenshot` for anything visual.
 5. Try the edges the change touches: empty input, rotation (`adb` `shell settings put system
@@ -77,7 +77,7 @@ user names:
    there, `adb` `shell am force-stop <package>` (the app under test, never com.codedroid.agent)
    and `open_app` again. That keeps its data; don't clear the data to get there without asking.
    If Starts needs an account you have not been given, ask the user.
-4. Follow the Steps one at a time with `get_screen`, `tap`, `type_text`, `swipe`, `press_key` and
+4. Follow the Steps one at a time with `get_screen`, `tap`, `scroll`, `set_value`, `type_text`, `press_key` and
    `wait_for`, as section 3 does. A step you cannot do as written (the button is not there, the
    screen differs) fails the test: stop it there and say which step. Before a step that would
    send, buy, post or delete for real, ask the user, every time, even though the test says to; if
