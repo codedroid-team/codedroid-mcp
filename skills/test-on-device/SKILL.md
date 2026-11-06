@@ -1,6 +1,6 @@
 ---
 name: test-on-device
-description: Verify an Android app change on the user's real Android phone - build, install, open, drive the changed screens with CodeDroid, check logcat for crashes, run instrumentation tests, run the app's CUJ test cases from cujs/, and report what was seen. Use after changing Android app code, when asked to test, reproduce or verify something on a device, to run an app's CUJs or test cases, or before saying an Android change works.
+description: Verify an Android app change on the user's real Android phone - build, install, open, drive the changed screens with CodeDroid, check logcat for crashes, run instrumentation tests, and report what was seen. Use after changing Android app code, when asked to test, reproduce or verify something on a device, or before saying an Android change works. For an app's CUJs and test cases end to end, use app-e2e.
 ---
 
 # Testing an Android change on the phone
@@ -64,30 +64,9 @@ while they run: call `codedroid_status` before using its tools again.
 
 ## 6. CUJ test cases
 
-The app's journeys and their tests are markdown files in its repo, `cujs/` unless the user says
-otherwise (the create-cujs and create-tests skills write them). To run them, all or the ones the
-user names:
-
-1. Read the CUJ file: its Starts line is where every test begins, and each `###` under
-   `## Tests` is one test, with its Steps and Expected lines.
-2. `adb` `logcat -c` before the first test, so the crashes you read later are from this run.
-3. Put the app in the Starts state before each test: `open_app`, then back to its first screen
-   or sign in as Starts says (Back out of the app and `open_app` again is fine too). `open_app`
-   resumes the app where it was, and some screens keep Back for themselves: if Back does not get
-   there, `adb` `shell am force-stop <package>` (the app under test, never com.codedroid.agent)
-   and `open_app` again. That keeps its data; don't clear the data to get there without asking.
-   If Starts needs an account you have not been given, ask the user.
-4. Follow the Steps one at a time with `get_screen`, `tap`, `type_text`, `swipe`, `press_key` and
-   `wait_for`, as section 3 does. A step you cannot do as written (the button is not there, the
-   screen differs) fails the test: stop it there and say which step. Before a step that would
-   send, buy, post or delete for real, ask the user, every time, even though the test says to; if
-   they say no, report the test as not run.
-5. Check each Expected line against `get_screen`, or `take_screenshot` for anything visual. Each
-   line passes or fails on what you saw, not on what the steps should have done.
-6. Read the crash buffer after the run, as in section 4.
-
-Report each test as passed or failed, with the failing step or Expected line and what the screen
-showed. Leave the files as they are unless the user asks you to update a test that is out of date.
+An app's journeys and test cases, and running them all with a report, are the app-e2e skills'
+(`e2e/` in the app's repo). To check one change against them, run just the cases for the journeys
+it touches, as app-e2e-rerun's "The cases a change touches" says.
 
 ## 7. Report
 

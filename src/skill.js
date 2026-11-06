@@ -1,7 +1,9 @@
 /**
  * The agent skills that ship with this package: `codedroid-phone` (driving the phone through
  * CodeDroid), `test-on-device` (the developer loop: build, install, drive, check, report), and
- * `create-cujs` / `create-tests` (an app's journeys and test cases, as files in its repo).
+ * `app-e2e` with its five steps (explore, test PRD, CUJs, test cases, run and report: an app tested
+ * end to end, its documents in the app's repo under e2e/), and the everyday jobs on those files:
+ * `app-e2e-rerun` (some cases), `app-e2e-bug` (a case for a bug), `app-e2e-maintain` (keeping them current).
  *
  * - The Claude Code plugin (plugin/claude) carries them already; `skill install` is for using the
  *   MCP server without the plugin: Claude Code (~/.claude/skills), Codex (--codex: ~/.codex/skills),
@@ -14,7 +16,22 @@ import os from "os";
 import path from "path";
 import { fileURLToPath } from "url";
 
-export const SKILLS = ["codedroid-phone", "test-on-device", "create-cujs", "create-tests"];
+export const SKILLS = [
+  "codedroid-phone",
+  "test-on-device",
+  "app-e2e",
+  "app-e2e-explore",
+  "app-e2e-prd",
+  "app-e2e-cujs",
+  "app-e2e-testcases",
+  "app-e2e-run",
+  "app-e2e-rerun",
+  "app-e2e-bug",
+  "app-e2e-maintain",
+];
+
+/** Skills earlier releases shipped and this one does not: an install removes its own old copies. */
+export const RETIRED_SKILLS = ["create-cujs", "create-tests"];
 
 export const SKILLS_SOURCE = fileURLToPath(new URL("../skills/", import.meta.url));
 
@@ -26,8 +43,22 @@ export function defaultSkillsDir({ codex = false } = {}) {
   return codex ? path.join(os.homedir(), ".codex", "skills") : path.join(os.homedir(), ".claude", "skills");
 }
 
-/** Copies every skill to <dir>/<name>/SKILL.md, overwriting older copies; returns the written paths. */
+/**
+ * Copies every skill to <dir>/<name>/SKILL.md, overwriting older copies, and removes the SKILL.md of
+ * each retired one this package installed (a same-named skill of the user's own, and any other file in
+ * its folder, stays); returns the written paths.
+ */
 export function installSkills({ dir = defaultSkillsDir() } = {}) {
+  for (const name of RETIRED_SKILLS) {
+    const file = path.join(dir, name, "SKILL.md");
+    // Ours: every skill this package shipped carries its don't-force-stop-CodeDroid rule, naming the
+    // app com.codedroid.app before 0.1.5 and com.codedroid.agent since.
+    if (fs.existsSync(file) && /com\.codedroid\.(app|agent)\b/.test(fs.readFileSync(file, "utf8"))) {
+      fs.rmSync(file);
+      // Only the file it wrote: anything else the user keeps there stays, and so does the folder.
+      if (fs.readdirSync(path.dirname(file)).length === 0) fs.rmdirSync(path.dirname(file));
+    }
+  }
   return SKILLS.map((name) => {
     const target = path.join(dir, name, "SKILL.md");
     fs.mkdirSync(path.dirname(target), { recursive: true });
