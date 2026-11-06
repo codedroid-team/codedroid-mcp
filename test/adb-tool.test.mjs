@@ -546,6 +546,27 @@ const instrumented = (output) => createAdbTool({ run: makeRunner(() => ({ stdout
   assert.equal(result.isError, true);
   assert.match(result.content[0].text, /did not start[^]*Unable to find[^]*pm list instrumentation/);
 }
+// As a real device words it: the marker follows a prefix, and am exits 1.
+{
+  const name = "no.such.pkg/x.Runner";
+  const run = makeRunner(() => {
+    throw Object.assign(new Error(`Command failed: adb ${am}`), {
+      code: 1,
+      stdout: `onError: commandError=true message=INSTRUMENTATION_FAILED: ${name}\nINSTRUMENTATION_STATUS: Error=Unable to find instrumentation info for: ComponentInfo{${name}}\nINSTRUMENTATION_STATUS: id=ActivityManagerService\nINSTRUMENTATION_STATUS_CODE: -1\n`,
+      stderr: `android.util.AndroidException: INSTRUMENTATION_FAILED: ${name}\n\tat com.android.commands.am.Instrument.run(Instrument.java:534)\n`,
+    });
+  });
+  const result = await createAdbTool({ run, env: {} }).handler({ command: am });
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /^Instrumentation did not start\.[^]*Unable to find[^]*pm list instrumentation/);
+  assert.doesNotMatch(result.content[0].text, /did not finish/);
+}
+// A test's own stack can name the marker without the run having failed to start.
+{
+  const result = await instrumented([...statusBlock("a", 1), ...statusBlock("a", -2, "java.lang.Error: saw INSTRUMENTATION_FAILED: x\n\tat com.x.FooTest.a(FooTest.kt:1)"), "INSTRUMENTATION_CODE: -1"].join("\n"));
+  assert.equal(result.isError, undefined);
+  assert.match(result.content[0].text, /^Instrumentation finished: 1 test, 1 failed\./);
+}
 // Stopped at the timeout: says what ran, and why it ended.
 {
   const run = makeRunner(() => {
@@ -554,6 +575,7 @@ const instrumented = (output) => createAdbTool({ run: makeRunner(() => ({ stdout
   const result = await createAdbTool({ run, env: {} }).handler({ command: am, timeout_s: 2 });
   assert.equal(result.isError, true);
   assert.match(result.content[0].text, /did not finish[^]*Was running com\.x\.FooTest#b[^]*adb was stopped after 2s/);
+  assert.doesNotMatch(result.content[0].text, /Read the crash/, "a timeout is not a crash");
 }
 // A long stack is cut; other commands and runs without -r are left as they are.
 {
