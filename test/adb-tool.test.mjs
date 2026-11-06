@@ -105,7 +105,7 @@ for (const command of ["-s OTHER logcat -d", "-d shell ls", "-e devices"]) {
   const overflow = 500;
   const run = makeRunner(() => ({ stdout: "x".repeat(MAX_OUTPUT_CHARS + overflow), stderr: "" }));
   const tool = createAdbTool({ run, env: {} });
-  const result = await tool.handler({ command: "logcat -d" });
+  const result = await tool.handler({ command: "shell dumpsys" });
   const text = result.content[0].text;
   assert.ok(text.length < MAX_OUTPUT_CHARS + overflow, "must be shorter than the raw output");
   assert.match(text, /…\(truncated, \d+ more chars\)$/);
@@ -159,7 +159,7 @@ for (const command of ["-s OTHER logcat -d", "-d shell ls", "-e devices"]) {
     throw err;
   });
   const tool = createAdbTool({ run, env: {} });
-  const result = await tool.handler({ command: "logcat" });
+  const result = await tool.handler({ command: "shell dumpsys" });
   assert.equal(result.isError, true);
   assert.match(result.content[0].text, /…\(truncated, \d+ more chars\)$/);
 }
@@ -225,6 +225,16 @@ for (const command of [
   "-L tcp:10.0.0.5:5037 devices",
   "keygen /tmp/key",
   "nodaemon server",
+  "-a start-server",
+  "-a devices",
+  "start-server",
+  "--one-device X start-server",
+  "kill-server",
+  "attach",
+  "detach",
+  "sync",
+  "sync system",
+  "-s X sync",
 ]) {
   const run = makeRunner();
   const result = await createAdbTool({ run, env: {}, cwd: project }).handler({ command });
@@ -245,6 +255,8 @@ for (const command of [
   "backup -f a.ab -f b.ab -all",
   "shell cat /etc/hosts",
   "reverse tcp:8081 tcp:8081",
+  "pull -a /sdcard/x out/x",
+  "reconnect offline",
 ]) {
   const run = makeRunner();
   const result = await createAdbTool({ run, env: {}, cwd: project }).handler({ command });
@@ -360,6 +372,198 @@ for (const [stderr, hint] of [
   const run = makeRunner();
   await createAdbTool({ run, env: { CODEDROID_SERIAL: "ABC" } }).handler({ command: "-sOTHER shell ls" });
   assert.deepEqual(run.calls[0].args, ["-sOTHER", "shell", "ls"]);
+}
+
+// ── logcat keeps its newest lines, at a line boundary ───────────────────
+for (const command of ["logcat -d", "shell logcat -d | grep x"]) {
+  const lines = Array.from({ length: 5000 }, (_, i) => `line ${i} ${"x".repeat(20)}`).join("\n");
+  const run = makeRunner(() => ({ stdout: lines, stderr: "" }));
+  const { content: [{ text }] } = await createAdbTool({ run, env: {} }).handler({ command });
+  assert.match(text, /^…\(truncated, \d+ earlier chars\)\nline \d+ x+\n/, command);
+  assert.ok(text.endsWith("line 4999 " + "x".repeat(20)), command);
+  assert.ok(text.length <= MAX_OUTPUT_CHARS + 50, command);
+}
+// Past the buffer only the oldest output is left, and the reply must say so.
+{
+  const run = makeRunner(() => {
+    throw Object.assign(new Error("maxBuffer"), { code: "ERR_CHILD_PROCESS_STDIO_MAXBUFFER", stdout: "old\n", stderr: "" });
+  });
+  const result = await createAdbTool({ run, env: {} }).handler({ command: "logcat -d" });
+  assert.equal(result.isError, undefined);
+  assert.match(result.content[0].text, /newest lines are missing/);
+}
+
+// ── Binary output is never returned as damaged text ─────────────────────
+{
+  const run = makeRunner(() => ({ stdout: "�PNG\r\n\u001a\n\0\0\0\rIHDR", stderr: "" }));
+  const result = await createAdbTool({ run, env: {} }).handler({ command: "exec-out screencap -p" });
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /binary[^]*save_to/);
+  assert.ok(!result.content[0].text.includes("IHDR"));
+}
+
+// ── save_to writes stdout's exact bytes, within the same roots as pull ──
+{
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "codedroid-save-")));
+  const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0xff, 0x0d, 0x0a]);
+  const run = makeRunner(() => ({ stdout: bytes, stderr: Buffer.from("* daemon started successfully\n") }));
+  const tool = createAdbTool({ run, env: {}, cwd: dir });
+  const result = await tool.handler({ command: "exec-out screencap -p", save_to: "shots/a.png" });
+  assert.equal(result.isError, undefined);
+  assert.equal(result.content[0].text, `Saved 8 bytes to ${path.join(dir, "shots/a.png")}`);
+  assert.deepEqual(fs.readFileSync(path.join(dir, "shots/a.png")), bytes);
+  assert.equal(run.calls[0].opts.encoding, "buffer");
+
+  for (const [save_to, why] of [[path.join(os.homedir(), ".codedroid-save-test"), /can only use local files/], ["../../../../escape", /can only use local files/], ["", /must be a file path/], [7, /must be a file path/]]) {
+    const refusedRun = makeRunner();
+    const refused = await createAdbTool({ run: refusedRun, env: {}, cwd: dir }).handler({ command: "exec-out screencap -p", save_to });
+    assert.equal(refused.isError, true, String(save_to));
+    assert.match(refused.content[0].text, why);
+    assert.equal(refusedRun.calls.length, 0);
+  }
+  const relative = await createAdbTool({ run, env: {}, cwd: null }).handler({ command: "exec-out screencap -p", save_to: "a.png" });
+  assert.match(relative.content[0].text, /no project directory/);
+
+  // Nothing is written from a command that failed, wrote nothing, or wrote too much.
+  const empty = await createAdbTool({ run: makeRunner(() => ({ stdout: Buffer.alloc(0), stderr: Buffer.from("nope") })), env: {}, cwd: dir }).handler({ command: "exec-out x", save_to: "empty.bin" });
+  assert.equal(empty.isError, true);
+  assert.match(empty.content[0].text, /wrote nothing[^]*nope/);
+  const failed = await createAdbTool({
+    run: makeRunner(() => { throw Object.assign(new Error("Command failed"), { code: 1, stdout: bytes, stderr: Buffer.from("error: device offline") }); }),
+    env: {},
+    cwd: dir,
+  }).handler({ command: "exec-out x", save_to: "failed.bin" });
+  assert.equal(failed.isError, true);
+  assert.match(failed.content[0].text, /device offline[^]*reconnect/);
+  assert.ok(!failed.content[0].text.includes("PNG"));
+  const huge = await createAdbTool({
+    run: makeRunner(() => { throw Object.assign(new Error("maxBuffer"), { code: "ERR_CHILD_PROCESS_STDIO_MAXBUFFER", stdout: bytes, stderr: Buffer.alloc(0) }); }),
+    env: {},
+    cwd: dir,
+  }).handler({ command: "exec-out x", save_to: "huge.bin" });
+  assert.equal(huge.isError, true);
+  assert.match(huge.content[0].text, /nothing was saved/);
+  for (const name of ["empty.bin", "failed.bin", "huge.bin"]) assert.ok(!fs.existsSync(path.join(dir, name)), name);
+  fs.rmSync(dir, { recursive: true, force: true });
+}
+
+// ── device finds the paired phone's adb serial by its model ─────────────
+{
+  const phones = { select: (selector) => {
+    if (selector === "nope") throw new Error('No paired phone is "nope".');
+    return [{ pairing: { device: { model: selector === "Samsung" ? "samsung SM-S918B" : selector === "Twin" ? "Google Pixel 7" : selector === "Pro" ? "Google Pixel 9 Pro" : "Google Pixel 9" } } }];
+  } };
+  const listing = [
+    "List of devices attached",
+    "AAA device usb:1 product:tokay model:Pixel_9 device:tokay transport_id:1",
+    "BBB device usb:2 product:dm3q model:SM_S918B device:dm3q transport_id:2",
+    "CCC device product:panther model:Pixel_7 device:panther transport_id:3",
+    "DDD device product:panther model:Pixel_7 device:panther transport_id:4",
+    "EEE unauthorized usb:5 transport_id:5",
+  ].join("\n");
+  const makeTool = (env = {}) => {
+    const run = makeRunner((file, args) => (args[0] === "devices" ? { stdout: listing, stderr: "" } : { stdout: "ok", stderr: "" }));
+    return { run, tool: createAdbTool({ run, env, phones }) };
+  };
+  for (const [device, serial] of [["Pixel 9", "AAA"], ["Samsung", "BBB"]]) {
+    const { run, tool } = makeTool({ CODEDROID_SERIAL: "ENV" });
+    const result = await tool.handler({ command: "shell ls", device });
+    assert.equal(result.isError, undefined, device);
+    assert.deepEqual(run.calls.at(-1).args, ["-s", serial, "shell", "ls"], "device outranks CODEDROID_SERIAL");
+  }
+  {
+    const { run, tool } = makeTool();
+    await tool.handler({ command: "-s OTHER shell ls", device: "Pixel 9" });
+    assert.deepEqual(run.calls.map((c) => c.args), [["-s", "OTHER", "shell", "ls"]], "-s in the command wins, with no lookup");
+  }
+  for (const [device, why] of [["Twin", /Several devices[^]*-s <serial>[^]*CCC/], ["Pro", /Google Pixel 9 Pro is not on this computer's adb[^]*AAA/], ["nope", /No paired phone/]]) {
+    const { run, tool } = makeTool();
+    const result = await tool.handler({ command: "shell ls", device });
+    assert.equal(result.isError, true, device);
+    assert.match(result.content[0].text, why);
+    assert.ok(!run.calls.some((c) => c.args.includes("shell")), `${device}: must not run on a guessed phone`);
+  }
+  const lost = await createAdbTool({
+    run: makeRunner(() => ({ stdout: "List of devices attached\n\n", stderr: "" })),
+    env: {},
+    phones,
+  }).handler({ command: "shell ls", device: "Pixel 9" });
+  assert.match(lost.content[0].text, /\(none\)[^]*USB debugging/);
+}
+
+// ── am instrument: a summary of the run, whatever am exited with ────────
+const statusBlock = (test, code, stack) => [
+  `INSTRUMENTATION_STATUS: class=com.x.FooTest`,
+  `INSTRUMENTATION_STATUS: current=1`,
+  `INSTRUMENTATION_STATUS: numtests=4`,
+  ...(stack ? [`INSTRUMENTATION_STATUS: stack=${stack}`] : []),
+  `INSTRUMENTATION_STATUS: stream=`,
+  `INSTRUMENTATION_STATUS: test=${test}`,
+  `INSTRUMENTATION_STATUS_CODE: ${code}`,
+];
+const am = "shell am instrument -w -r com.x.test/androidx.test.runner.AndroidJUnitRunner";
+const instrumented = (output) => createAdbTool({ run: makeRunner(() => ({ stdout: output, stderr: "" })), env: {} }).handler({ command: am });
+{
+  const stack = "java.lang.AssertionError: boom\n\tat com.x.FooTest.b(FooTest.kt:9)\n\n";
+  const result = await instrumented([
+    ...statusBlock("a", 1), ...statusBlock("a", 0),
+    ...statusBlock("b", 1), ...statusBlock("b", -2, stack),
+    ...statusBlock("c", 1), ...statusBlock("c", -1, "java.lang.IllegalStateException: bad"),
+    ...statusBlock("d", -3),
+    "INSTRUMENTATION_RESULT: stream=", "", "Time: 1.5", "", "FAILURES!!!", "Tests run: 3,  Failures: 2", "",
+    "INSTRUMENTATION_CODE: -1",
+  ].join("\n"));
+  const text = result.content[0].text;
+  assert.equal(result.isError, undefined, "failed tests are a result, not a failed tool");
+  assert.match(text, /^Instrumentation finished: 4 tests, 1 passed, 1 errored, 1 failed, 1 ignored, in 1\.5s\./);
+  assert.match(text, /FAILED com\.x\.FooTest#b\njava\.lang\.AssertionError: boom\n\tat com\.x\.FooTest\.b\(FooTest\.kt:9\)/);
+  assert.match(text, /ERRORED com\.x\.FooTest#c\njava\.lang\.IllegalStateException: bad/);
+  assert.ok(!text.includes("INSTRUMENTATION_STATUS"), "the raw lines are gone");
+}
+{
+  const result = await instrumented([...statusBlock("a", 1), ...statusBlock("a", 0), "INSTRUMENTATION_CODE: -1"].join("\n"));
+  assert.equal(result.isError, undefined);
+  assert.match(result.content[0].text, /finished: 1 test, 1 passed\.$/);
+}
+// am exits 0 from a crash: it must not read as a pass.
+{
+  const result = await instrumented([
+    ...statusBlock("a", 1), ...statusBlock("a", 0), ...statusBlock("b", 1),
+    "INSTRUMENTATION_RESULT: shortMsg=Process crashed.",
+    "INSTRUMENTATION_RESULT: longMsg=java.lang.NullPointerException",
+    "INSTRUMENTATION_CODE: 0",
+  ].join("\n"));
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /did not finish: Process crashed\. 1 of 4 tests ended \(1 passed\)\.\nWas running com\.x\.FooTest#b\.\njava\.lang\.NullPointerException\n[^]*logcat -d -b crash/);
+}
+{
+  const result = await instrumented("INSTRUMENTATION_RESULT: stream=\n\nTime: 0\n\nOK (0 tests)\n\nINSTRUMENTATION_CODE: -1");
+  assert.equal(result.isError, true, "no tests ran: not a pass");
+  assert.match(result.content[0].text, /no tests ran[^]*OK \(0 tests\)/);
+}
+{
+  const result = await instrumented("INSTRUMENTATION_FAILED: com.x.test/androidx.test.runner.AndroidJUnitRunner\nINSTRUMENTATION_STATUS: Error=Unable to find instrumentation info\nINSTRUMENTATION_STATUS_CODE: -1");
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /did not start[^]*Unable to find[^]*pm list instrumentation/);
+}
+// Stopped at the timeout: says what ran, and why it ended.
+{
+  const run = makeRunner(() => {
+    throw Object.assign(new Error("killed"), { killed: true, signal: "SIGTERM", code: null, stderr: "", stdout: [...statusBlock("a", 1), ...statusBlock("a", 0), ...statusBlock("b", 1)].join("\n") });
+  });
+  const result = await createAdbTool({ run, env: {} }).handler({ command: am, timeout_s: 2 });
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /did not finish[^]*Was running com\.x\.FooTest#b[^]*adb was stopped after 2s/);
+}
+// A long stack is cut; other commands and runs without -r are left as they are.
+{
+  const stack = Array.from({ length: 200 }, (_, i) => `\tat frame${i}`).join("\n");
+  const { content: [{ text }] } = await instrumented([...statusBlock("a", 1), ...statusBlock("a", -2, `Boom\n${stack}`), "INSTRUMENTATION_CODE: -1"].join("\n"));
+  assert.match(text, /frame28\n…\(171 more lines\)$/);
+}
+for (const [command, output] of [[am, "com.x.FooTest:.\n\nTime: 1\n\nOK (1 test)"], ["shell cat log.txt", "INSTRUMENTATION_CODE: -1"], [`${am} | grep STATUS_CODE`, "INSTRUMENTATION_STATUS_CODE: 1"]]) {
+  const result = await createAdbTool({ run: makeRunner(() => ({ stdout: output, stderr: "" })), env: {} }).handler({ command });
+  assert.equal(result.content[0].text, output, command);
 }
 
 console.log("adb-tool.test.mjs: ALL PASS");

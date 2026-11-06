@@ -66,6 +66,9 @@ function checkedApk(file, cwd) {
   } catch (e) {
     throw new Error(`install_apk: cannot read ${resolved}: ${e.code ?? e.message}. Build it first.`);
   }
+  if (/\.(aab|apks)$/i.test(resolved)) {
+    throw new Error(`install_apk: ${resolved} is a bundle, and this takes one .apk. Build an APK (./gradlew assembleDebug), or make one with bundletool build-apks --mode=universal.`);
+  }
   if (!stat.isFile() || stat.size === 0 || !/\.apk$/i.test(resolved)) throw new Error(`install_apk: ${resolved} is not an APK file.`);
   return { file: resolved, size: stat.size };
 }

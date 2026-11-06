@@ -424,7 +424,7 @@ export async function startDaemon({
                 createStatusTool(phones),
                 createInstallTool({ phones, cwd: clientCwd(req), jobs: installJobs }),
                 ...(enableAdbTool && req.headers[CLIENT_ADB_HEADER] !== "off"
-                  ? [createAdbTool({ cwd: clientCwd(req) })]
+                  ? [createAdbTool({ cwd: clientCwd(req), phones })]
                   : []),
               ],
               connectWaitMs: CONNECT_WAIT_MS,
