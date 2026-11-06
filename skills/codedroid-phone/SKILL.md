@@ -1,6 +1,6 @@
 ---
 name: codedroid-phone
-description: Drive the user's real Android phone through CodeDroid's MCP tools (get_screen, tap, scroll, set_value, type_text, open_app, open_uri, wait_for, run_task, adb). Use whenever a task means seeing or doing something on the phone - checking a screen, tapping through an app, typing into a field, reading what an app shows, or handing CodeDroid a multi-step job on the phone.
+description: Drive the user's real Android phone through CodeDroid's MCP tools (get_screen, tap, type_text, swipe, open_app, wait_for, run_task, adb). Use whenever a task means seeing or doing something on the phone - checking a screen, tapping through an app, typing into a field, reading what an app shows, or handing CodeDroid a multi-step job on the phone.
 ---
 
 # Driving the phone with CodeDroid
@@ -49,25 +49,19 @@ offline doesn't affect the others.
 
 | Tool | Use |
 |---|---|
-| `get_screen` | The element list; `screenshot: true` adds a picture. `query` lists only the elements that mention it, which saves reading a long screen. Every read numbers the screen anew, so use the numbers of the latest one |
+| `get_screen` | The element list; `screenshot: true` adds a picture |
 | `take_screenshot` | A picture, for what the list cannot show: images, colours, layout, a game. A black one means the app blocks screenshots |
 | `tap`, `long_press` | By `node` / `text` / `resource_id` / `content_description`, or `x`, `y` |
-| `scroll` | `direction` is where the content you want lies: half a page of the largest list, or of the list an element names. `new` in `after` is what came into view, so you can tap it by text; `at_end` means nothing moved |
-| `set_value` | For a state rather than a press: `checked` sets a switch or checkbox, `value` a text field, by the element or the label beside it. It touches nothing if it is already so, and reads the result back. `not_confirmed` means it did not take, so look at the screen: a dialog may be asking |
 | `type_text` | Into the focused field: tap it first. `clear` (default true) replaces what is there, `submit` presses Enter after |
-| `swipe` | `x1`, `y1` to `x2`, `y2` in pixels, for gestures `scroll` does not cover |
+| `swipe` | `x1`, `y1` to `x2`, `y2` in pixels. To scroll down, swipe up: x at the centre, y from 75% to 25% of the height |
 | `press_key` | `back`, `home`, `enter` or `recents` |
 | `open_app` | By `package` (and optionally `activity`); `list_apps` finds the package by name |
-| `open_uri` | A web address or deep link, by the app that handles it, or by `package`; `app` in `after` says what took it. `intent:`, `file:` and `content:` links are refused |
 | `wait_for` | Until `text` shows, `gone_text` goes, or `package` is in front, up to `timeout_ms` (30 s). Use it instead of sleeping |
 | `clipboard` | Read it, or set it with `text` |
 | `device_info` | Model, Android version, Android user, screen, locked, CodeDroid ready and signed in |
 | `run_task`, `get_task`, `answer_task`, `cancel_task` | Hand CodeDroid's own phone agent a whole goal (below) |
 | `install_apk` | Install an APK from this computer, with no cable or shared network |
 | `adb` | This computer's adb, when the phone is on USB or Wireless debugging |
-
-A phone with an older CodeDroid may not list `scroll`, `set_value` or `open_uri`. Use `swipe` and `tap` then: to
-scroll down, swipe up with x at the centre and y from 75% to 25% of the height.
 
 ## Handing CodeDroid a task
 
