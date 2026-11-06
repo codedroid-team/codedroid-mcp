@@ -114,7 +114,13 @@ function copiedHostFiles(subcommand, rest) {
   // A leading dash does not stop `-/../x` being a path: adb takes it as one after `--`, and bugreport
   // and restore always do. Without a separator it stays in the directory, so is safe to skip as a flag.
   const isFlag = (word) => word.startsWith("-") && !/[/\\]/.test(word);
-  const words = rest.filter((word, i) => !isFlag(word) && !["-z", "-f"].includes(rest[i - 1]));
+  // After `--` every word is a path, even one that follows -z or looks like a flag.
+  const separator = rest.indexOf("--");
+  const options = separator < 0 ? rest : rest.slice(0, separator);
+  const words = [
+    ...options.filter((word, i) => !isFlag(word) && !["-z", "-f"].includes(options[i - 1])),
+    ...(separator < 0 ? [] : rest.slice(separator + 1)),
+  ];
   if (subcommand === "push") return words.slice(0, -1);
   if (subcommand === "pull") return [words.length > 1 ? words.at(-1) : "."];
   if (subcommand === "bugreport") return [words[0] ?? "."];
