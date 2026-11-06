@@ -15,7 +15,11 @@ The run is five steps, each its own skill. Run them in order and stop at the two
 | 4 | app-e2e-testcases | `e2e/TESTCASES.md` | **Gate 2: the user approves the cases, and any that run a CodeDroid task.** |
 | 5 | app-e2e-run | `e2e/reports/<date>/REPORT.md` and screenshots | report (below) |
 
-Load each step's skill when you reach it; this table is not the step. The codedroid-phone skill
+Load each step's skill when you reach it; this table is not the step.
+
+Once `e2e/` exists, the everyday jobs have their own skills: app-e2e-rerun (run some cases: by id,
+CUJ, priority, last failures, a change; a flaky check; two builds), app-e2e-bug (a case that
+reproduces a bug) and app-e2e-maintain (update cases after the app changes; coverage gaps). The codedroid-phone skill
 covers driving the phone; read it first if you have not.
 
 ## Where everything lives

@@ -2,7 +2,8 @@
  * The agent skills that ship with this package: `codedroid-phone` (driving the phone through
  * CodeDroid), `test-on-device` (the developer loop: build, install, drive, check, report), and
  * `app-e2e` with its five steps (explore, test PRD, CUJs, test cases, run and report: an app tested
- * end to end, its documents in the app's repo under e2e/).
+ * end to end, its documents in the app's repo under e2e/), and the everyday jobs on those files:
+ * `app-e2e-rerun` (some cases), `app-e2e-bug` (a case for a bug), `app-e2e-maintain` (keeping them current).
  *
  * - The Claude Code plugin (plugin/claude) carries them already; `skill install` is for using the
  *   MCP server without the plugin: Claude Code (~/.claude/skills), Codex (--codex: ~/.codex/skills),
@@ -24,6 +25,9 @@ export const SKILLS = [
   "app-e2e-cujs",
   "app-e2e-testcases",
   "app-e2e-run",
+  "app-e2e-rerun",
+  "app-e2e-bug",
+  "app-e2e-maintain",
 ];
 
 /** Skills earlier releases shipped and this one does not: an install removes its own old copies. */

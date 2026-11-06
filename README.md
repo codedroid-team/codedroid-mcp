@@ -82,7 +82,10 @@ Android platform-tools and a USB or wireless debugging connection. See [adb setu
   `app-e2e` tests an app end to end: it explores the app, writes a test PRD, critical user
   journeys and test cases into its repo (`e2e/`), stops for your review of each, runs the cases on
   the phone and writes a report with a screenshot per case. Each step is its own skill
-  (`app-e2e-explore`, `-prd`, `-cujs`, `-testcases`, `-run`).
+  (`app-e2e-explore`, `-prd`, `-cujs`, `-testcases`, `-run`). Then `app-e2e-rerun` runs some
+  of the cases (by id, journey or priority, last failures, the ones a change touches, a flaky
+  check), `app-e2e-bug` turns a bug into a case that reproduces it, and `app-e2e-maintain` keeps
+  the cases current as the app changes.
 - **`install_apk`** to install a build from your computer, with no cable or shared network.
 - **An `adb` tool** that runs adb commands on your computer, to read logs and run tests. You can [turn it off](docs/reference.md#adb-setup).
 
