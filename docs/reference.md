@@ -51,7 +51,8 @@ with Android's package installer. It resumes if the connection drops.
 - When Google Play Protect offers to scan a build it has not seen, CodeDroid chooses **Install
   without scanning**, so the build is not sent to Google. Any other Play Protect message, such as a
   harmful app warning, is left for you. Answer it, then call `install_apk` again.
-- It takes one `.apk`, not an App Bundle or split APKs.
+- It takes one `.apk`, not an App Bundle or split APKs. Make one from a bundle with
+  `bundletool build-apks --mode=universal`.
 - It needs a version of the CodeDroid app that has this tool.
 
 ## adb setup
@@ -68,9 +69,21 @@ Because it runs commands on your computer:
 - It is marked destructive, so clients that honor that ask before running it.
 - Relative paths start from the client's working directory. A client started in your home directory
   or above it has no project directory, and must use absolute paths.
-- `push`, `pull`, `bugreport`, `backup`, and `restore` only use local files in the project or temp
-  directory. `install` takes any path.
-- `-H`, `-P`, `-L`, `keygen`, `ppp`, `server`, `nodaemon`, and `fork-server` are refused.
+- `push`, `pull`, `bugreport`, `backup`, `restore`, and `save_to` only use local files in the project
+  or temp directory. `install` takes any path.
+- `-H`, `-P`, `-L`, `-a`, `keygen`, `ppp`, `server`, `nodaemon`, `fork-server`, `start-server`,
+  `kill-server`, `attach`, `detach`, and `sync` are refused.
+
+What it adds to plain adb:
+
+- `device` runs the command on a paired phone, found by its model in `adb devices -l`. With two of
+  one model, pass `-s <serial>`.
+- `save_to` writes a command's raw output to a file in the project or temp directory, such as
+  `exec-out screencap -p` or a full `logcat -d`, up to 100 MB. Without it, binary output is refused
+  rather than returned damaged.
+- `logcat` output over the 20,000-character limit keeps its newest lines. Other output keeps its start.
+- `shell am instrument -r` returns a summary: counts, and each failure's stack. A crash, a timeout,
+  or a run with no tests is an error, even though `am` exits 0.
 
 To turn it off for a client, add `CODEDROID_MCP_ADB=0` to the CodeDroid MCP server's environment in
 the client's MCP settings (or `--no-adb` to its arguments). To turn it off for every client, run

@@ -92,7 +92,7 @@ try {
   for (const [args, pattern] of [
     [{ path: "missing.apk" }, /cannot read.*ENOENT/],
     [{ path: "notes.txt" }, /not an APK/],
-    [{ path: "app.aab" }, /not an APK/],
+    [{ path: "app.aab" }, /is a bundle[^]*--mode=universal/],
     [{ path: "secrets.zip" }, /not an APK/],
     [{ path: "empty.apk" }, /not an APK/],
     [{ path: "out" }, /not an APK/],
