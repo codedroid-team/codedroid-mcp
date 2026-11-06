@@ -1,6 +1,6 @@
 {
   "name": "@codedroid/mcp",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "mcpName": "io.github.codedroid-team/codedroid-mcp",
   "description": "MCP server for controlling Android devices through CodeDroid from Claude Code, Codex, Gemini CLI, and other MCP clients.",
   "type": "module",
