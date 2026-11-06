@@ -6,9 +6,10 @@ description: Run some of an app's existing e2e test cases on the real phone thro
 # Rerun test cases
 
 Input: `e2e/TESTCASES.md` (and `e2e/CUJs.md`, the latest `e2e/reports/<date>/REPORT.md`) in the
-app's repo. Each case is run exactly as the app-e2e-run skill runs one: read its "Each case",
-"Each failure" and "Never" sections first, and follow them. Only the choice of cases and the report
-differ.
+app's repo. Each case is run exactly as the app-e2e-run skill runs one: read its "Before the run",
+"Each case", "Each failure" and "Never" sections first, and follow them, creating this run's own
+report folder (below) where it says to create `e2e/reports/<date>/`. Only the choice of cases and
+the report differ.
 
 No `e2e/` yet? Say so and offer the app-e2e skill, which writes the cases first.
 
