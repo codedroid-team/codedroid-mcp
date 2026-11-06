@@ -28,8 +28,11 @@ function shortStack(stack) {
  * as a run without -r. ok is false unless the run ended by itself and ran at least one test.
  */
 export function summarizeInstrumentation(output) {
-  if (!/^INSTRUMENTATION_(STATUS|RESULT|CODE|FAILED)/m.test(output)) return null;
-  if (/^INSTRUMENTATION_FAILED/m.test(output)) return { text: `Instrumentation did not start.\n${output}`, ok: false };
+  // Devices put it after `onError: ... message=` on stdout and the exception's name on stderr.
+  if (/^(?:onError: .*message=|android\.util\.AndroidException: )?INSTRUMENTATION_FAILED/m.test(output)) {
+    return { text: `Instrumentation did not start.\n${output}`, ok: false };
+  }
+  if (!/^INSTRUMENTATION_(STATUS|RESULT|CODE)/m.test(output)) return null;
 
   const tests = [];
   const result = {};
@@ -83,7 +86,7 @@ export function summarizeInstrumentation(output) {
     lines.push(`Instrumentation did not finish: ${result.shortMsg?.replace(/\.$/, "") ?? "the run stopped before its result"}. ${ran} ended${counts.length ? ` (${counts.join(", ")})` : ""}.`);
     if (open) lines.push(`Was running ${open}.`);
     if (result.longMsg && result.longMsg !== result.shortMsg) lines.push(result.longMsg);
-    lines.push("Read the crash with logcat -d -b crash.");
+    if (result.shortMsg) lines.push("Read the crash with logcat -d -b crash.");
   }
   for (const test of tests.filter((t) => t.outcome === "failed" || t.outcome === "errored")) {
     lines.push(`\n${test.outcome.toUpperCase()} ${test.name}\n${shortStack(test.stack)}`);
