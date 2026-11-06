@@ -26,8 +26,14 @@ jobs:
         run: |
           version=$(jq -r '.packages[0].version' server.json)
           name=$(jq -r '.name' server.json)
-          published=$(npm view "@codedroid/mcp@${version}" mcpName)
-          test "$published" = "$name" || { echo "@codedroid/mcp@${version} is not on npm with mcpName ${name}"; exit 1; }
+          # Up to 5 minutes: a run started right after the release can reach npm before the version does.
+          for attempt in $(seq 1 30); do
+            published=$(npm view "@codedroid/mcp@${version}" mcpName 2>/dev/null || true)
+            test "$published" = "$name" && exit 0
+            sleep 10
+          done
+          echo "@codedroid/mcp@${version} is not on npm with mcpName ${name}"
+          exit 1
 
       - name: Install mcp-publisher
         run: |

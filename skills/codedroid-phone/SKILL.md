@@ -75,7 +75,8 @@ Lovelace with 555-0100", "turn on dark theme in Settings"). It returns a `task_i
 - While it runs, acting tools answer `busy`. `cancel_task` stops it.
 - When `get_task` shows a `question`, the task waits for the user. Reply with `answer_task`
   (`task_id`, `text`); nobody can answer it on the phone. Ask the user first when the answer is
-  theirs to give, such as deleting or sending.
+  theirs to give, such as deleting or sending. An older CodeDroid app has no `answer_task`: its
+  progress only says it is waiting for an answer, so `cancel_task` and ask the user to update the app.
 - When it ends, CodeDroid comes back to the front: `open_app` your app before acting again.
 - It needs CodeDroid signed in on the phone, and it uses the user's CodeDroid account.
 
