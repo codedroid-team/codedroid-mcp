@@ -181,11 +181,13 @@ export async function runStdioShim({
     getInstructions: () => client.getInstructions(),
     async request(...args) {
       const used = client;
+      // Already closed, so this request never left and is safe to send again. A client that closes
+      // later rejects what is in flight, which may have reached the phone: that is never sent again.
+      const neverLeft = !used.transport;
       try {
         return await used.request(...args);
       } catch (e) {
-        // A client without a transport is closed: the request never left, so it is safe to send again.
-        if (used.transport && !isLostDaemonSession(e)) throw e;
+        if (!neverLeft && !isLostDaemonSession(e)) throw e;
         if (client === used && !reconnecting) {
           reconnecting = (async () => {
             log(`Daemon session lost (${e.message}) — opening a new one.`);

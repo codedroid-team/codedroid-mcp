@@ -78,6 +78,17 @@ try {
     const empty = path.join(dir, "empty.json");
     fs.writeFileSync(empty, "");
     assert.equal(addServer(empty, "mcpServers", SERVER).status, "added", "an empty file is an empty config");
+
+    // Root reads a mode-000 file anyway, so there is nothing to test as root.
+    if (process.getuid?.() > 0) {
+      const unreadable = path.join(dir, "unreadable.json");
+      const text = JSON.stringify({ mcpServers: { other: { command: "other" } } });
+      fs.writeFileSync(unreadable, text);
+      fs.chmodSync(unreadable, 0o000);
+      assert.throws(() => addServer(unreadable, "mcpServers", SERVER), { code: "EACCES" });
+      fs.chmodSync(unreadable, 0o644);
+      assert.equal(fs.readFileSync(unreadable, "utf8"), text, "an unreadable config is not an empty one");
+    }
   }
 
   // A symlinked config (a dotfile manager's) stays a symlink: the write goes to its target.
@@ -223,6 +234,15 @@ try {
     result = await cli(["setup", "--client=cursor", "--yes"]);
     assert.equal(result.code, 1, "a client it could not set up fails the run");
     assert.match(result.stdout, /could not read .* as JSON/);
+
+    // A client that throws is one failure: the next client and the pairing steps still run.
+    fs.rmSync(path.join(home, ".cursor", "mcp.json"));
+    fs.mkdirSync(path.join(home, ".cursor", "mcp.json"));
+    result = await cli(["setup", "--client=cursor,windsurf", "--yes"]);
+    assert.equal(result.code, 1, "a client it could not set up fails the run");
+    assert.match(result.stdout, /^Cursor: failed: .*EISDIR/m);
+    assert.match(result.stdout, /^Windsurf: added the server to /m);
+    assert.match(result.stdout, /Next, pair your phone\./);
   }
 
   console.log("setup.test.mjs: ALL PASS");

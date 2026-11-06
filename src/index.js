@@ -203,7 +203,13 @@ async function main() {
       const changed = [];
       for (const client of picked) {
         process.stdout.write(`${client.name}: `);
-        const { status, detail } = client.setup();
+        let result;
+        try {
+          result = client.setup();
+        } catch (e) {
+          result = { status: "failed", detail: `failed: ${e.message}. Add the server by hand: ${MANUAL_SETUP}` };
+        }
+        const { status, detail } = result;
         process.stdout.write(`${detail}\n`);
         if (status === "added" || status === "updated") changed.push(client.name);
         if (status === "failed") process.exitCode = 1;
