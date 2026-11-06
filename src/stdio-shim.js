@@ -13,7 +13,7 @@ import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { buildProxyServer } from "./proxy-core.js";
+import { buildProxyServer, SHIM_CLIENT_NAME } from "./proxy-core.js";
 import { DEFAULT_PORT, DAEMON_AUTHENTICATION } from "./daemon.js";
 import { daemonTransport } from "./daemon-transport.js";
 import { readDaemonToken } from "./host.js";
@@ -157,7 +157,7 @@ export async function runStdioShim({
   let server;
   const connectDaemon = async () => {
     await ensureDaemonRunning(port, log, { enableAdbTool });
-    const next = new Client({ name: "codedroid-mcp-shim", version: VERSION });
+    const next = new Client({ name: SHIM_CLIENT_NAME, version: VERSION });
     // Pass phone/daemon notifications through to the IDE.
     next.fallbackNotificationHandler = async (notification) => {
       try {
@@ -181,11 +181,13 @@ export async function runStdioShim({
     getInstructions: () => client.getInstructions(),
     async request(...args) {
       const used = client;
+      // Already closed, so this request never left and is safe to send again. A client that closes
+      // later rejects what is in flight, which may have reached the phone: that is never sent again.
+      const neverLeft = !used.transport;
       try {
         return await used.request(...args);
       } catch (e) {
-        // A client without a transport is closed: the request never left, so it is safe to send again.
-        if (used.transport && !isLostDaemonSession(e)) throw e;
+        if (!neverLeft && !isLostDaemonSession(e)) throw e;
         if (client === used && !reconnecting) {
           reconnecting = (async () => {
             log(`Daemon session lost (${e.message}) — opening a new one.`);

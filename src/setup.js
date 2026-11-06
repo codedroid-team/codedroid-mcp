@@ -7,7 +7,7 @@
  *   this release like the plugin's .mcp.json. Running a newer `setup` moves the pin.
  *
  * A client that already has some other `codedroid` server is left alone, so its tools are never
- * registered twice, and a config it cannot parse (JSON with comments) is never rewritten.
+ * registered twice, and a config it cannot read or parse (JSON with comments) is never rewritten.
  */
 import { spawnSync } from "child_process";
 import fs from "fs";
@@ -139,11 +139,13 @@ export function addServer(configPath, key, entry) {
     : { status: "added", detail: `added the server to ${configPath}` };
 }
 
+/** A file's text, or undefined if it does not exist. Any other error throws: unreadable is not empty. */
 function readText(file) {
   try {
     return fs.readFileSync(file, "utf8");
   } catch (e) {
-    return undefined;
+    if (e.code === "ENOENT") return undefined;
+    throw e;
   }
 }
 

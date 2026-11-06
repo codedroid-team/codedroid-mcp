@@ -21,8 +21,13 @@ import {
   CallToolRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { startDaemon } from "../src/daemon.js";
+import { CLIENT_INFO_META_KEY, SESSION_META_KEY } from "../src/proxy-core.js";
 
 const FAKE_INSTRUCTIONS = "FAKE PHONE INSTRUCTIONS";
+let lastCallMeta;
+
+/** How many times the phone got `tap`. The first never answers, as if its answer were lost. */
+let taps = 0;
 
 function makeFakePhoneTransport() {
   const phone = new Server(
@@ -43,7 +48,9 @@ function makeFakePhoneTransport() {
     ],
   }));
   phone.setRequestHandler(CallToolRequestSchema, async (req) => {
+    lastCallMeta = req.params._meta;
     if (req.params.name === "get_task") await new Promise((resolve) => setTimeout(resolve, 300));
+    if (req.params.name === "tap" && ++taps === 1) await new Promise(() => {});
     return { content: [{ type: "text", text: `echo: ${req.params.arguments?.text}` }] };
   });
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
@@ -111,6 +118,9 @@ try {
     arguments: { text: "via-shim" },
   });
   assert.equal(result.content[0].text, "echo: via-shim");
+  assert.equal(lastCallMeta[CLIENT_INFO_META_KEY].name, "shim-test-client", "the phone hears of the shim's client, past both proxies");
+  assert.equal(lastCallMeta[CLIENT_INFO_META_KEY].version, "0.0.1");
+  assert.match(lastCallMeta[SESSION_META_KEY], /^ses_/);
 
   const order = [];
   await Promise.all([
@@ -128,6 +138,19 @@ try {
   const afterRestart = await client.callTool({ name: "echo", arguments: { text: "after-restart" } });
   assert.equal(afterRestart.content[0].text, "echo: after-restart", "the shim opens a new daemon session and sends the call again");
   assert.deepEqual((await client.listTools()).tools.map((t) => t.name).sort(), ["adb", "codedroid_devices", "codedroid_status", "echo", "install_apk"]);
+
+  // ── A tap in flight as the daemon restarts: the model is told, and it is not sent again ──
+  const inFlight = client.callTool({ name: "tap", arguments: {} });
+  while (taps === 0) await new Promise((resolve) => setTimeout(resolve, 10));
+  await daemon.close();
+  daemon = await startDaemon({ port, pairings: () => [PAIRING], phoneTransportFactory: makeFakePhoneTransport, enableAdbTool: true, home });
+  // Unqueued, unlike a tool call, which would wait behind the tap. Its lost session opens a new one.
+  await client.listTools();
+  const lostTap = await inFlight;
+  assert.equal(lostTap.isError, true, "a tap whose answer was lost is a tool error");
+  assert.match(lostTap.content[0].text, /may or may not have happened/);
+  await client.callTool({ name: "echo", arguments: { text: "after-lost-tap" } });
+  assert.equal(taps, 1, "the tap must not be replayed on the new session");
 
   // ── A reconnect that fails does not strand the shim: the next request tries again ──
   // What answers the port meanwhile drops the shim's session and refuses a new one (a legacy daemon).
