@@ -25,7 +25,9 @@ covers driving the phone; read it first if you have not.
 ## Where everything lives
 
 `e2e/` at the root of the app's repo (or the folder the user names), committed and reviewed like
-code. On start, read what is already there. A document is approved when its first line reads
+code. On start, read what is already there. Test documents somewhere else (a gitignored folder,
+another format, an older run's own runner)? Say where they are and ask: move them into `e2e/`
+(their approvals carry over) or keep working where they are. Don't silently write a second set. A document is approved when its first line reads
 `Approved: <date> by the user`; write that line only after the user says so. An approved step is
 done: say so and go on from the first step that is not. A document without the line is a draft:
 show it and ask whether it still holds before building on it.
