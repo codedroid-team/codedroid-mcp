@@ -41,6 +41,8 @@ installed: a renamed package installs as a second app, with its own sign-in and 
 
 - It may be shared with other people or agents. Before phone work and after any pause, read the
   installed build again; if it changed, someone else is using the phone: stop and tell the user.
+  The build can stay the same while another agent drives the phone: before each action, check
+  the app in front, as the codedroid-phone skill says under "A shared phone".
 - Expect data you did not make (other sessions, files, schedules). Never act on it: find your own
   items by the name you gave them.
 - Ask before installing, uninstalling (it deletes the app's data) or rebooting.

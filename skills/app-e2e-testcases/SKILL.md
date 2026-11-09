@@ -44,6 +44,9 @@ Cleanup: clear the composer.
 | Assert on a result row, not on the text you just typed | The search box shows your own query |
 | A first case that removes every `e2e-...` item an interrupted run left | Leftovers make the next run ambiguous |
 | Make a case that needs another case's result say so (Needs:) | Run alone, it fails for the wrong reason |
+| Pick a result by its title plus a second field (uploader, length) | Search results repeat titles |
+| End playback in the cleanup of any case that starts it | A paused player keeps its notification and the next case starts on it |
+| Expect upper-case dialog buttons where EXPLORE saw them | The screen can upper-case a source string |
 
 ## Rules that keep it safe
 

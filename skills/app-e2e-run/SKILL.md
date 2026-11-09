@@ -44,8 +44,11 @@ case beside it.
    started in, which can be another checkout (a git worktree's main repo). If `adb` refuses the path
    as outside the project, pull into the temp directory and move the file with your file tools.
    Without adb, describe the screen.
+   A case with two states to show (before and after) saves one each: `<case>-<state>.png`.
 7. Run the cleanup even after a failure, then `adb` `logcat -d -b crash`: a new line for the app
-   fails the case.
+   fails the case. For apps that play media, check nothing is left: `adb` `shell dumpsys
+   media_session`, and `shell dumpsys notification | grep "NotificationRecord(.*pkg=<package>"`
+   (a bare grep also matches the notification archive).
 
 ## Each failure: read before you judge
 
@@ -72,8 +75,12 @@ cleanup changed the screen.
   reruns; earlier failed attempts listed under it with their cause.
 - Findings with their status, what is not covered, and the release answer.
 
-Rerun every case that does not run a CodeDroid task once more after any fix to a case, and report
-the last result. Give the user the report's path.
+After fixing a case, rerun it and every case that `Needs:` it, and report the last result with
+"passed after N tries". Rerun the whole suite only when a fix changed a shared step (the start
+state, a common cleanup) or before a release verdict. A bug you find mid-run that no case covers:
+add a case for it to `TESTCASES.md`, run it twice, and say in the report that it was added. Anything
+the run left that only "clear all" would remove: list it under cleanup, don't clear it. Give the
+user the report's path.
 
 ## Never
 

@@ -45,6 +45,27 @@ offline doesn't affect the others.
    repeat it, try another element or look again.
 4. After the screen changed, call `get_screen` before acting by node again.
 
+Send one action at a time, and decide the next from the last `after`: taps sent together that
+depend on each other fail with `not_found`.
+
+`resource_id` matches part of an id (`player` can match nine elements) and `text` ignores case
+(it can match a search box holding the same word): pick a selector that names one element.
+
+### When the reply misleads
+
+- `screen_changed: false` after a toggle that only changes an icon or a checked flag, or when the
+  screen changes a moment later: read `get_screen` before you act on it.
+- The first line of `get_screen` can name an activity the app has left. Trust the elements.
+- `get_screen` lists layers you cannot see: a mini player, the page under a sheet or a video
+  page. Select by `resource_id` when a label shows up twice.
+- Labels can show upper-case on screen (`DELETE`) though the source string is not, and numbers
+  can carry U+2068/U+2069 isolate marks.
+- A button with only a tooltip, no text or description, is not listed: `take_screenshot` and tap
+  by `x`, `y`.
+- "Nothing on screen passed the visibility filter" while a screen loads: `wait_for` it.
+- Player controls hide themselves, often before `get_screen` returns. Check playback with `adb`
+  `shell dumpsys media_session`.
+
 ## The tools
 
 | Tool | Use |
@@ -94,6 +115,14 @@ Every failure is JSON with `error`, `message` and `hint`. Do what the hint says.
 - "Stopped on the phone" or "Not allowed on the phone": the user said no. Stop and tell them; do
   not retry.
 - "It may or may not have happened": the link dropped mid-call. `get_screen` before doing it again.
+
+## A shared phone
+
+Another person or agent may drive the same phone. Before each tap or type, check that the last
+`after.app` (or a fresh `get_screen`) is the app you mean: an app switch between two calls turns
+your next tap into a real action in another app. If another app is in front, or CodeDroid shows a
+task you did not start, do not tap: wait and look again, and stop and tell the user if it stays.
+Never answer, cancel or act on someone else's task.
 
 ## Safety
 
