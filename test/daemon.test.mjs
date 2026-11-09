@@ -276,6 +276,30 @@ try {
     "the daemon merges the host-side adb tool into tools/list",
   );
 
+  // The daemon gives adb its phones, so `device` picks one through a real session. save_to survives
+  // the same trip, with stdout's bytes intact.
+  const fakeAdbDir = fs.mkdtempSync(path.join(os.tmpdir(), "codedroid-fake-adb-"));
+  const fakeAdb = path.join(fakeAdbDir, "adb");
+  const modelWord = PAIRING.device.model.replace(/[^A-Za-z0-9]+/g, "_");
+  fs.writeFileSync(
+    fakeAdb,
+    `#!/bin/sh\ncase "$*" in\n  "devices -l") printf 'List of devices attached\\nSER1 device model:${modelWord} transport_id:1\\n' ;;\n  *screencap*) printf '\\211PNG\\000' ;;\n  *) echo "args: $*" ;;\nesac\n`,
+    { mode: 0o755 },
+  );
+  process.env.ADB = fakeAdb;
+  try {
+    const ran = await c.client.callTool({ name: "adb", arguments: { command: "shell ls", device: PAIRING.device.model } });
+    assert.equal(ran.isError, undefined);
+    assert.equal(ran.content[0].text, "args: -s SER1 shell ls");
+    const shot = path.join(fakeAdbDir, "shot.png");
+    const kept = await c.client.callTool({ name: "adb", arguments: { command: "exec-out screencap -p", save_to: shot } });
+    assert.equal(kept.isError, undefined);
+    assert.deepEqual(fs.readFileSync(shot), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00]));
+  } finally {
+    delete process.env.ADB;
+    fs.rmSync(fakeAdbDir, { recursive: true, force: true });
+  }
+
   const armedHealth = await fetch(`http://127.0.0.1:${armed.port}/health`).then((r) =>
     r.json(),
   );

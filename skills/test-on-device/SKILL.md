@@ -18,7 +18,7 @@ them to turn it back on, or to run the adb commands themselves.
 CodeDroid reaches the phone through the CodeDroid server; adb needs it on this computer, over USB
 or Wireless debugging. Call `codedroid_status` and `device_info` for the phone's model and
 Android `user`, and `adb` `devices -l` to find the same model there. If adb lists none, go on
-without it, or ask the user to connect it for logs and instrumentation tests; if it lists several, pass `-s <serial>` to each adb command. On a phone with
+without it, or ask the user to connect it for logs and instrumentation tests; if it lists several, pass the same `device` to `adb` as to the phone tools, or `-s <serial>` when two are the same model. On a phone with
 several users (a Googlebook runs as user 10), adb's `settings`, `content`, `pm grant` and
 `appops` default to user 0: add `--user <user>` to them. `adb install` covers every user.
 
@@ -57,9 +57,9 @@ several users (a Googlebook runs as user 10), adb's `settings`, `content`, `pm g
 
 `adb` `shell am instrument -w -r -e class <fully.qualified.TestClass> <test-package>/androidx.test.runner.AndroidJUnitRunner`
 with `timeout_s` set for the run (install the test APK first:
-`./gradlew :app:installDebugAndroidTest`). Each `INSTRUMENTATION_STATUS_CODE` line closes a test:
-`0` passed, `-2` failed, `-1` error, `-3` ignored (`1` marks a start). The failing test's
-`stack=` comes before its code. Tests that use UiAutomator suspend CodeDroid's accessibility
+`./gradlew :app:installDebugAndroidTest`). The reply sums up the run: the counts and each failure's
+stack. An error means the run itself did not finish (a crash, a timeout, no tests ran), so read the
+crash buffer as in section 4. Tests that use UiAutomator suspend CodeDroid's accessibility
 while they run: call `codedroid_status` before using its tools again.
 
 ## 6. CUJ test cases
@@ -71,7 +71,8 @@ it touches, as app-e2e-rerun's "The cases a change touches" says.
 ## 7. Report
 
 Say what you checked and what you saw, step by step, and whether the change works. Include a
-screenshot when the change is visual, and the crash's stack trace (from `logcat -d -b crash`)
+screenshot when the change is visual (`take_screenshot`; if CodeDroid is suspended, `adb`
+`exec-out screencap -p` with `save_to`), and the crash's stack trace (from `logcat -d -b crash`)
 when there was one. If something could not be checked (the phone was locked, a screen could not
 be reached), say so rather than guessing.
 

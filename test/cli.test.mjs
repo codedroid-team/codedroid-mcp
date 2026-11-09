@@ -17,6 +17,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { startDaemon } from "../src/daemon.js";
 import { daemonTokenPath, ensureDaemonToken } from "../src/host.js";
+import { VERSION } from "../src/version.js";
 
 const indexPath = fileURLToPath(new URL("../src/index.js", import.meta.url));
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "codedroid-cli-"));
@@ -146,6 +147,64 @@ try {
     assert.match(result.stderr, /Replacing the older daemon \(v0\.1\.3\)/);
     assert.equal(running?.adbPerClient, true);
     await cli([`--port=${port}`, "stop"], env);
+  }
+
+  // ── A daemon behind this client's version is replaced, and keeps adb as it was set ─
+  for (const [name, adbToolEnabled] of [["behind", true], ["behind-adb-off", false]]) {
+    const { home, env } = sandbox(name);
+    const token = ensureDaemonToken({ home });
+    const port = await freePort();
+    let shutdowns = 0;
+    const older = http.createServer((req, res) => {
+      res.setHeader("Content-Type", "application/json");
+      if (req.url === "/health") {
+        res.end(JSON.stringify({ service: "codedroid-mcp-daemon", version: "0.0.9", pid: 1, authentication: "bearer-v1", adbToolEnabled, adbPerClient: true }));
+      } else if (req.url === "/shutdown" && req.headers.authorization === `Bearer ${token}`) {
+        shutdowns++;
+        res.end("{}");
+        setImmediate(() => {
+          older.close();
+          older.closeAllConnections();
+        });
+      } else {
+        res.writeHead(401);
+        res.end("{}");
+      }
+    });
+    await new Promise((resolve) => older.listen(port, "127.0.0.1", resolve));
+    const result = await cli([`--port=${port}`, "call", "codedroid_status"], env);
+    const running = await health(port);
+    started.push(running?.pid);
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(shutdowns, 1);
+    assert.match(result.stderr, /Replacing the older daemon \(v0\.0\.9\)/);
+    assert.equal(running?.version, VERSION);
+    assert.equal(running?.adbToolEnabled, adbToolEnabled);
+    await cli([`--port=${port}`, "stop"], env);
+  }
+
+  // ── A daemon ahead of this client is used, not replaced: clients must not take turns ─
+  {
+    const { home, env } = sandbox("ahead");
+    ensureDaemonToken({ home });
+    const port = await freePort();
+    let shutdowns = 0;
+    const newer = http.createServer((req, res) => {
+      res.setHeader("Content-Type", "application/json");
+      if (req.url === "/health") {
+        res.end(JSON.stringify({ service: "codedroid-mcp-daemon", version: "99.0.0", authentication: "bearer-v1", adbToolEnabled: true, adbPerClient: true }));
+      } else {
+        if (req.url === "/shutdown") shutdowns++;
+        res.writeHead(404);
+        res.end("{}");
+      }
+    });
+    await new Promise((resolve) => newer.listen(port, "127.0.0.1", resolve));
+    const result = await cli([`--port=${port}`, "call", "codedroid_status"], env);
+    newer.close();
+    newer.closeAllConnections();
+    assert.equal(shutdowns, 0);
+    assert.doesNotMatch(result.stderr, /Replacing the older daemon/);
   }
 
   // ── An older daemon that refuses to stop is left running, and said so ─

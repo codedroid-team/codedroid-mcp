@@ -51,7 +51,8 @@ with Android's package installer. It resumes if the connection drops.
 - When Google Play Protect offers to scan a build it has not seen, CodeDroid chooses **Install
   without scanning**, so the build is not sent to Google. Any other Play Protect message, such as a
   harmful app warning, is left for you. Answer it, then call `install_apk` again.
-- It takes one `.apk`, not an App Bundle or split APKs.
+- It takes one `.apk`, not an App Bundle or split APKs. Make one from a bundle with
+  `bundletool build-apks --mode=universal`.
 - It needs a version of the CodeDroid app that has this tool.
 
 ## adb setup
@@ -68,9 +69,21 @@ Because it runs commands on your computer:
 - It is marked destructive, so clients that honor that ask before running it.
 - Relative paths start from the client's working directory. A client started in your home directory
   or above it has no project directory, and must use absolute paths.
-- `push`, `pull`, `bugreport`, `backup`, and `restore` only use local files in the project or temp
-  directory. `install` takes any path.
-- `-H`, `-P`, `-L`, `keygen`, `ppp`, `server`, `nodaemon`, and `fork-server` are refused.
+- `push`, `pull`, `bugreport`, `backup`, `restore`, and `save_to` only use local files in the project
+  or temp directory. `install` takes any path.
+- `-H`, `-P`, `-L`, `-a`, `keygen`, `ppp`, `server`, `nodaemon`, `fork-server`, `start-server`,
+  `kill-server`, `attach`, `detach`, and `sync` are refused.
+
+What it adds to plain adb:
+
+- `device` runs the command on a paired phone, found by its model in `adb devices -l`. With two of
+  one model, pass `-s <serial>`.
+- `save_to` writes a command's raw output to a file in the project or temp directory, such as
+  `exec-out screencap -p` or a full `logcat -d`, up to 100 MB. Without it, binary output is refused
+  rather than returned damaged.
+- `logcat` output over the 20,000-character limit keeps its newest lines. Other output keeps its start.
+- `shell am instrument -r` returns a summary: counts, and each failure's stack. A crash, a timeout,
+  or a run with no tests is an error, even though `am` exits 0.
 
 To turn it off for a client, add `CODEDROID_MCP_ADB=0` to the CodeDroid MCP server's environment in
 the client's MCP settings (or `--no-adb` to its arguments). To turn it off for every client, run
@@ -179,7 +192,7 @@ an HTTP client.
 | `CODEDROID_SERIAL` | Select an adb device when several are connected. `ANDROID_SERIAL` is also supported. |
 | `CODEDROID_MCP_PORT` | Set the local daemon port. Default: `4826`. |
 | `CODEDROID_MCP_ADB=0` | Leave out the host-side `adb` tool for this client (`--no-adb` does the same); with the `daemon` command, for every client. |
-| `CODEDROID_MCP_CLIENT` | Set the client name shown on the phone. |
+| `CODEDROID_MCP_CLIENT` | Set the client name shown on the phone. Usage records also use it for a call that names no client. |
 | `ADB` | Set the path to the adb executable. Otherwise it is looked for on `PATH`, in `ANDROID_HOME`, `ANDROID_SDK_ROOT`, and the usual install locations. |
 | `CODEDROID_DEBUG=1` | Include stack traces in diagnostic output. |
 
@@ -201,8 +214,9 @@ npx -y @codedroid/mcp stop
 ### Several phones
 
 Run `pair` on each phone to add it. Pairing another phone keeps the earlier ones. Pairing the same
-phone again replaces its old pairing. The running daemon picks up `pair` and `unpair` on its next
-request, so clients stay connected.
+phone again replaces its old pairing. Reinstalling CodeDroid or clearing its data gives the phone a
+new id, so its old pairing stays until you `unpair` it. The running daemon picks up `pair` and
+`unpair` on its next request, so clients stay connected.
 
 Every phone tool takes a `device` argument. It can be a phone's id, the start of its id, or its
 model or part of the model ("Pixel" for "Google Pixel 5"), as long as it names only one paired
@@ -225,6 +239,7 @@ connection problem.
 | --- | --- |
 | Computer is not paired, or pairing was removed | Create a new code in **Settings → Computers → Pair a computer** and run the displayed command. |
 | Phone is not connected | Open CodeDroid, check its internet connection and sign-in, and enable **Allow computers to connect**. |
+| A phone is listed twice, and one never connects | CodeDroid was reinstalled, so that pairing is old. Run `npx -y @codedroid/mcp unpair <id>` with the id from `status`. |
 | Connection is awaiting approval | Tap **Allow** on the phone. |
 | Connection was denied | Wait one minute, run `npx -y @codedroid/mcp connect`, then tap **Allow**. |
 | Connection was stopped on the phone | Wait one minute before reconnecting. |
@@ -249,7 +264,8 @@ All clients on a computer share a local daemon and its connection to each paired
 phone and daemon each open an outbound WebSocket to the CodeDroid server. The phone reconnects
 after a restart or network change. MCP screen interactions are serialized on each phone. If the
 daemon restarts, the stdio bridge opens a new session on its next request, so the MCP client
-doesn't need to reconnect.
+doesn't need to reconnect. A client newer than the running daemon replaces it, keeping `--no-adb`,
+so an upgrade reaches every client on the computer. A call in flight at that moment gets an error.
 
 Calls interrupted by a connection loss are not automatically replayed: an action may have
 completed before its response was lost. Read the screen before deciding whether to retry.
@@ -268,8 +284,13 @@ From the package directory:
 ```bash
 npm install
 npm test
-claude mcp add codedroid -- node "$PWD/src/index.js"
+claude mcp add -s local codedroid -- node "$PWD/src/index.js"
 ```
+
+Run a client from this repository with that local server. `.mcp.json` here is the plugin's, and
+`npx @codedroid/mcp` can't start inside this package: npm finds the package in the project itself
+and looks for a `codedroid-mcp` bin that was never linked, so the server exits with
+`command not found`. The plugin needs the file at the root, so it stays.
 
 The npm tests run without a phone, relay server, or adb. In the monorepo, the Android app's MCP
 JVM tests also verify the bridge against the app's server implementation and export the tool

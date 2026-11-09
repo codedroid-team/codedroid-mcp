@@ -13,7 +13,7 @@ import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { buildProxyServer } from "./proxy-core.js";
+import { buildProxyServer, SHIM_CLIENT_NAME } from "./proxy-core.js";
 import { DEFAULT_PORT, DAEMON_AUTHENTICATION } from "./daemon.js";
 import { daemonTransport } from "./daemon-transport.js";
 import { readDaemonToken } from "./host.js";
@@ -52,9 +52,9 @@ export function assertAuthenticatedDaemon(health, port) {
  * "stopped"; "none" when no daemon was running; "refused" when it rejected this user's token; or
  * "stuck" when it accepted but is still up 5 s later.
  */
-export async function stopDaemon(port = DEFAULT_PORT) {
+export async function stopDaemon(port = DEFAULT_PORT, { onlyPid } = {}) {
   const health = await fetchHealth(port);
-  if (!health) return { status: "none", port };
+  if (!health || (onlyPid && health.pid !== onlyPid)) return { status: "none", port };
   const shutdown = (token) => fetch(`http://127.0.0.1:${port}/shutdown`, {
     method: "POST",
     signal: AbortSignal.timeout(5000),
@@ -82,20 +82,25 @@ export function notStopped({ status, port, pid }) {
     : `${daemon} did not exit within 5 s. End that process to stop it.`;
 }
 
+/** Whether a daemon of [version] predates this client. The tools it serves are its own, not the client's. */
+function isOlderDaemon(version) {
+  return String(version ?? "").localeCompare(VERSION, "en", { numeric: true }) < 0;
+}
+
 export async function ensureDaemonRunning(port, log, { enableAdbTool = true } = {}) {
   const existing = await fetchHealth(port);
   if (existing) {
     assertAuthenticatedDaemon(existing, port);
-    if (existing.adbPerClient) {
+    if (existing.adbPerClient && !isOlderDaemon(existing.version)) {
       if (enableAdbTool && !existing.adbToolEnabled) {
         log(`The daemon on port ${port} was started with the adb tool off. Stop it (codedroid-mcp stop --port=${port}) and let this client restart it.`);
       }
       return;
     }
-    // An older daemon fixes adb for every client and runs it from the wrong directory. Clients of
-    // it lose their session, not their IDE: the next request opens a new one on this daemon.
+    // Clients of the older daemon lose their session, not their IDE: the next request opens a new
+    // one on this daemon. onlyPid: another client may have replaced it since the check above.
     log(`Replacing the older daemon (v${existing.version}) on port ${port}.`);
-    const stopped = await stopDaemon(port);
+    const stopped = await stopDaemon(port, { onlyPid: existing.pid });
     if (stopped.status === "refused" || stopped.status === "stuck") {
       log(notStopped(stopped));
       return;
@@ -105,8 +110,10 @@ export async function ensureDaemonRunning(port, log, { enableAdbTool = true } = 
   log(`Daemon not running — starting it on port ${port}...`);
   const indexPath = fileURLToPath(new URL("./index.js", import.meta.url));
   // --adb because the daemon serves every client: this client's own choice goes with its session,
-  // and an inherited CODEDROID_MCP_ADB=0 must not take adb from the others.
-  const child = spawn(process.execPath, [indexPath, "daemon", `--port=${port}`, "--adb"], {
+  // and an inherited CODEDROID_MCP_ADB=0 must not take adb from the others. Only `daemon --no-adb`
+  // turns it off for all of them, and replacing that daemon must not turn it back on.
+  const adbFlag = existing?.adbPerClient && existing.adbToolEnabled === false ? "--no-adb" : "--adb";
+  const child = spawn(process.execPath, [indexPath, "daemon", `--port=${port}`, adbFlag], {
     detached: true,
     stdio: "ignore",
     windowsHide: true,
@@ -157,7 +164,7 @@ export async function runStdioShim({
   let server;
   const connectDaemon = async () => {
     await ensureDaemonRunning(port, log, { enableAdbTool });
-    const next = new Client({ name: "codedroid-mcp-shim", version: VERSION });
+    const next = new Client({ name: SHIM_CLIENT_NAME, version: VERSION });
     // Pass phone/daemon notifications through to the IDE.
     next.fallbackNotificationHandler = async (notification) => {
       try {
@@ -181,11 +188,13 @@ export async function runStdioShim({
     getInstructions: () => client.getInstructions(),
     async request(...args) {
       const used = client;
+      // Already closed, so this request never left and is safe to send again. A client that closes
+      // later rejects what is in flight, which may have reached the phone: that is never sent again.
+      const neverLeft = !used.transport;
       try {
         return await used.request(...args);
       } catch (e) {
-        // A client without a transport is closed: the request never left, so it is safe to send again.
-        if (used.transport && !isLostDaemonSession(e)) throw e;
+        if (!neverLeft && !isLostDaemonSession(e)) throw e;
         if (client === used && !reconnecting) {
           reconnecting = (async () => {
             log(`Daemon session lost (${e.message}) — opening a new one.`);
