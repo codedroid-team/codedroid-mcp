@@ -16,12 +16,12 @@
     "source": "github",
     "id": "1428719943"
   },
-  "version": "0.1.10",
+  "version": "0.1.11",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@codedroid/mcp",
-      "version": "0.1.10",
+      "version": "0.1.11",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"

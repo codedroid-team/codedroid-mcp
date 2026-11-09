@@ -6,7 +6,10 @@ description: Explore an Android app before testing it end to end with CodeDroid 
 # Explore the app
 
 Output: `e2e/EXPLORE.md` in the app's repo. Change nothing on the phone in this step beyond
-navigating.
+navigating, with one exception: a screen that needs data to exist (a subscription, a deck, a
+queue) may get one item named `e2e-...`, removed before the walk ends. Opening content to look at
+it (a video, a feed preview) counts as navigating; stop any playback after. A screen you could not
+reach is marked `?` and confirmed in the first run.
 
 ## Read before touching the phone
 
@@ -40,7 +43,12 @@ navigating.
   "a.m." or "PM".
 - Controls one tap from harm: delete, clear all, remove, sign out, purchase. Tests must never tap
   them on data the test did not make.
-- One-time sheets and first-run screens a fresh account sees, and what dismisses them.
+- One-time sheets and first-run screens a fresh account sees, and what dismisses them,
+  including system permission screens that block the app until granted (all files access,
+  notifications).
+- Screens restored from the back stack: go to a tab, change its data elsewhere, come back.
+  A stale list there is a finding, and a case needs to know which state it starts in.
+- What a fresh install leaves that only "clear all" removes (search history), so cases can say so.
 - The account the tests will meet: existing items, plan and credits, anything that differs on a
   new account (a first-run brief, a welcome sheet).
 
