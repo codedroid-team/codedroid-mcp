@@ -54,4 +54,51 @@ try {
   fs.rmSync(dir, { recursive: true, force: true });
 }
 
+// An upgrade's install removes the skills a release retired, when they are this package's own copies:
+// left behind, an old create-cujs would still load and point agents at steps that are gone.
+const upgraded = fs.mkdtempSync(path.join(os.tmpdir(), "codedroid-skill-upgrade-"));
+try {
+  const seed = (name, body) => {
+    fs.mkdirSync(path.join(upgraded, name), { recursive: true });
+    fs.writeFileSync(path.join(upgraded, name, "SKILL.md"), body);
+  };
+  seed("create-cujs", "---\nname: create-cujs\ndescription: old\n---\nNever force-stop com.codedroid.agent.\n");
+  fs.writeFileSync(path.join(upgraded, "create-cujs", "notes.md"), "the user's own file");
+  seed("my-skill", "---\nname: my-skill\ndescription: unrelated\n---\ncom.codedroid.agent\n");
+  installSkills({ dir: upgraded });
+  assert.ok(!fs.existsSync(path.join(upgraded, "create-cujs", "SKILL.md")), "a retired skill of ours is removed");
+  assert.ok(fs.existsSync(path.join(upgraded, "create-cujs", "notes.md")), "a file the package did not write stays");
+  assert.ok(fs.existsSync(path.join(upgraded, "my-skill", "SKILL.md")), "other skills stay");
+  for (const name of SKILLS) assert.ok(fs.existsSync(path.join(upgraded, name, "SKILL.md")), name);
+} finally {
+  fs.rmSync(upgraded, { recursive: true, force: true });
+}
+
+// Releases before 0.1.5 named the app com.codedroid.app; their copies are ours too, and a retired
+// skill's folder with nothing else in it goes with its file.
+const older = fs.mkdtempSync(path.join(os.tmpdir(), "codedroid-skill-0.1.4-"));
+try {
+  for (const name of ["create-cujs", "create-tests"]) {
+    fs.mkdirSync(path.join(older, name));
+    fs.writeFileSync(path.join(older, name, "SKILL.md"), `---\nname: ${name}\ndescription: old\n---\nNever force-stop com.codedroid.app.\n`);
+  }
+  fs.mkdirSync(path.join(older, "create-tests-mine"));
+  fs.writeFileSync(path.join(older, "create-tests-mine", "SKILL.md"), "---\nname: create-tests-mine\ndescription: mine\n---\nNothing of CodeDroid's.\n");
+  installSkills({ dir: older });
+  assert.deepEqual(fs.readdirSync(older).filter((d) => d.startsWith("create-")), ["create-tests-mine"], "0.1.4's retired skills are removed, folders and all");
+} finally {
+  fs.rmSync(older, { recursive: true, force: true });
+}
+
+// A same-named skill that is not ours stays.
+const foreign = fs.mkdtempSync(path.join(os.tmpdir(), "codedroid-skill-foreign-"));
+try {
+  fs.mkdirSync(path.join(foreign, "create-tests"));
+  fs.writeFileSync(path.join(foreign, "create-tests", "SKILL.md"), "---\nname: create-tests\ndescription: the user's own\n---\nNothing of CodeDroid's.\n");
+  installSkills({ dir: foreign });
+  assert.ok(fs.existsSync(path.join(foreign, "create-tests", "SKILL.md")), "a same-named skill that is not ours stays");
+} finally {
+  fs.rmSync(foreign, { recursive: true, force: true });
+}
+
 console.log("skill.test.mjs: ALL PASS");
