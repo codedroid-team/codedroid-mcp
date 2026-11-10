@@ -70,7 +70,9 @@ cleanup changed the screen.
 - A header: build, device, account, date; passed / failed / not run.
 - A table by priority.
 - Each failure: the case, the step that failed, what the screen showed, its class, and its
-  screenshot (`![TC-12a](TC-12a.png)`).
+  screenshot as a thumbnail linked to the full image:
+  `<a href="TC-12a.png"><img src="TC-12a.png" alt="TC-12a" width="300"></a>` (width 120 inside
+  a table row). A plain `![TC-12a](TC-12a.png)` shows a phone screenshot at full size.
 - Every case in one table: result, priority, title, and "passed after N tries" where it took
   reruns; earlier failed attempts listed under it with their cause.
 - Findings with their status, what is not covered, and the release answer.
