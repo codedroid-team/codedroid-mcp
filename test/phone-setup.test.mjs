@@ -10,7 +10,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { readHosts, saveHosts } from "../src/host.js";
-import { adbRunner, APK_FEED, parseProviderRow, pickPhone, setUpPhone } from "../src/phone-setup.js";
+import { adbRunner, APK_FEED, createSetupPhoneTool, parseProviderRow, pickPhone, setUpPhone } from "../src/phone-setup.js";
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "codedroid-phone-setup-"));
 const newHome = () => fs.mkdtempSync(path.join(root, "home-"));
@@ -193,6 +193,47 @@ try {
     await assert.rejects(adb(["devices"]), { code: "ENOENT" }, "the only location missing is adb missing");
     const output = await adbRunner({ run, env: {} })(["shell", "pm path x"], { serial: "S" });
     assert.equal(output, "Error: no package", "a non-zero exit is an answer, not an error");
+  }
+
+  // ── The agent's tool: consent, what to do next, and one job across calls ──
+  {
+    const jobs = new Map();
+    let asked;
+    let tool = createSetupPhoneTool({
+      jobs,
+      setUp: async ({ log, confirmInstall, serial }) => {
+        asked = { install: await confirmInstall("Pixel 9"), serial };
+        log("Installing.");
+        return { status: "paired", detail: "Paired with Pixel 9." };
+      },
+    });
+    let result = await tool.handler({ install: true, serial: "S2" });
+    assert.deepEqual(asked, { install: true, serial: "S2" });
+    assert.equal(result.isError, false);
+    assert.match(result.content[0].text, /Installing\.\nPaired with Pixel 9\.\nAsk the user to tap Allow/);
+    await tool.handler({});
+    assert.equal(asked.install, false, "installs only when the call says so");
+
+    result = await createSetupPhoneTool({ jobs, setUp: async () => ({ status: "not-installed", detail: "CodeDroid is not on Pixel 9." }) }).handler({});
+    assert.equal(result.isError, true);
+    assert.match(result.content[0].text, /Ask the user whether to install CodeDroid on it/);
+
+    let started = 0;
+    let finish;
+    tool = createSetupPhoneTool({
+      jobs,
+      waitMs: 5,
+      setUp: ({ log }) => (started++, log("Downloading CodeDroid..."), new Promise((resolve) => (finish = resolve))),
+    });
+    result = await tool.handler({ install: true });
+    assert.match(result.content[0].text, /Downloading CodeDroid\.\.\.\nStill working/);
+    assert.equal(result.isError, false);
+    result = await tool.handler({ install: true });
+    assert.equal(started, 1, "a second call joins the setup under way");
+    finish({ status: "signed-out", detail: "Sign in to CodeDroid on the phone, then try again." });
+    result = await tool.handler({});
+    assert.match(result.content[0].text, /Ask the user to sign in/);
+    assert.equal(jobs.size, 0, "a finished job is gone once reported");
   }
 
   console.log("phone-setup tests passed");

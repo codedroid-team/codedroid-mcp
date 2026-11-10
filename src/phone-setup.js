@@ -1,5 +1,6 @@
 /**
- * Takes the phone on this computer's adb from nothing to paired, for `setup`:
+ * Takes the phone on this computer's adb from nothing to paired, for `setup` and the
+ * codedroid_setup_phone tool:
  *
  *   1. Install CodeDroid from get.codedroid.com if it is missing (checked against the feed's sha256).
  *   2. Turn on what its onboarding asks for (Accessibility, the keyboard, permissions), as
@@ -247,4 +248,72 @@ async function downloadApk({ fetch, tmpdir, log }) {
   const file = path.join(fs.mkdtempSync(path.join(tmpdir, "codedroid-")), "codedroid.apk");
   fs.writeFileSync(file, bytes, { mode: 0o600 });
   return file;
+}
+
+const TOOL_DESCRIPTION =
+  "Set up CodeDroid on the Android phone plugged into this computer (USB or Wireless debugging), then pair " +
+  "this computer with it, with no code to type: installs the app from get.codedroid.com if it is missing (only " +
+  "with install: true), turns on its Accessibility and keyboard over adb, waits for the user to sign in on the " +
+  "phone, and pairs. Call it when codedroid_status says this computer is not paired. If CodeDroid is not on the " +
+  "phone yet, it says so: ask the user before calling again with install: true. A long setup answers \"still " +
+  "working\": call it again to keep waiting. Once paired, the user taps Allow on the phone; then call codedroid_status.";
+
+// What the agent does next, by how setup ended.
+const NEXT = {
+  paired: "Ask the user to tap Allow on the phone, then call codedroid_status.",
+  "already-paired": "Call codedroid_status to connect.",
+  "signed-out": "Ask the user to sign in to CodeDroid on the phone (tap send, then sign in with Google), then call this again.",
+  "not-installed": "Ask the user whether to install CodeDroid on it. If they agree, call this again with install: true.",
+  "no-phone": `Ask the user to fix that, then call this again. Or they pair by hand: ${PAIR_BY_HAND}`,
+};
+
+/**
+ * codedroid_setup_phone: setUpPhone for the agent. A setup can take minutes (a download, then the
+ * user signing in), longer than a client waits for one call (Codex: 60 s), so it runs as a job on
+ * the daemon: a call waits up to [waitMs] and otherwise says it is still working, and the next call
+ * joins the same job instead of starting a second install.
+ *
+ * @param {object} options
+ * @param {Map<string, object>} options.jobs setups under way on this daemon, shared by its sessions
+ */
+export function createSetupPhoneTool({ jobs, setUp = setUpPhone, waitMs = 45_000, signInWaitMs = 3 * 60_000 } = {}) {
+  return {
+    definition: {
+      name: "codedroid_setup_phone",
+      title: "Set up the phone over USB",
+      description: TOOL_DESCRIPTION,
+      inputSchema: {
+        type: "object",
+        properties: {
+          install: { type: "boolean", description: "Install CodeDroid if it is missing. Only once the user has agreed." },
+          serial: { type: "string", description: "adb serial of the phone (adb devices), when several devices are on adb" },
+        },
+      },
+      annotations: { title: "Set up the phone over USB", readOnlyHint: false, destructiveHint: true, openWorldHint: true },
+    },
+    async handler({ install = false, serial } = {}) {
+      let job = jobs.get("setup");
+      if (!job) {
+        job = { progress: [] };
+        job.done = setUp({
+          log: (line) => job.progress.push(line),
+          confirmInstall: async () => install === true,
+          serial,
+          signInWaitMs,
+        }).catch((e) => ({ status: "failed", detail: e.message }));
+        jobs.set("setup", job);
+      }
+      let timer;
+      const result = await Promise.race([job.done, new Promise((resolve) => (timer = setTimeout(resolve, waitMs)))]);
+      clearTimeout(timer);
+      if (!result) {
+        const text = [...job.progress, "Still working. Call codedroid_setup_phone again to keep waiting."].join("\n");
+        return { content: [{ type: "text", text }], isError: false };
+      }
+      if (jobs.get("setup") === job) jobs.delete("setup");
+      const text = [...job.progress, result.detail, NEXT[result.status]].filter(Boolean).join("\n");
+      const ok = result.status === "paired" || result.status === "already-paired";
+      return { content: [{ type: "text", text }], isError: !ok };
+    },
+  };
 }

@@ -109,7 +109,7 @@ try {
   const tools = await client.listTools();
   assert.deepEqual(
     tools.tools.map((t) => t.name).sort(),
-    ["adb", "codedroid_devices", "codedroid_status", "echo", "install_apk"],
+    ["adb", "codedroid_devices", "codedroid_setup_phone", "codedroid_status", "echo", "install_apk"],
     "the shim forwards the daemon's local tool without re-registering it",
   );
 
@@ -137,7 +137,7 @@ try {
   daemon = await startDaemon({ port, pairings: () => [PAIRING], phoneTransportFactory: makeFakePhoneTransport, enableAdbTool: true, home });
   const afterRestart = await client.callTool({ name: "echo", arguments: { text: "after-restart" } });
   assert.equal(afterRestart.content[0].text, "echo: after-restart", "the shim opens a new daemon session and sends the call again");
-  assert.deepEqual((await client.listTools()).tools.map((t) => t.name).sort(), ["adb", "codedroid_devices", "codedroid_status", "echo", "install_apk"]);
+  assert.deepEqual((await client.listTools()).tools.map((t) => t.name).sort(), ["adb", "codedroid_devices", "codedroid_setup_phone", "codedroid_status", "echo", "install_apk"]);
 
   // ── A tap in flight as the daemon restarts: the model is told, and it is not sent again ──
   const inFlight = client.callTool({ name: "tap", arguments: {} });
