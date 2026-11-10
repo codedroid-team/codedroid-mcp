@@ -6,60 +6,76 @@ through [CodeDroid](https://get.codedroid.com). Your phone and computer can be o
 
 ## Get started
 
-You'll need **Node.js 20+** and **CodeDroid on your Android phone**, signed in with
-its accessibility service enabled. Both devices need internet access.
+You'll need **Node.js 20+** and an Android phone. Both devices need internet access.
 
-### 1. Install for your coding client
+### Fastest: plug in your phone
 
-**Every client at once** — run in your terminal:
+Turn on **USB debugging** on the phone, plug it into your computer, and run:
 
 ```bash
 npx -y @codedroid/mcp setup
 ```
 
-It finds Claude Code, Codex, Gemini CLI, Cursor, VS Code, Claude Desktop, and Windsurf, and adds
-CodeDroid to each one after you confirm. Run it again after an update; it skips clients that are
-already set up. Or install for one client:
+It adds CodeDroid to every coding client it finds (Claude Code, Codex, Gemini CLI, Cursor, VS Code,
+Claude Desktop, Windsurf), installs the CodeDroid app on the phone, turns on its accessibility
+service, and pairs the phone with this computer. On the phone, you allow USB debugging for this
+computer, sign in to CodeDroid with Google, and tap **Allow** when your computer first connects.
+Then restart your coding client.
 
-**Claude Code** — run inside Claude Code:
+Already have the plugin? Ask your agent to "set up my phone" instead: it does the same, and asks
+you before installing anything.
+Setting up over USB needs [adb](https://developer.android.com/tools/releases/platform-tools).
 
-```text
-/plugin marketplace add codedroid-team/codedroid-mcp
-/plugin install codedroid@codedroid
+### Or step by step
+
+#### 1. Install for your coding client
+
+**Every client at once**: run `npx -y @codedroid/mcp setup` in your terminal. Or for one client:
+
+**Claude Code**: run in your terminal:
+
+```bash
+claude plugin install codedroid --marketplace codedroid-team/codedroid-mcp
 ```
 
-**Codex** — run in your terminal:
+**Codex**: run in your terminal:
 
 ```bash
 codex plugin marketplace add codedroid-team/codedroid-mcp
 codex plugin add codedroid@codedroid
 ```
 
-**Gemini CLI** — run in your terminal:
+**Gemini CLI**: run in your terminal:
 
 ```bash
 gemini extensions install https://github.com/codedroid-team/codedroid-mcp
 ```
 
-Each installation includes the MCP server and skills for phone control and Android app testing.
+**Cursor**: [Add to Cursor](https://cursor.com/en/install-mcp?name=codedroid&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkBjb2RlZHJvaWQvbWNwIl19)
+
+**VS Code**: [Install in VS Code](https://vscode.dev/redirect/mcp/install?name=codedroid&config=%7B%22type%22%3A%22stdio%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40codedroid%2Fmcp%22%5D%7D)
+
+Each plugin includes the MCP server and skills for phone control and Android app testing.
 Restart your coding client after installing.
 
 Using another client? See [manual MCP setup](docs/reference.md#mcp-configuration).
 
-### 2. Pair your phone
+#### 2. Pair your phone
 
-1. Open **CodeDroid → Settings → Computers → Pair a computer** on your phone.
-2. Run the command shown there in your computer's terminal. For example:
+1. Install CodeDroid from [get.codedroid.com](https://get.codedroid.com), sign in, and turn on its
+   accessibility service when it asks.
+2. Open **CodeDroid → Settings → Computers → Pair a computer**.
+3. Run the command shown there in your computer's terminal. For example:
 
    ```bash
    npx -y @codedroid/mcp pair ABCD-EFGH
    ```
 
-3. Tap **Allow** on your phone when prompted.
+4. Tap **Allow** on your phone when prompted.
 
 Use the command exactly as shown. Pairing codes expire after 10 minutes and work once.
 
-### 3. Ask your agent
+### Ask your agent
 
 > Read the screen on my phone and describe what is open.
 
@@ -97,6 +113,9 @@ unless the pairing command shown on your phone names another:
 
 - **Pairing** sends the one-time code, your computer's name, and its OS (for example `darwin`),
   so the phone can show which computer is connected.
+- **Setting up over USB** downloads the app from `get.codedroid.com`, checks it against the
+  published SHA-256 before installing it, and changes only CodeDroid's own settings on the phone
+  (its accessibility service, keyboard and permissions). It installs only after you agree.
 - **Tool calls** are relayed between your agent and the phone: screen contents, screenshots, text
   you ask it to type, clipboard reads and writes, and task progress. Each call also names the MCP
   client that made it and its version. The phone asks you to **Allow** a computer the first time,

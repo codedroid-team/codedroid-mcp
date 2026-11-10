@@ -25,6 +25,7 @@ read progress, or `cancel_task` to stop the task.
 | `adb` | Run local adb commands against the phone attached to this computer. Turn off with `--no-adb` or `CODEDROID_MCP_ADB=0`. |
 | `codedroid_devices` | List the paired phones (id, model, server) and whether each is connected, without connecting. |
 | `codedroid_status` | Connect to the paired phones, report each connection, and get instructions for resolving problems. |
+| `codedroid_setup_phone` | Set up the phone on this computer's adb: install CodeDroid (only with `install` set, after the user agrees), turn on its accessibility service, and pair with no code to type. `serial` picks the phone when several are on adb. A long setup answers "still working": call it again. Offered with the `adb` tool. |
 
 Screen interaction tools return an `after` observation with the current app, keyboard state,
 screen changes, and visible elements. Phone tool errors include an error code, message, and
@@ -120,6 +121,21 @@ client alone when it already has a `codedroid` server from somewhere else, and i
 config file it can't parse, such as JSON with comments. `--client` sets up only the listed clients,
 even ones it didn't detect. `--yes` skips the confirmation. With a pairing code, `setup` also pairs,
 like `pair`.
+
+Without a code, and with a phone on adb (USB or Wireless debugging), `setup` then sets the phone up:
+
+1. Installs CodeDroid from get.codedroid.com if it is missing, and checks the download against the
+   published SHA-256. It asks first. Outside a terminal it installs only with `--yes`.
+2. Turns on CodeDroid's accessibility service, keyboard and permissions over adb, as the USB
+   install on get.codedroid.com does. Android's restricted settings don't apply to this.
+3. Waits up to five minutes for you to sign in on the phone.
+4. Pairs: CodeDroid hands adb a pairing code, readable only by adb and the app itself, so you
+   don't type one. Then it connects, and you tap **Allow** on the phone.
+
+With several devices on adb, set `CODEDROID_SERIAL` to the one to set up. With no phone on adb, or
+no adb, `setup` says how to pair by hand. If the phone removed this computer, `setup` pairs it
+again. Pairing over USB needs a CodeDroid version that has it; older ones are told to update.
+`setup` exits with 1 when the phone isn't set up (signed out, declined outside a terminal, failed).
 
 ### Standalone Claude Code server
 
@@ -237,7 +253,9 @@ connection problem.
 
 | Problem | Action |
 | --- | --- |
-| Computer is not paired, or pairing was removed | Create a new code in **Settings → Computers → Pair a computer** and run the displayed command. |
+| Computer is not paired, or pairing was removed | Plug the phone in with USB debugging on and run `npx -y @codedroid/mcp setup`, or create a new code in **Settings → Computers → Pair a computer** and run the displayed command. |
+| `setup` waits for sign-in | On the phone, tap send in CodeDroid and sign in with Google. |
+| `setup` says the phone blocked installing over USB | Turn on **Install via USB** in Developer options (some Xiaomi and Oppo phones), then run it again. |
 | Phone is not connected | Open CodeDroid, check its internet connection and sign-in, and enable **Allow computers to connect**. |
 | A phone is listed twice, and one never connects | CodeDroid was reinstalled, so that pairing is old. Run `npx -y @codedroid/mcp unpair <id>` with the id from `status`. |
 | Connection is awaiting approval | Tap **Allow** on the phone. |
