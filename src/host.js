@@ -15,9 +15,13 @@ import path from "path";
 
 export const DEFAULT_SERVER = "https://orchestrator.codedroid.com";
 
-export const PAIRING_STEPS =
+export const PAIR_BY_HAND =
   "On the phone, open CodeDroid > Settings > Computers > Pair a computer, then run the command it shows " +
   "on this computer (npx -y @codedroid/mcp pair XXXX-XXXX).";
+
+export const PAIRING_STEPS =
+  "Plug the phone into this computer with USB debugging on and run npx -y @codedroid/mcp setup: it installs " +
+  `CodeDroid if needed and pairs. Or pair by hand. ${PAIR_BY_HAND}`;
 
 export function hostFilePath(home = os.homedir()) {
   return path.join(home, ".codedroid", "host.json");

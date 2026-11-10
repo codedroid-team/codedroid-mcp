@@ -190,7 +190,7 @@ try {
     assert.throws(() => findHost([xps, pixelA, pixelB], "pixel"), /"pixel" matches 2 paired phones/);
     assert.throws(() => findHost([xps, pixelA, pixelB], "Pixel 9"), /matches 2 paired phones: Pixel 9 \(3f1c.*\), Pixel 9 \(2f1c.*\)\. Use the id/);
     assert.throws(() => findHost([xps, pixelA, pixelB], "Galaxy"), /No paired phone is "Galaxy"\. Paired: XPS Googlebook \(1f1c/);
-    assert.throws(() => findHost([], "Galaxy"), /None is paired\. On the phone/);
+    assert.throws(() => findHost([], "Galaxy"), /None is paired\. Plug the phone into this computer/);
     assert.throws(() => findHost([xps], " "), /Name a phone/);
     assert.equal(describeHost({ host_id: "h", device: { id: null, model: null } }), "unknown model (h)", "a pairing without a device id is named by its host id");
 
