@@ -16,8 +16,13 @@ If the phone's tools are missing, or a call says CodeDroid is not connected, cal
 `codedroid_status`. Its `problem` says exactly what to fix (this computer is not paired yet, the
 phone is offline or CodeDroid is not open on it, the user has not tapped Allow on the phone yet).
 Tell the user that in their words, and call `codedroid_status` again once they have fixed it.
-Pairing is theirs to do: on the phone, CodeDroid > Settings > Computers > Pair a computer shows a
-command to run on this computer. Once connected it also returns
+If this computer is not paired, call `codedroid_setup_phone`: with the phone plugged in (USB
+debugging on), it turns CodeDroid on and pairs, and says what the user has left to do (sign in on
+the phone, tap Allow). If CodeDroid is not on the phone yet, it says so: ask the user before calling
+it again with `install` true. If it answers "still working", call it again. Without adb, pairing is
+theirs to do: on the phone, CodeDroid > Settings > Computers > Pair a computer shows a command to
+run on this computer.
+Once connected it also returns
 the phone's `instructions`: read them if your session started before the phone connected.
 
 The first time a computer connects, the phone asks the user to allow it. While you drive the

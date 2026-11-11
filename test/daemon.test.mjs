@@ -272,7 +272,7 @@ try {
   const tools = await c.client.listTools();
   assert.deepEqual(
     tools.tools.map((t) => t.name).sort(),
-    ["adb", "codedroid_devices", "codedroid_status", "echo", "install_apk"],
+    ["adb", "codedroid_devices", "codedroid_setup_phone", "codedroid_status", "echo", "install_apk"],
     "the daemon merges the host-side adb tool into tools/list",
   );
 

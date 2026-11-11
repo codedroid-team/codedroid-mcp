@@ -1,6 +1,6 @@
 {
   "name": "codedroid",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "description": "Drive your Android phone through CodeDroid, with MCP tools and device testing skills.",
   "author": {
     "name": "CodeDroid",
@@ -20,6 +20,7 @@
     "category": "Developer tools",
     "capabilities": ["Interactive", "Read", "Write"],
     "websiteURL": "https://get.codedroid.com",
+    "privacyPolicyURL": "https://www.codedroid.com/privacy",
     "termsOfServiceURL": "https://www.codedroid.com/terms",
     "defaultPrompt": [
       "Read the screen on my phone and describe what is open.",

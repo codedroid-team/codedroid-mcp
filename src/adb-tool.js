@@ -200,7 +200,7 @@ async function serialOf(selector, phones, runAdb, opts) {
 }
 
 /** Where adb may be besides PATH: a GUI client's daemon does not get the terminal's PATH. */
-function adbLocations(env) {
+export function adbLocations(env) {
   if (env.ADB) return [env.ADB];
   const home = os.homedir();
   const sdks = [
