@@ -109,7 +109,7 @@ npx -y @codedroid/mcp setup ABCD-EFGH
 | --- | --- | --- |
 | Claude Code | `claude-code` | Installs the plugin with `claude plugin install` |
 | Codex | `codex` | Installs the plugin with `codex plugin add` |
-| Antigravity | `antigravity` | Installs the plugin with `agy plugin install`; without `agy`, adds the server to `~/.gemini/config/mcp_config.json` |
+| Antigravity | `antigravity` | Copies the plugin to `~/.gemini/config/plugins/codedroid`, and removes the `codedroid` server earlier releases added to `~/.gemini/config/mcp_config.json` |
 | Cursor | `cursor` | Adds the server to `~/.cursor/mcp.json` |
 | VS Code | `vscode` | Adds the server to the user `mcp.json` |
 | Claude Desktop | `claude-desktop` | Adds the server to `claude_desktop_config.json` |
@@ -167,12 +167,15 @@ tool_timeout_sec = 300
 
 ### Standalone Antigravity server
 
-Add the server under `mcpServers` in `~/.gemini/config/mcp_config.json`, as in
+In the Antigravity app, open **Customizations** > **MCP Servers** and click **Copy Config File Path**.
+Add the server under `mcpServers` in that file (usually `~/.gemini/config/mcp_config.json`), as in
 [Other MCP clients](#other-mcp-clients), then install the skills:
 
 ```bash
 npx -y @codedroid/mcp skill install --dir=$HOME/.gemini/config/skills
 ```
+
+Use this or the plugin from `setup`, not both: both register the tools.
 
 ### Other MCP clients
 

@@ -48,8 +48,11 @@ codex plugin add codedroid@codedroid
 **Antigravity**: run in your terminal:
 
 ```bash
-agy plugin install https://github.com/codedroid-team/codedroid-mcp
+npx -y @codedroid/mcp setup --client=antigravity
 ```
+
+It adds the CodeDroid plugin to `~/.gemini/config/plugins`. Restart Antigravity and find it under
+**Customizations** > **Installed**.
 
 **Cursor**: [Add to Cursor](https://cursor.com/en/install-mcp?name=codedroid&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkBjb2RlZHJvaWQvbWNwIl19)
 

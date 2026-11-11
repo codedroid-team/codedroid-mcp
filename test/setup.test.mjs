@@ -214,32 +214,51 @@ try {
     assert.deepEqual(failing.setup(), { status: "failed", detail: "failed: codex is not on PATH" });
   }
 
-  // ── Antigravity: the plugin through agy unless it or a standalone server is there; without agy, the config ──
+  // ── Antigravity: the plugin folder the app loads; an earlier release's config server goes ──
   {
     const home = newHome();
-    const list = "agy plugin list --json";
-    const install = "agy plugin install https://github.com/codedroid-team/codedroid-mcp";
-    const configPath = path.join(home, ".gemini", "config", "mcp_config.json");
-    const fake = fakeRun({ [list]: { ok: true, stdout: "[]" }, [install]: { ok: true } });
-    const antigravity = clients({ home, env: {}, run: fake.run }).find((c) => c.id === "antigravity");
-    assert.equal(antigravity.installed(), true, "agy on PATH");
-    assert.equal(antigravity.setup().status, "added");
-    assert.deepEqual(fake.calls, [list, list, install]);
+    const configDir = path.join(home, ".gemini", "config");
+    const configPath = path.join(configDir, "mcp_config.json");
+    const pluginDir = path.join(configDir, "plugins", "codedroid");
+    const fake = fakeRun();
+    const antigravity = () => clients({ home, platform: "linux", env: {}, run: fake.run }).find((c) => c.id === "antigravity");
+    assert.equal(antigravity().installed(), false, "no app");
+    fs.mkdirSync(path.join(home, ".gemini", "antigravity"), { recursive: true });
+    assert.equal(antigravity().installed(), true, "the app's data folder");
 
-    fs.mkdirSync(path.dirname(configPath), { recursive: true });
-    fs.writeFileSync(configPath, JSON.stringify({ mcpServers: { codedroid: { command: "npx" } } }));
-    assert.equal(antigravity.setup().status, "skipped");
-    const listed = fakeRun({ [list]: { ok: true, stdout: JSON.stringify([{ name: "codedroid", enabled: true }]) } });
-    assert.equal(clients({ home, env: {}, run: listed.run }).find((c) => c.id === "antigravity").setup().status, "present");
-    assert.deepEqual(listed.calls, [list]);
+    assert.equal(antigravity().setup().status, "added");
+    assert.deepEqual(fake.calls, [], "no CLI needed");
+    const manifest = readJson(path.join(pluginDir, ".antigravity-plugin", "plugin.json"));
+    assert.equal(manifest.version, VERSION);
+    assert.deepEqual(readJson(path.join(pluginDir, "mcp_config.json")), { mcpServers: { codedroid: SERVER } });
+    assert.ok(fs.existsSync(path.join(pluginDir, "skills", "codedroid-phone", "SKILL.md")));
+    assert.ok(fs.existsSync(path.join(pluginDir, manifest.logo)));
+    assert.equal(antigravity().setup().status, "present");
 
-    const appOnly = newHome();
-    const withoutAgy = clients({ home: appOnly, env: {}, run: fakeRun().run }).find((c) => c.id === "antigravity");
-    assert.equal(withoutAgy.installed(), false, "neither agy nor the app");
-    fs.mkdirSync(path.join(appOnly, ".gemini", "antigravity"), { recursive: true });
-    assert.equal(withoutAgy.installed(), true, "the app or IDE alone");
-    assert.equal(withoutAgy.setup().status, "added");
-    assert.deepEqual(readJson(path.join(appOnly, ".gemini", "config", "mcp_config.json")), { mcpServers: { codedroid: SERVER } });
+    // An older release's plugin is replaced, and its server in mcp_config.json removed.
+    fs.writeFileSync(path.join(pluginDir, ".antigravity-plugin", "plugin.json"), JSON.stringify({ name: "codedroid", version: "0.1.0" }));
+    fs.writeFileSync(path.join(pluginDir, "stale.txt"), "");
+    fs.writeFileSync(configPath, '{\n  // mine\n  "mcpServers": {\n    "other": { "command": "x" },\n    "codedroid": { "command": "npx", "args": ["-y", "@codedroid/mcp@0.1.14"] }\n  }\n}\n');
+    assert.equal(antigravity().setup().status, "updated");
+    assert.equal(readJson(path.join(pluginDir, ".antigravity-plugin", "plugin.json")).version, VERSION);
+    assert.ok(!fs.existsSync(path.join(pluginDir, "stale.txt")));
+    assert.match(fs.readFileSync(configPath, "utf8"), /\/\/ mine/);
+    assert.doesNotMatch(fs.readFileSync(configPath, "utf8"), /codedroid/);
+
+    // A newer plugin stays; a codedroid server of someone else's, or another plugin's folder, is left alone.
+    fs.writeFileSync(path.join(pluginDir, ".antigravity-plugin", "plugin.json"), JSON.stringify({ name: "codedroid", version: "99.0.0" }));
+    assert.equal(antigravity().setup().status, "present");
+    fs.writeFileSync(configPath, JSON.stringify({ mcpServers: { codedroid: { command: "other" } } }));
+    assert.equal(antigravity().setup().status, "skipped");
+    fs.rmSync(configPath);
+    fs.rmSync(path.join(pluginDir, ".antigravity-plugin"), { recursive: true });
+    fs.writeFileSync(path.join(pluginDir, "plugin.json"), JSON.stringify({ name: "someone-else" }));
+    assert.equal(antigravity().setup().status, "skipped");
+    assert.ok(fs.existsSync(path.join(pluginDir, "plugin.json")));
+
+    const mac = newHome();
+    fs.mkdirSync(path.join(mac, "Applications", "Antigravity.app"), { recursive: true });
+    assert.equal(clients({ home: mac, platform: "darwin", env: {}, run: fakeRun().run }).find((c) => c.id === "antigravity").installed(), true, "the app in ~/Applications");
   }
 
   // ── The CLI: --client and --yes write the config, then say how to pair ──
