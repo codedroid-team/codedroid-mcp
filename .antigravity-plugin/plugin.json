@@ -1,0 +1,21 @@
+{
+  "$schema": "https://antigravity.google/schemas/v1/plugin.json",
+  "name": "codedroid",
+  "displayName": "CodeDroid",
+  "version": "0.1.14",
+  "description": "Your Android phone, through CodeDroid: read the screen, tap and type, hand CodeDroid a whole task, run adb, and verify app changes on the device.",
+  "logo": "assets/icon.png",
+  "suggestedPrompts": [
+    "Read the screen on my phone and describe what is open.",
+    "Open Android Settings and check the Android version.",
+    "Install my app on the phone, open it, and check for crashes."
+  ],
+  "author": {
+    "name": "CodeDroid",
+    "url": "https://get.codedroid.com"
+  },
+  "homepage": "https://get.codedroid.com",
+  "repository": "https://github.com/codedroid-team/codedroid-mcp",
+  "license": "MIT",
+  "keywords": ["android", "adb", "mobile", "testing", "device"]
+}

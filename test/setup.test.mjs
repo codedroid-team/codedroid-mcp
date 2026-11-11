@@ -10,7 +10,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { addServer, clients, pickClients, SERVER } from "../src/setup.js";
+import { addServer, clients, pickClients, runCli, SERVER } from "../src/setup.js";
 import { VERSION } from "../src/version.js";
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "codedroid-setup-"));
@@ -60,12 +60,23 @@ try {
     assert.equal(addServer(file, "mcpServers", SERVER).status, "updated");
   }
 
-  // Another server named codedroid, a config with comments, or a wrong shape: never rewritten.
+  // Comments and trailing commas (Zed's settings.json) stay; only the codedroid entry changes.
+  {
+    const file = path.join(newHome(), "settings.json");
+    const text = '// Zed settings\n{\n  "theme": "One Dark", // mine\n  "ui_font_size": 16,\n}\n';
+    fs.writeFileSync(file, text);
+    assert.equal(addServer(file, "context_servers", SERVER).status, "added");
+    const written = fs.readFileSync(file, "utf8");
+    assert.ok(written.startsWith('// Zed settings\n{\n  "theme": "One Dark", // mine\n'), written);
+    assert.equal(addServer(file, "context_servers", SERVER).status, "present", "reads its own write");
+  }
+
+  // Another server named codedroid, a config that is not JSON, or a wrong shape: never rewritten.
   {
     const dir = newHome();
     const cases = {
       "foreign.json": [JSON.stringify({ mcpServers: { codedroid: { command: "node", args: ["/src/codedroid/index.js"] } } }), "skipped"],
-      "jsonc.json": ['{\n  // mine\n  "servers": {}\n}\n', "failed"],
+      "broken.json": ['{\n  "servers": {\n', "failed"],
       "array.json": ["[]", "failed"],
       "servers-array.json": [JSON.stringify({ mcpServers: [] }), "failed"],
     };
@@ -110,30 +121,35 @@ try {
     const { run } = fakeRun();
     const byId = (all) => Object.fromEntries(all.map((c) => [c.id, c]));
     const mac = byId(clients({ home, platform: "darwin", env: {}, run }));
-    for (const id of ["cursor", "vscode", "claude-desktop", "windsurf"]) assert.equal(mac[id].installed(), false, `${id}: not installed yet`);
+    for (const id of ["cursor", "vscode", "claude-desktop", "windsurf", "zed"]) assert.equal(mac[id].installed(), false, `${id}: not installed yet`);
     const support = path.join(home, "Library", "Application Support");
     fs.mkdirSync(path.join(support, "Code", "User"), { recursive: true });
     fs.mkdirSync(path.join(support, "Claude"), { recursive: true });
     assert.deepEqual(pickClients(Object.values(mac), undefined).map((c) => c.id), ["vscode", "claude-desktop"], "only the installed ones");
-    for (const id of ["vscode", "claude-desktop", "cursor", "windsurf"]) assert.equal(mac[id].setup().status, "added", id);
+    for (const id of ["vscode", "claude-desktop", "cursor", "windsurf", "zed"]) assert.equal(mac[id].setup().status, "added", id);
     assert.deepEqual(readJson(path.join(support, "Code", "User", "mcp.json")), { servers: { codedroid: { type: "stdio", ...SERVER } } });
     assert.deepEqual(readJson(path.join(support, "Claude", "claude_desktop_config.json")), { mcpServers: { codedroid: SERVER } });
     assert.deepEqual(readJson(path.join(home, ".cursor", "mcp.json")), { mcpServers: { codedroid: SERVER } });
     assert.deepEqual(readJson(path.join(home, ".codeium", "windsurf", "mcp_config.json")), { mcpServers: { codedroid: SERVER } });
+    assert.deepEqual(readJson(path.join(home, ".config", "zed", "settings.json")), { context_servers: { codedroid: SERVER } });
 
     const linux = byId(clients({ home, platform: "linux", env: { XDG_CONFIG_HOME: path.join(home, "xdg") }, run }));
     linux["claude-desktop"].setup();
     assert.ok(fs.existsSync(path.join(home, "xdg", "Claude", "claude_desktop_config.json")));
+    linux.zed.setup();
+    assert.ok(fs.existsSync(path.join(home, "xdg", "zed", "settings.json")));
     const windows = byId(clients({ home, platform: "win32", env: { APPDATA: path.join(home, "roaming") }, run }));
     windows.vscode.setup();
     assert.ok(fs.existsSync(path.join(home, "roaming", "Code", "User", "mcp.json")));
+    windows.zed.setup();
+    assert.ok(fs.existsSync(path.join(home, "roaming", "Zed", "settings.json")));
   }
 
   // ── --client picks by id, and names an unknown one ──
   {
     const all = clients({ home: newHome(), env: {}, run: fakeRun().run });
     assert.deepEqual(pickClients(all, "cursor, codex").map((c) => c.id), ["codex", "cursor"]);
-    assert.throws(() => pickClients(all, "cursor,emacs"), /Unknown client: emacs\. Clients: claude-code, codex, gemini, cursor/);
+    assert.throws(() => pickClients(all, "cursor,emacs"), /Unknown client: emacs\. Clients: claude-code, codex, antigravity, cursor/);
   }
 
   // ── Claude Code: installs the plugin, unless it or a standalone server is there ──
@@ -164,6 +180,17 @@ try {
     assert.equal(client.installed(), false);
   }
 
+  // ── A client's CLI runs in an empty directory: never the home one, whose local-scope servers only it has ──
+  {
+    const seen = runCli(process.execPath, ["-e", "console.log(JSON.stringify([process.cwd(), require('fs').readdirSync('.')]))"]);
+    assert.equal(seen.ok, true, seen.reason);
+    const [cwd, entries] = JSON.parse(seen.stdout);
+    assert.ok(cwd.startsWith(fs.realpathSync(os.tmpdir())), cwd);
+    assert.deepEqual(entries, [], "nothing there for the CLI to read as a project");
+    assert.equal(fs.existsSync(cwd), false, "and it is removed afterwards");
+    assert.equal(runCli("codedroid-no-such-cli", []).reason, "codedroid-no-such-cli is not on PATH");
+  }
+
   // ── Codex: adds the marketplace, then the plugin; reads config.toml for what is there ──
   {
     const home = newHome();
@@ -187,21 +214,32 @@ try {
     assert.deepEqual(failing.setup(), { status: "failed", detail: "failed: codex is not on PATH" });
   }
 
-  // ── Gemini CLI: installs the extension unless it or a standalone server is there ──
+  // ── Antigravity: the plugin through agy unless it or a standalone server is there; without agy, the config ──
   {
     const home = newHome();
-    const install = "gemini extensions install https://github.com/codedroid-team/codedroid-mcp --consent";
-    const fake = fakeRun({ [install]: { ok: true } });
-    const gemini = clients({ home, env: {}, run: fake.run }).find((c) => c.id === "gemini");
-    assert.equal(gemini.setup().status, "added");
-    assert.deepEqual(fake.calls, [install]);
+    const list = "agy plugin list --json";
+    const install = "agy plugin install https://github.com/codedroid-team/codedroid-mcp";
+    const configPath = path.join(home, ".gemini", "config", "mcp_config.json");
+    const fake = fakeRun({ [list]: { ok: true, stdout: "[]" }, [install]: { ok: true } });
+    const antigravity = clients({ home, env: {}, run: fake.run }).find((c) => c.id === "antigravity");
+    assert.equal(antigravity.installed(), true, "agy on PATH");
+    assert.equal(antigravity.setup().status, "added");
+    assert.deepEqual(fake.calls, [list, list, install]);
 
-    fs.mkdirSync(path.join(home, ".gemini"));
-    fs.writeFileSync(path.join(home, ".gemini", "settings.json"), JSON.stringify({ mcpServers: { codedroid: { command: "npx" } } }));
-    assert.equal(gemini.setup().status, "skipped");
-    fs.mkdirSync(path.join(home, ".gemini", "extensions", "codedroid"), { recursive: true });
-    assert.equal(gemini.setup().status, "present");
-    assert.equal(fake.calls.length, 1);
+    fs.mkdirSync(path.dirname(configPath), { recursive: true });
+    fs.writeFileSync(configPath, JSON.stringify({ mcpServers: { codedroid: { command: "npx" } } }));
+    assert.equal(antigravity.setup().status, "skipped");
+    const listed = fakeRun({ [list]: { ok: true, stdout: JSON.stringify([{ name: "codedroid", enabled: true }]) } });
+    assert.equal(clients({ home, env: {}, run: listed.run }).find((c) => c.id === "antigravity").setup().status, "present");
+    assert.deepEqual(listed.calls, [list]);
+
+    const appOnly = newHome();
+    const withoutAgy = clients({ home: appOnly, env: {}, run: fakeRun().run }).find((c) => c.id === "antigravity");
+    assert.equal(withoutAgy.installed(), false, "neither agy nor the app");
+    fs.mkdirSync(path.join(appOnly, ".gemini", "antigravity"), { recursive: true });
+    assert.equal(withoutAgy.installed(), true, "the app or IDE alone");
+    assert.equal(withoutAgy.setup().status, "added");
+    assert.deepEqual(readJson(path.join(appOnly, ".gemini", "config", "mcp_config.json")), { mcpServers: { codedroid: SERVER } });
   }
 
   // ── The CLI: --client and --yes write the config, then say how to pair ──
@@ -231,7 +269,7 @@ try {
     assert.equal(result.code, 1);
     assert.match(result.stderr, /Unknown client: emacs/);
 
-    fs.writeFileSync(path.join(home, ".cursor", "mcp.json"), "{ // mine\n}");
+    fs.writeFileSync(path.join(home, ".cursor", "mcp.json"), "{ mine\n}");
     result = await cli(["setup", "--client=cursor", "--yes"]);
     assert.equal(result.code, 1, "a client it could not set up fails the run");
     assert.match(result.stdout, /could not read .* as JSON/);

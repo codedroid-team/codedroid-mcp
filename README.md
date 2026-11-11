@@ -1,6 +1,6 @@
 # CodeDroid MCP
 
-Let Claude Code, Codex, Gemini CLI, or any MCP client use your Android phone.
+Let Claude Code, Codex, Antigravity, or any MCP client use your Android phone.
 Read the screen, interact with apps, take screenshots, and test what you build
 through [CodeDroid](https://get.codedroid.com). Your phone and computer can be on different networks.
 
@@ -16,8 +16,8 @@ Turn on **USB debugging** on the phone, plug it into your computer, and run:
 npx -y @codedroid/mcp setup
 ```
 
-It adds CodeDroid to every coding client it finds (Claude Code, Codex, Gemini CLI, Cursor, VS Code,
-Claude Desktop, Windsurf), installs the CodeDroid app on the phone, turns on its accessibility
+It adds CodeDroid to every coding client it finds (Claude Code, Codex, Antigravity, Cursor, VS Code,
+Claude Desktop, Windsurf, Zed), installs the CodeDroid app on the phone, turns on its accessibility
 service, and pairs the phone with this computer. On the phone, you allow USB debugging for this
 computer, sign in to CodeDroid with Google, and tap **Allow** when your computer first connects.
 Then restart your coding client.
@@ -45,15 +45,28 @@ codex plugin marketplace add codedroid-team/codedroid-mcp
 codex plugin add codedroid@codedroid
 ```
 
-**Gemini CLI**: run in your terminal:
+**Antigravity**: run in your terminal:
 
 ```bash
-gemini extensions install https://github.com/codedroid-team/codedroid-mcp
+agy plugin install https://github.com/codedroid-team/codedroid-mcp
 ```
 
 **Cursor**: [Add to Cursor](https://cursor.com/en/install-mcp?name=codedroid&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkBjb2RlZHJvaWQvbWNwIl19)
 
 **VS Code**: [Install in VS Code](https://vscode.dev/redirect/mcp/install?name=codedroid&config=%7B%22type%22%3A%22stdio%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40codedroid%2Fmcp%22%5D%7D)
+
+**Zed**: add this to `~/.config/zed/settings.json` (Windows: `%APPDATA%\Zed\settings.json`):
+
+```json
+{
+  "context_servers": {
+    "codedroid": {
+      "command": "npx",
+      "args": ["-y", "@codedroid/mcp"]
+    }
+  }
+}
+```
 
 Each plugin includes the MCP server and skills for phone control and Android app testing.
 Restart your coding client after installing.

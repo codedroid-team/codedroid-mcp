@@ -189,7 +189,9 @@ try {
   const partial = await status(client);
   assert.equal(partial.connected, false);
   assert.deepEqual(partial.devices.map((d) => d.connected), [true, false, true]);
-  assert.match(partial.problem, /^Pixel 9 \(9a1e7c00.*\): Pixel 9 is not online\.$/);
+  assert.match(partial.problem, /^Pixel 9 \(9a1e7c00.*\): Pixel 9 is not online\. A phone this computer no longer uses stays paired until you forget it: npx -y @codedroid\/mcp unpair <its id>\.$/);
+  const offlineOne = await status(client, { device: "Pixel 9" });
+  assert.equal(offlineOne.problem, "Pixel 9 is not online.", "asked about one phone: nothing about the others");
   assert.deepEqual((await client.listTools()).tools.map((t) => t.name), ["tap", "get_task", "codedroid_devices", "codedroid_status", "install_apk", "adb", "codedroid_setup_phone"], "a phone down hides no tools");
 
   // ── Unpaired while the daemon runs: that phone is gone, the rest stay ──

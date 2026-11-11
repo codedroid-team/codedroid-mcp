@@ -1,16 +1,19 @@
 /**
  * `setup` adds CodeDroid to the coding clients on this computer:
  *
- * - Claude Code, Codex and Gemini CLI get the plugin or extension through their own CLI, as the
- *   README's install commands do: the MCP server and the skills, updated by the client.
- * - Cursor, VS Code, Claude Desktop and Windsurf get the MCP server in their JSON config, pinned to
- *   this release like the plugin's .mcp.json. Running a newer `setup` moves the pin.
+ * - Claude Code, Codex and Antigravity get the plugin through their own CLI, as the README's
+ *   install commands do: the MCP server and the skills, updated by the client. Antigravity without
+ *   its `agy` CLI (the app or IDE alone) gets the MCP server in its JSON config instead.
+ * - Cursor, VS Code, Claude Desktop, Windsurf and Zed get the MCP server in their JSON config, pinned
+ *   to this release like the plugin's .mcp.json. Running a newer `setup` moves the pin.
  *
  * A client that already has some other `codedroid` server is left alone, so its tools are never
- * registered twice, and a config it cannot read or parse (JSON with comments) is never rewritten.
+ * registered twice. A config keeps its comments and formatting, and one that cannot be read or
+ * parsed is never rewritten.
  */
 import { spawnSync } from "child_process";
 import fs from "fs";
+import { applyEdits, modify, parse } from "jsonc-parser";
 import os from "os";
 import path from "path";
 import { VERSION } from "./version.js";
@@ -22,16 +25,26 @@ const PLUGIN = "codedroid@codedroid";
 export const SERVER = { command: "npx", args: ["-y", `${PACKAGE}@${VERSION}`] };
 export const MANUAL_SETUP = `https://github.com/${REPO}/blob/main/docs/reference.md#mcp-configuration`;
 
-/** Runs a client's CLI: ok, its stdout, and a one-line reason for when it failed. */
-export function runCli(command, args, { cwd = os.homedir(), timeout = 180_000 } = {}) {
-  const result = spawnSync(command, args, {
-    cwd,
-    encoding: "utf8",
-    timeout,
-    stdio: ["ignore", "pipe", "pipe"],
-    // npm-installed CLIs are .cmd shims on Windows, which only a shell runs.
-    shell: process.platform === "win32",
-  });
+/**
+ * Runs a client's CLI: ok, its stdout, and a one-line reason for when it failed. It runs in an
+ * empty directory, so what it sees is the client's user-wide setup: from the home directory,
+ * `claude mcp get` also finds a server added there in local scope, which no other project has.
+ */
+export function runCli(command, args, { timeout = 180_000 } = {}) {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "codedroid-setup-"));
+  let result;
+  try {
+    result = spawnSync(command, args, {
+      cwd,
+      encoding: "utf8",
+      timeout,
+      stdio: ["ignore", "pipe", "pipe"],
+      // npm-installed CLIs are .cmd shims on Windows, which only a shell runs.
+      shell: process.platform === "win32",
+    });
+  } finally {
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
   const text = result.error?.code === "ENOENT"
     ? `${command} is not on PATH`
     : result.stderr?.trim() || result.stdout?.trim() || result.error?.message || `${command} exited with ${result.status}`;
@@ -42,6 +55,12 @@ function appDataDir({ home, platform, env }) {
   if (platform === "darwin") return path.join(home, "Library", "Application Support");
   if (platform === "win32") return env.APPDATA ?? path.join(home, "AppData", "Roaming");
   return env.XDG_CONFIG_HOME ?? path.join(home, ".config");
+}
+
+/** Zed's config: ~/.config/zed on macOS, the platform's config directory elsewhere. */
+function zedDir({ home, platform, appData }) {
+  if (platform === "darwin") return path.join(home, ".config", "zed");
+  return path.join(appData, platform === "win32" ? "Zed" : "zed");
 }
 
 /** Every supported client: an id for --client, a name, whether it is installed, and its setup. */
@@ -56,11 +75,12 @@ export function clients({ home = os.homedir(), platform = process.platform, env 
       installed: onPath("codex"),
       setup: () => setupCodex(run, env.CODEX_HOME ?? path.join(home, ".codex")),
     },
-    { id: "gemini", name: "Gemini CLI", installed: onPath("gemini"), setup: () => setupGemini(run, path.join(home, ".gemini")) },
+    antigravity(run, path.join(home, ".gemini")),
     jsonClient("cursor", "Cursor", path.join(home, ".cursor"), "mcp.json", "mcpServers", SERVER),
     jsonClient("vscode", "VS Code", path.join(appData, "Code", "User"), "mcp.json", "servers", { type: "stdio", ...SERVER }),
     jsonClient("claude-desktop", "Claude Desktop", path.join(appData, "Claude"), "claude_desktop_config.json", "mcpServers", SERVER),
     jsonClient("windsurf", "Windsurf", path.join(home, ".codeium", "windsurf"), "mcp_config.json", "mcpServers", SERVER),
+    jsonClient("zed", "Zed", zedDir({ home, platform, appData }), "settings.json", "context_servers", SERVER),
   ];
 }
 
@@ -94,14 +114,27 @@ function setupCodex(run, codexHome) {
   return { status: "added", detail: "installed the CodeDroid plugin" };
 }
 
-function setupGemini(run, geminiDir) {
-  if (fs.existsSync(path.join(geminiDir, "extensions", "codedroid"))) return { status: "present", detail: "has the CodeDroid extension" };
-  if (parseJson(readText(path.join(geminiDir, "settings.json")))?.mcpServers?.codedroid) {
-    return { status: "skipped", detail: "already has a codedroid MCP server" };
-  }
-  // --consent acknowledges Gemini's third-party extension notice; the user confirmed setup already.
-  const install = run("gemini", ["extensions", "install", `https://github.com/${REPO}`, "--consent"]);
-  return install.ok ? { status: "added", detail: "installed the CodeDroid extension" } : failed(install);
+/**
+ * Antigravity: with its `agy` CLI, the plugin, unless it or a standalone server is there. Without
+ * it, the app or IDE alone, the server in the config every Antigravity surface reads.
+ */
+function antigravity(run, geminiDir) {
+  const configPath = path.join(geminiDir, "config", "mcp_config.json");
+  const listPlugins = () => run("agy", ["plugin", "list", "--json"]);
+  return {
+    id: "antigravity",
+    name: "Antigravity",
+    installed: () => fs.existsSync(path.join(geminiDir, "antigravity")) || listPlugins().ok,
+    setup: () => {
+      const list = listPlugins();
+      if (!list.ok) return addServer(configPath, "mcpServers", SERVER);
+      const plugins = parseJson(list.stdout);
+      if (Array.isArray(plugins) && plugins.some((p) => p.name === "codedroid")) return { status: "present", detail: "has the CodeDroid plugin" };
+      if (parseJson(readText(configPath))?.mcpServers?.codedroid) return { status: "skipped", detail: "already has a codedroid MCP server" };
+      const install = run("agy", ["plugin", "install", `https://github.com/${REPO}`]);
+      return install.ok ? { status: "added", detail: "installed the CodeDroid plugin" } : failed(install);
+    },
+  };
 }
 
 function jsonClient(id, name, dir, file, key, entry) {
@@ -118,11 +151,12 @@ function launchesCodeDroid(entry) {
 
 /**
  * Puts `entry` at config[key].codedroid in the JSON file at configPath, creating the file if needed.
- * An older CodeDroid entry is updated, keeping fields such as its env; any other is left alone.
+ * An older CodeDroid entry is updated, keeping fields such as its env; any other is left alone. The
+ * file may have comments and trailing commas (Zed's, VS Code's), and keeps them.
  */
 export function addServer(configPath, key, entry) {
-  const text = readText(configPath);
-  const config = text?.trim() ? parseJson(text) : {};
+  const text = readText(configPath) ?? "";
+  const config = text.trim() ? parseJson(text) : {};
   if (!isObject(config) || (config[key] !== undefined && !isObject(config[key]))) {
     return { status: "failed", detail: `could not read ${configPath} as JSON, left it unchanged. Add the server by hand: ${MANUAL_SETUP}` };
   }
@@ -132,8 +166,10 @@ export function addServer(configPath, key, entry) {
   }
   const next = { ...existing, ...entry };
   if (existing && JSON.stringify(next) === JSON.stringify(existing)) return { status: "present", detail: `set up in ${configPath}` };
-  config[key] = { ...config[key], codedroid: next };
-  writeJson(configPath, config);
+  const updated = text.trim()
+    ? applyEdits(text, modify(text, [key, "codedroid"], next, { formattingOptions: { insertSpaces: true, tabSize: 2 } }))
+    : JSON.stringify({ [key]: { codedroid: next } }, null, 2) + "\n";
+  writeText(configPath, updated);
   return existing
     ? { status: "updated", detail: `updated the server in ${configPath}` }
     : { status: "added", detail: `added the server to ${configPath}` };
@@ -149,20 +185,19 @@ function readText(file) {
   }
 }
 
+/** JSON, with the comments and trailing commas some clients allow; undefined when it is not. */
 function parseJson(text) {
-  try {
-    return JSON.parse(text);
-  } catch (e) {
-    return undefined;
-  }
+  const errors = [];
+  const value = parse(text ?? "", errors, { allowTrailingComma: true });
+  return errors.length ? undefined : value;
 }
 
 /** Writes through a symlinked config (dotfile managers) and keeps its mode, never half-written. */
-function writeJson(file, value) {
+function writeText(file, text) {
   const target = fs.existsSync(file) ? fs.realpathSync(file) : file;
   const mode = fs.existsSync(target) ? fs.statSync(target).mode & 0o777 : 0o644;
   fs.mkdirSync(path.dirname(target), { recursive: true });
   const tmp = `${target}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(value, null, 2) + "\n", { mode });
+  fs.writeFileSync(tmp, text, { mode });
   fs.renameSync(tmp, target);
 }
