@@ -271,12 +271,20 @@ const NEXT = {
  * codedroid_setup_phone: setUpPhone for the agent. A setup can take minutes (a download, then the
  * user signing in), longer than a client waits for one call (Codex: 60 s), so it runs as a job on
  * the daemon: a call waits up to [waitMs] and otherwise says it is still working, and the next call
- * joins the same job instead of starting a second install.
+ * joins the same job instead of starting a second install. A result no call picks up within [keepMs]
+ * is dropped, since the phone may have changed since.
  *
  * @param {object} options
  * @param {Map<string, object>} options.jobs setups under way on this daemon, shared by its sessions
  */
-export function createSetupPhoneTool({ jobs, setUp = setUpPhone, waitMs = 45_000, signInWaitMs = 3 * 60_000 } = {}) {
+export function createSetupPhoneTool({
+  jobs,
+  setUp = setUpPhone,
+  waitMs = 45_000,
+  signInWaitMs = 3 * 60_000,
+  keepMs = 2 * 60_000,
+  now = Date.now,
+} = {}) {
   return {
     definition: {
       name: "codedroid_setup_phone",
@@ -293,15 +301,23 @@ export function createSetupPhoneTool({ jobs, setUp = setUpPhone, waitMs = 45_000
     },
     async handler({ install = false, serial } = {}) {
       let job = jobs.get("setup");
+      const sameSerial = !serial || job?.serial === serial;
+      if (job && job.finishedAt === undefined && !sameSerial) {
+        const text = `Setting up ${job.serial ?? "the phone on adb"} already. Call this again once that is done.`;
+        return { content: [{ type: "text", text }], isError: true };
+      }
+      if (job?.finishedAt !== undefined && (!sameSerial || now() - job.finishedAt > keepMs)) job = null;
       if (!job) {
-        job = { progress: [] };
-        job.done = setUp({
-          log: (line) => job.progress.push(line),
+        const started = { progress: [], serial: serial ?? null };
+        started.done = setUp({
+          log: (line) => started.progress.push(line),
           confirmInstall: async () => install === true,
           serial,
           signInWaitMs,
-        }).catch((e) => ({ status: "failed", detail: e.message }));
-        jobs.set("setup", job);
+        })
+          .catch((e) => ({ status: "failed", detail: e.message }))
+          .then((result) => ((started.finishedAt = now()), result));
+        jobs.set("setup", (job = started));
       }
       let timer;
       const result = await Promise.race([job.done, new Promise((resolve) => (timer = setTimeout(resolve, waitMs)))]);

@@ -183,7 +183,7 @@ async function main() {
   // A pairing `setup` just made over adb, which `pair` then connects as its own.
   let paired = null;
   // Set when `setup` runs: the clients it changed, to restart once the phone is connected.
-  let setupRestart = null;
+  let setupRestart = command === "setup" ? [] : null;
   const port = resolvePort(args);
   const enableAdbTool = resolveEnableAdb(args);
 
@@ -207,7 +207,7 @@ async function main() {
     if (!picked.length) {
       process.stdout.write(`Found no supported coding client. To add CodeDroid by hand: ${MANUAL_SETUP}\n`);
     } else if (args.yes || !process.stdin.isTTY || (await confirm(`Add CodeDroid to ${picked.map((c) => c.name).join(", ")}? [Y/n] `))) {
-      const changed = (setupRestart = []);
+      const changed = setupRestart;
       for (const client of picked) {
         process.stdout.write(`${client.name}: `);
         let result;

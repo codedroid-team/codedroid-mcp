@@ -234,6 +234,49 @@ try {
     result = await tool.handler({});
     assert.match(result.content[0].text, /Ask the user to sign in/);
     assert.equal(jobs.size, 0, "a finished job is gone once reported");
+
+    // A result no call picked up in time is stale: the next call sets up again.
+    let clock = 0;
+    started = 0;
+    tool = createSetupPhoneTool({
+      jobs,
+      waitMs: 5,
+      keepMs: 1_000,
+      now: () => clock,
+      setUp: () => (started++, new Promise((resolve) => (finish = resolve))),
+    });
+    await tool.handler({});
+    finish({ status: "signed-out", detail: "Sign in to CodeDroid on the phone, then try again." });
+    await new Promise((resolve) => setImmediate(resolve));
+    clock = 5_000;
+    result = await tool.handler({});
+    assert.equal(started, 2, "a stale result starts a new setup");
+    assert.match(result.content[0].text, /Still working/);
+    finish({ status: "signed-out", detail: "Sign in to CodeDroid on the phone, then try again." });
+    await new Promise((resolve) => setImmediate(resolve));
+    result = await tool.handler({});
+    assert.equal(started, 2, "a fresh result is reported, not run again");
+    assert.match(result.content[0].text, /Ask the user to sign in/);
+
+    // Another phone's setup under way is not joined, nor its result taken as this phone's.
+    const serials = [];
+    tool = createSetupPhoneTool({
+      jobs,
+      waitMs: 5,
+      setUp: ({ serial }) => (serials.push(serial), new Promise((resolve) => (finish = resolve))),
+    });
+    await tool.handler({ serial: "S1" });
+    result = await tool.handler({ serial: "S2" });
+    assert.equal(result.isError, true);
+    assert.match(result.content[0].text, /Setting up S1 already/);
+    await tool.handler({});
+    assert.deepEqual(serials, ["S1"], "a call without serial follows the setup under way");
+    finish({ status: "paired", detail: "Paired with Pixel 9." });
+    await new Promise((resolve) => setImmediate(resolve));
+    await tool.handler({ serial: "S2" });
+    assert.deepEqual(serials, ["S1", "S2"], "S1's result is not S2's");
+    finish({ status: "paired", detail: "Paired with Pixel 8." });
+    await tool.handler({});
   }
 
   console.log("phone-setup tests passed");
