@@ -22,16 +22,26 @@ const PLUGIN = "codedroid@codedroid";
 export const SERVER = { command: "npx", args: ["-y", `${PACKAGE}@${VERSION}`] };
 export const MANUAL_SETUP = `https://github.com/${REPO}/blob/main/docs/reference.md#mcp-configuration`;
 
-/** Runs a client's CLI: ok, its stdout, and a one-line reason for when it failed. */
-export function runCli(command, args, { cwd = os.homedir(), timeout = 180_000 } = {}) {
-  const result = spawnSync(command, args, {
-    cwd,
-    encoding: "utf8",
-    timeout,
-    stdio: ["ignore", "pipe", "pipe"],
-    // npm-installed CLIs are .cmd shims on Windows, which only a shell runs.
-    shell: process.platform === "win32",
-  });
+/**
+ * Runs a client's CLI: ok, its stdout, and a one-line reason for when it failed. It runs in an
+ * empty directory, so what it sees is the client's user-wide setup: from the home directory,
+ * `claude mcp get` also finds a server added there in local scope, which no other project has.
+ */
+export function runCli(command, args, { timeout = 180_000 } = {}) {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "codedroid-setup-"));
+  let result;
+  try {
+    result = spawnSync(command, args, {
+      cwd,
+      encoding: "utf8",
+      timeout,
+      stdio: ["ignore", "pipe", "pipe"],
+      // npm-installed CLIs are .cmd shims on Windows, which only a shell runs.
+      shell: process.platform === "win32",
+    });
+  } finally {
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
   const text = result.error?.code === "ENOENT"
     ? `${command} is not on PATH`
     : result.stderr?.trim() || result.stdout?.trim() || result.error?.message || `${command} exited with ${result.status}`;

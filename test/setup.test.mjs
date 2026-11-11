@@ -10,7 +10,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { addServer, clients, pickClients, SERVER } from "../src/setup.js";
+import { addServer, clients, pickClients, runCli, SERVER } from "../src/setup.js";
 import { VERSION } from "../src/version.js";
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "codedroid-setup-"));
@@ -162,6 +162,17 @@ try {
     assert.deepEqual(client.setup(), { status: "failed", detail: "failed: Failed to clone" });
     ({ client } = claude({}));
     assert.equal(client.installed(), false);
+  }
+
+  // ── A client's CLI runs in an empty directory: never the home one, whose local-scope servers only it has ──
+  {
+    const seen = runCli(process.execPath, ["-e", "console.log(JSON.stringify([process.cwd(), require('fs').readdirSync('.')]))"]);
+    assert.equal(seen.ok, true, seen.reason);
+    const [cwd, entries] = JSON.parse(seen.stdout);
+    assert.ok(cwd.startsWith(fs.realpathSync(os.tmpdir())), cwd);
+    assert.deepEqual(entries, [], "nothing there for the CLI to read as a project");
+    assert.equal(fs.existsSync(cwd), false, "and it is removed afterwards");
+    assert.equal(runCli("codedroid-no-such-cli", []).reason, "codedroid-no-such-cli is not on PATH");
   }
 
   // ── Codex: adds the marketplace, then the plugin; reads config.toml for what is there ──
