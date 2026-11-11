@@ -1,9 +1,10 @@
 /**
  * `setup` adds CodeDroid to the coding clients on this computer:
  *
- * - Claude Code, Codex and Antigravity get the plugin through their own CLI, as the README's
- *   install commands do: the MCP server and the skills, updated by the client. Antigravity without
- *   its `agy` CLI (the app or IDE alone) gets the MCP server in its JSON config instead.
+ * - Claude Code and Codex get the plugin through their own CLI, as the README's install commands
+ *   do: the MCP server and the skills, updated by the client.
+ * - Antigravity gets the plugin copied into its global plugins folder, which the app, the IDE and
+ *   the CLI all load. Running a newer `setup` replaces it with that release.
  * - Cursor, VS Code, Claude Desktop, Windsurf and Zed get the MCP server in their JSON config, pinned
  *   to this release like the plugin's .mcp.json. Running a newer `setup` moves the pin.
  *
@@ -16,11 +17,15 @@ import fs from "fs";
 import { applyEdits, modify, parse } from "jsonc-parser";
 import os from "os";
 import path from "path";
+import { fileURLToPath } from "url";
 import { VERSION } from "./version.js";
 
 const PACKAGE = "@codedroid/mcp";
 const REPO = "codedroid-team/codedroid-mcp";
 const PLUGIN = "codedroid@codedroid";
+const PACKAGE_ROOT = fileURLToPath(new URL("../", import.meta.url));
+/** What the Antigravity plugin is made of, as the repository root holds it for `agy plugin install`. */
+const ANTIGRAVITY_PLUGIN_FILES = [".antigravity-plugin", "assets", "mcp_config.json", "skills"];
 
 export const SERVER = { command: "npx", args: ["-y", `${PACKAGE}@${VERSION}`] };
 export const MANUAL_SETUP = `https://github.com/${REPO}/blob/main/docs/reference.md#mcp-configuration`;
@@ -75,7 +80,7 @@ export function clients({ home = os.homedir(), platform = process.platform, env 
       installed: onPath("codex"),
       setup: () => setupCodex(run, env.CODEX_HOME ?? path.join(home, ".codex")),
     },
-    antigravity(run, path.join(home, ".gemini")),
+    antigravity({ home, platform, env }),
     jsonClient("cursor", "Cursor", path.join(home, ".cursor"), "mcp.json", "mcpServers", SERVER),
     jsonClient("vscode", "VS Code", path.join(appData, "Code", "User"), "mcp.json", "servers", { type: "stdio", ...SERVER }),
     jsonClient("claude-desktop", "Claude Desktop", path.join(appData, "Claude"), "claude_desktop_config.json", "mcpServers", SERVER),
@@ -115,26 +120,58 @@ function setupCodex(run, codexHome) {
 }
 
 /**
- * Antigravity: with its `agy` CLI, the plugin, unless it or a standalone server is there. Without
- * it, the app or IDE alone, the server in the config every Antigravity surface reads.
+ * Antigravity: the plugin, as a folder in ~/.gemini/config/plugins, where the app's Customizations
+ * page lists it with its skills and MCP server. The MCP config entry earlier releases added instead
+ * is removed, so the tools are not registered twice; some other codedroid server there is left alone.
  */
-function antigravity(run, geminiDir) {
-  const configPath = path.join(geminiDir, "config", "mcp_config.json");
-  const listPlugins = () => run("agy", ["plugin", "list", "--json"]);
+function antigravity({ home, platform, env }) {
+  const configDir = path.join(home, ".gemini", "config");
+  const configPath = path.join(configDir, "mcp_config.json");
+  const pluginDir = path.join(configDir, "plugins", "codedroid");
+  const apps = [
+    path.join(home, ".gemini", "antigravity"),
+    ...(platform === "darwin" ? ["/Applications/Antigravity.app", path.join(home, "Applications", "Antigravity.app")] : []),
+    ...(platform === "win32" ? [path.join(env.LOCALAPPDATA ?? path.join(home, "AppData", "Local"), "Programs", "Antigravity")] : []),
+  ];
   return {
     id: "antigravity",
     name: "Antigravity",
-    installed: () => fs.existsSync(path.join(geminiDir, "antigravity")) || listPlugins().ok,
+    installed: () => apps.some((dir) => fs.existsSync(dir)),
     setup: () => {
-      const list = listPlugins();
-      if (!list.ok) return addServer(configPath, "mcpServers", SERVER);
-      const plugins = parseJson(list.stdout);
-      if (Array.isArray(plugins) && plugins.some((p) => p.name === "codedroid")) return { status: "present", detail: "has the CodeDroid plugin" };
-      if (parseJson(readText(configPath))?.mcpServers?.codedroid) return { status: "skipped", detail: "already has a codedroid MCP server" };
-      const install = run("agy", ["plugin", "install", `https://github.com/${REPO}`]);
-      return install.ok ? { status: "added", detail: "installed the CodeDroid plugin" } : failed(install);
+      const existing = pluginManifest(pluginDir);
+      if (fs.existsSync(pluginDir) && existing?.name !== "codedroid") {
+        return { status: "skipped", detail: `${pluginDir} holds some other plugin, left it unchanged` };
+      }
+      const server = parseJson(readText(configPath))?.mcpServers?.codedroid;
+      if (server && !launchesCodeDroid(server)) return { status: "skipped", detail: `already has another codedroid server in ${configPath}` };
+      if (server) removeServer(configPath, "mcpServers");
+      if (existing && compareVersions(existing.version, VERSION) >= 0) {
+        return server ? { status: "updated", detail: `has the CodeDroid plugin, removed the duplicate server from ${configPath}` } : { status: "present", detail: "has the CodeDroid plugin" };
+      }
+      fs.rmSync(pluginDir, { recursive: true, force: true });
+      for (const file of ANTIGRAVITY_PLUGIN_FILES) {
+        fs.cpSync(path.join(PACKAGE_ROOT, file), path.join(pluginDir, file), { recursive: true });
+      }
+      return existing || server
+        ? { status: "updated", detail: `updated the CodeDroid plugin in ${pluginDir}` }
+        : { status: "added", detail: `added the CodeDroid plugin to ${pluginDir}` };
     },
   };
+}
+
+/** A plugin folder's manifest: .antigravity-plugin/plugin.json, else plugin.json at its root. */
+function pluginManifest(dir) {
+  return parseJson(readText(path.join(dir, ".antigravity-plugin", "plugin.json"))) ?? parseJson(readText(path.join(dir, "plugin.json")));
+}
+
+/** Negative when version a is older than b; a missing or malformed version counts as oldest. */
+function compareVersions(a, b) {
+  const parts = (v) => (typeof v === "string" ? v.split(".").map((n) => Number.parseInt(n, 10) || 0) : [-1]);
+  const [x, y] = [parts(a), parts(b)];
+  for (let i = 0; i < Math.max(x.length, y.length); i++) {
+    if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) - (y[i] ?? 0);
+  }
+  return 0;
 }
 
 function jsonClient(id, name, dir, file, key, entry) {
@@ -147,6 +184,12 @@ const isObject = (value) => typeof value === "object" && value !== null && !Arra
 /** Whether a config entry launches this package, so `setup` may update it. */
 function launchesCodeDroid(entry) {
   return Array.isArray(entry?.args) && entry.args.some((arg) => arg === PACKAGE || String(arg).startsWith(`${PACKAGE}@`));
+}
+
+/** Removes config[key].codedroid from the JSON file at configPath, keeping the rest as it was. */
+function removeServer(configPath, key) {
+  const text = readText(configPath);
+  writeText(configPath, applyEdits(text, modify(text, [key, "codedroid"], undefined, {})));
 }
 
 /**
