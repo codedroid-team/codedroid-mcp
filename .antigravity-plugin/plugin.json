@@ -2,7 +2,7 @@
   "$schema": "https://antigravity.google/schemas/v1/plugin.json",
   "name": "codedroid",
   "displayName": "CodeDroid",
-  "version": "0.1.13",
+  "version": "0.1.14",
   "description": "Your Android phone, through CodeDroid: read the screen, tap and type, hand CodeDroid a whole task, run adb, and verify app changes on the device.",
   "logo": "assets/icon.png",
   "suggestedPrompts": [
