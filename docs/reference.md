@@ -109,7 +109,7 @@ npx -y @codedroid/mcp setup ABCD-EFGH
 | --- | --- | --- |
 | Claude Code | `claude-code` | Installs the plugin with `claude plugin install` |
 | Codex | `codex` | Installs the plugin with `codex plugin add` |
-| Gemini CLI | `gemini` | Installs the extension with `gemini extensions install` |
+| Antigravity | `antigravity` | Installs the plugin with `agy plugin install`; without `agy`, adds the server to `~/.gemini/config/mcp_config.json` |
 | Cursor | `cursor` | Adds the server to `~/.cursor/mcp.json` |
 | VS Code | `vscode` | Adds the server to the user `mcp.json` |
 | Claude Desktop | `claude-desktop` | Adds the server to `claude_desktop_config.json` |
@@ -164,10 +164,13 @@ args = ["-y", "@codedroid/mcp"]
 tool_timeout_sec = 300
 ```
 
-### Standalone Gemini CLI server
+### Standalone Antigravity server
+
+Add the server under `mcpServers` in `~/.gemini/config/mcp_config.json`, as in
+[Other MCP clients](#other-mcp-clients), then install the skills:
 
 ```bash
-gemini mcp add --scope user --timeout 300000 codedroid npx -y @codedroid/mcp
+npx -y @codedroid/mcp skill install --dir=$HOME/.gemini/config/skills
 ```
 
 ### Other MCP clients
@@ -328,13 +331,12 @@ the app's MCP server through a test relay.
 
 1. Set the new version in `package.json` (`npm version <x.y.z> --no-git-tag-version`),
    `src/version.js`, `.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`,
-   `gemini-extension.json`, `.mcp.json`, and both versions in `server.json`.
+   `.antigravity-plugin/plugin.json`, `.mcp.json`, `mcp_config.json`, and both versions in `server.json`.
 2. Run `npm test` and `claude plugin validate .claude-plugin/plugin.json`.
 3. Run `npm publish --access public` **before** merging to `main`: the plugins launch
    `@codedroid/mcp@<version>`, so installs fail until that version is on npm.
 4. Merge to `main`, then create the GitHub release:
    `gh release create v<x.y.z> --target main --title "CodeDroid MCP <x.y.z>" --latest`.
-   Gemini CLI installs the extension from the latest GitHub release, not from `main`.
 5. Run the **Publish to MCP Registry** workflow (`gh workflow run publish-mcp-registry.yml`) to
    update the [MCP Registry](https://registry.modelcontextprotocol.io). Publishing from a laptop
    with `mcp-publisher login github` works only for an Owner of the `codedroid-team` org.

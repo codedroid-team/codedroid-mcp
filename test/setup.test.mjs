@@ -133,7 +133,7 @@ try {
   {
     const all = clients({ home: newHome(), env: {}, run: fakeRun().run });
     assert.deepEqual(pickClients(all, "cursor, codex").map((c) => c.id), ["codex", "cursor"]);
-    assert.throws(() => pickClients(all, "cursor,emacs"), /Unknown client: emacs\. Clients: claude-code, codex, gemini, cursor/);
+    assert.throws(() => pickClients(all, "cursor,emacs"), /Unknown client: emacs\. Clients: claude-code, codex, antigravity, cursor/);
   }
 
   // ── Claude Code: installs the plugin, unless it or a standalone server is there ──
@@ -198,21 +198,32 @@ try {
     assert.deepEqual(failing.setup(), { status: "failed", detail: "failed: codex is not on PATH" });
   }
 
-  // ── Gemini CLI: installs the extension unless it or a standalone server is there ──
+  // ── Antigravity: the plugin through agy unless it or a standalone server is there; without agy, the config ──
   {
     const home = newHome();
-    const install = "gemini extensions install https://github.com/codedroid-team/codedroid-mcp --consent";
-    const fake = fakeRun({ [install]: { ok: true } });
-    const gemini = clients({ home, env: {}, run: fake.run }).find((c) => c.id === "gemini");
-    assert.equal(gemini.setup().status, "added");
-    assert.deepEqual(fake.calls, [install]);
+    const list = "agy plugin list --json";
+    const install = "agy plugin install https://github.com/codedroid-team/codedroid-mcp";
+    const configPath = path.join(home, ".gemini", "config", "mcp_config.json");
+    const fake = fakeRun({ [list]: { ok: true, stdout: "[]" }, [install]: { ok: true } });
+    const antigravity = clients({ home, env: {}, run: fake.run }).find((c) => c.id === "antigravity");
+    assert.equal(antigravity.installed(), true, "agy on PATH");
+    assert.equal(antigravity.setup().status, "added");
+    assert.deepEqual(fake.calls, [list, list, install]);
 
-    fs.mkdirSync(path.join(home, ".gemini"));
-    fs.writeFileSync(path.join(home, ".gemini", "settings.json"), JSON.stringify({ mcpServers: { codedroid: { command: "npx" } } }));
-    assert.equal(gemini.setup().status, "skipped");
-    fs.mkdirSync(path.join(home, ".gemini", "extensions", "codedroid"), { recursive: true });
-    assert.equal(gemini.setup().status, "present");
-    assert.equal(fake.calls.length, 1);
+    fs.mkdirSync(path.dirname(configPath), { recursive: true });
+    fs.writeFileSync(configPath, JSON.stringify({ mcpServers: { codedroid: { command: "npx" } } }));
+    assert.equal(antigravity.setup().status, "skipped");
+    const listed = fakeRun({ [list]: { ok: true, stdout: JSON.stringify([{ name: "codedroid", enabled: true }]) } });
+    assert.equal(clients({ home, env: {}, run: listed.run }).find((c) => c.id === "antigravity").setup().status, "present");
+    assert.deepEqual(listed.calls, [list]);
+
+    const appOnly = newHome();
+    const withoutAgy = clients({ home: appOnly, env: {}, run: fakeRun().run }).find((c) => c.id === "antigravity");
+    assert.equal(withoutAgy.installed(), false, "neither agy nor the app");
+    fs.mkdirSync(path.join(appOnly, ".gemini", "antigravity"), { recursive: true });
+    assert.equal(withoutAgy.installed(), true, "the app or IDE alone");
+    assert.equal(withoutAgy.setup().status, "added");
+    assert.deepEqual(readJson(path.join(appOnly, ".gemini", "config", "mcp_config.json")), { mcpServers: { codedroid: SERVER } });
   }
 
   // ── The CLI: --client and --yes write the config, then say how to pair ──

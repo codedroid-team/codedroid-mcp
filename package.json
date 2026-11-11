@@ -2,7 +2,7 @@
   "name": "@codedroid/mcp",
   "version": "0.1.13",
   "mcpName": "io.github.codedroid-team/codedroid-mcp",
-  "description": "MCP server for controlling Android devices through CodeDroid from Claude Code, Codex, Gemini CLI, and other MCP clients.",
+  "description": "MCP server for controlling Android devices through CodeDroid from Claude Code, Codex, Antigravity, and other MCP clients.",
   "type": "module",
   "main": "src/index.js",
   "bin": {
@@ -14,7 +14,8 @@
     ".claude-plugin",
     ".codex-plugin",
     ".agents/plugins/marketplace.json",
-    "gemini-extension.json",
+    ".antigravity-plugin",
+    "mcp_config.json",
     ".mcp.json",
     "README.md",
     "docs",

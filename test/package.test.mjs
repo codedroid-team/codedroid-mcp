@@ -12,7 +12,8 @@ const read = (path) => JSON.parse(fs.readFileSync(new URL(`../${path}`, import.m
 const pkg = read("package.json");
 const plugin = read(".claude-plugin/plugin.json");
 const mcp = read(".mcp.json");
-const gemini = read("gemini-extension.json");
+const antigravity = read(".antigravity-plugin/plugin.json");
+const antigravityMcp = read("mcp_config.json");
 const codex = read(".codex-plugin/plugin.json");
 const marketplace = read(".agents/plugins/marketplace.json");
 const server = read("server.json");
@@ -26,12 +27,13 @@ for (const name of SKILLS) assert.ok(fs.existsSync(new URL(`../skills/${name}/SK
 assert.deepEqual(
   mcp.mcpServers.codedroid.args.slice(-1),
   [`${pkg.name}@${pkg.version}`],
-  "the plugin pins this package to the released version — bump .mcp.json and gemini-extension.json on release",
+  "the plugin pins this package to the released version — bump .mcp.json and mcp_config.json on release",
 );
 
-assert.equal(gemini.version, VERSION, "the Gemini extension and package.json");
-assert.deepEqual(gemini.mcpServers, mcp.mcpServers, "Gemini and Claude launch the same MCP server");
-assert.ok(pkg.files.includes("gemini-extension.json"), "npm ships the Gemini extension manifest");
+assert.equal(antigravity.version, VERSION, "the Antigravity plugin and package.json");
+assert.equal(antigravity.name, plugin.name);
+assert.deepEqual(antigravityMcp, mcp, "Antigravity and Claude launch the same MCP server");
+for (const file of [".antigravity-plugin", "mcp_config.json"]) assert.ok(pkg.files.includes(file), `npm ships ${file}`);
 
 assert.equal(codex.version, VERSION, "the Codex plugin and package.json");
 assert.equal(codex.skills, "./skills/");
@@ -50,7 +52,7 @@ assert.deepEqual(
 );
 assert.ok(server.description.length <= 100, "the MCP Registry caps descriptions at 100 characters");
 
-for (const icon of [plugin.icon, codex.interface.composerIcon, codex.interface.logo]) {
+for (const icon of [plugin.icon, codex.interface.composerIcon, codex.interface.logo, antigravity.logo]) {
   assert.ok(fs.existsSync(new URL(`../${icon}`, import.meta.url)), icon);
 }
 assert.ok(pkg.files.includes("assets"), "npm ships the plugin icon");

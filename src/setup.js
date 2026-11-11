@@ -1,8 +1,9 @@
 /**
  * `setup` adds CodeDroid to the coding clients on this computer:
  *
- * - Claude Code, Codex and Gemini CLI get the plugin or extension through their own CLI, as the
- *   README's install commands do: the MCP server and the skills, updated by the client.
+ * - Claude Code, Codex and Antigravity get the plugin through their own CLI, as the README's
+ *   install commands do: the MCP server and the skills, updated by the client. Antigravity without
+ *   its `agy` CLI (the app or IDE alone) gets the MCP server in its JSON config instead.
  * - Cursor, VS Code, Claude Desktop and Windsurf get the MCP server in their JSON config, pinned to
  *   this release like the plugin's .mcp.json. Running a newer `setup` moves the pin.
  *
@@ -66,7 +67,7 @@ export function clients({ home = os.homedir(), platform = process.platform, env 
       installed: onPath("codex"),
       setup: () => setupCodex(run, env.CODEX_HOME ?? path.join(home, ".codex")),
     },
-    { id: "gemini", name: "Gemini CLI", installed: onPath("gemini"), setup: () => setupGemini(run, path.join(home, ".gemini")) },
+    antigravity(run, path.join(home, ".gemini")),
     jsonClient("cursor", "Cursor", path.join(home, ".cursor"), "mcp.json", "mcpServers", SERVER),
     jsonClient("vscode", "VS Code", path.join(appData, "Code", "User"), "mcp.json", "servers", { type: "stdio", ...SERVER }),
     jsonClient("claude-desktop", "Claude Desktop", path.join(appData, "Claude"), "claude_desktop_config.json", "mcpServers", SERVER),
@@ -104,14 +105,27 @@ function setupCodex(run, codexHome) {
   return { status: "added", detail: "installed the CodeDroid plugin" };
 }
 
-function setupGemini(run, geminiDir) {
-  if (fs.existsSync(path.join(geminiDir, "extensions", "codedroid"))) return { status: "present", detail: "has the CodeDroid extension" };
-  if (parseJson(readText(path.join(geminiDir, "settings.json")))?.mcpServers?.codedroid) {
-    return { status: "skipped", detail: "already has a codedroid MCP server" };
-  }
-  // --consent acknowledges Gemini's third-party extension notice; the user confirmed setup already.
-  const install = run("gemini", ["extensions", "install", `https://github.com/${REPO}`, "--consent"]);
-  return install.ok ? { status: "added", detail: "installed the CodeDroid extension" } : failed(install);
+/**
+ * Antigravity: with its `agy` CLI, the plugin, unless it or a standalone server is there. Without
+ * it, the app or IDE alone, the server in the config every Antigravity surface reads.
+ */
+function antigravity(run, geminiDir) {
+  const configPath = path.join(geminiDir, "config", "mcp_config.json");
+  const listPlugins = () => run("agy", ["plugin", "list", "--json"]);
+  return {
+    id: "antigravity",
+    name: "Antigravity",
+    installed: () => fs.existsSync(path.join(geminiDir, "antigravity")) || listPlugins().ok,
+    setup: () => {
+      const list = listPlugins();
+      if (!list.ok) return addServer(configPath, "mcpServers", SERVER);
+      const plugins = parseJson(list.stdout);
+      if (Array.isArray(plugins) && plugins.some((p) => p.name === "codedroid")) return { status: "present", detail: "has the CodeDroid plugin" };
+      if (parseJson(readText(configPath))?.mcpServers?.codedroid) return { status: "skipped", detail: "already has a codedroid MCP server" };
+      const install = run("agy", ["plugin", "install", `https://github.com/${REPO}`]);
+      return install.ok ? { status: "added", detail: "installed the CodeDroid plugin" } : failed(install);
+    },
+  };
 }
 
 function jsonClient(id, name, dir, file, key, entry) {
