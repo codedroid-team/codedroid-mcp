@@ -114,11 +114,12 @@ npx -y @codedroid/mcp setup ABCD-EFGH
 | VS Code | `vscode` | Adds the server to the user `mcp.json` |
 | Claude Desktop | `claude-desktop` | Adds the server to `claude_desktop_config.json` |
 | Windsurf | `windsurf` | Adds the server to `~/.codeium/windsurf/mcp_config.json` |
+| Zed | `zed` | Adds the server under `context_servers` in Zed's `settings.json` |
 
 Config files get `npx -y @codedroid/mcp@<version>`, pinned like the plugins. Running a newer
 `setup` updates that pin and keeps the entry's other settings, such as `env`. `setup` leaves a
-client alone when it already has a `codedroid` server from somewhere else, and it never rewrites a
-config file it can't parse, such as JSON with comments. `--client` sets up only the listed clients,
+client alone when it already has a `codedroid` server from somewhere else. It keeps a config's
+comments and formatting, and never rewrites a config file it can't parse. `--client` sets up only the listed clients,
 even ones it didn't detect. `--yes` skips the confirmation. With a pairing code, `setup` also pairs,
 like `pair`.
 

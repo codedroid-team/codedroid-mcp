@@ -60,12 +60,23 @@ try {
     assert.equal(addServer(file, "mcpServers", SERVER).status, "updated");
   }
 
-  // Another server named codedroid, a config with comments, or a wrong shape: never rewritten.
+  // Comments and trailing commas (Zed's settings.json) stay; only the codedroid entry changes.
+  {
+    const file = path.join(newHome(), "settings.json");
+    const text = '// Zed settings\n{\n  "theme": "One Dark", // mine\n  "ui_font_size": 16,\n}\n';
+    fs.writeFileSync(file, text);
+    assert.equal(addServer(file, "context_servers", SERVER).status, "added");
+    const written = fs.readFileSync(file, "utf8");
+    assert.ok(written.startsWith('// Zed settings\n{\n  "theme": "One Dark", // mine\n'), written);
+    assert.equal(addServer(file, "context_servers", SERVER).status, "present", "reads its own write");
+  }
+
+  // Another server named codedroid, a config that is not JSON, or a wrong shape: never rewritten.
   {
     const dir = newHome();
     const cases = {
       "foreign.json": [JSON.stringify({ mcpServers: { codedroid: { command: "node", args: ["/src/codedroid/index.js"] } } }), "skipped"],
-      "jsonc.json": ['{\n  // mine\n  "servers": {}\n}\n', "failed"],
+      "broken.json": ['{\n  "servers": {\n', "failed"],
       "array.json": ["[]", "failed"],
       "servers-array.json": [JSON.stringify({ mcpServers: [] }), "failed"],
     };
@@ -110,23 +121,28 @@ try {
     const { run } = fakeRun();
     const byId = (all) => Object.fromEntries(all.map((c) => [c.id, c]));
     const mac = byId(clients({ home, platform: "darwin", env: {}, run }));
-    for (const id of ["cursor", "vscode", "claude-desktop", "windsurf"]) assert.equal(mac[id].installed(), false, `${id}: not installed yet`);
+    for (const id of ["cursor", "vscode", "claude-desktop", "windsurf", "zed"]) assert.equal(mac[id].installed(), false, `${id}: not installed yet`);
     const support = path.join(home, "Library", "Application Support");
     fs.mkdirSync(path.join(support, "Code", "User"), { recursive: true });
     fs.mkdirSync(path.join(support, "Claude"), { recursive: true });
     assert.deepEqual(pickClients(Object.values(mac), undefined).map((c) => c.id), ["vscode", "claude-desktop"], "only the installed ones");
-    for (const id of ["vscode", "claude-desktop", "cursor", "windsurf"]) assert.equal(mac[id].setup().status, "added", id);
+    for (const id of ["vscode", "claude-desktop", "cursor", "windsurf", "zed"]) assert.equal(mac[id].setup().status, "added", id);
     assert.deepEqual(readJson(path.join(support, "Code", "User", "mcp.json")), { servers: { codedroid: { type: "stdio", ...SERVER } } });
     assert.deepEqual(readJson(path.join(support, "Claude", "claude_desktop_config.json")), { mcpServers: { codedroid: SERVER } });
     assert.deepEqual(readJson(path.join(home, ".cursor", "mcp.json")), { mcpServers: { codedroid: SERVER } });
     assert.deepEqual(readJson(path.join(home, ".codeium", "windsurf", "mcp_config.json")), { mcpServers: { codedroid: SERVER } });
+    assert.deepEqual(readJson(path.join(home, ".config", "zed", "settings.json")), { context_servers: { codedroid: SERVER } });
 
     const linux = byId(clients({ home, platform: "linux", env: { XDG_CONFIG_HOME: path.join(home, "xdg") }, run }));
     linux["claude-desktop"].setup();
     assert.ok(fs.existsSync(path.join(home, "xdg", "Claude", "claude_desktop_config.json")));
+    linux.zed.setup();
+    assert.ok(fs.existsSync(path.join(home, "xdg", "zed", "settings.json")));
     const windows = byId(clients({ home, platform: "win32", env: { APPDATA: path.join(home, "roaming") }, run }));
     windows.vscode.setup();
     assert.ok(fs.existsSync(path.join(home, "roaming", "Code", "User", "mcp.json")));
+    windows.zed.setup();
+    assert.ok(fs.existsSync(path.join(home, "roaming", "Zed", "settings.json")));
   }
 
   // ── --client picks by id, and names an unknown one ──
@@ -253,7 +269,7 @@ try {
     assert.equal(result.code, 1);
     assert.match(result.stderr, /Unknown client: emacs/);
 
-    fs.writeFileSync(path.join(home, ".cursor", "mcp.json"), "{ // mine\n}");
+    fs.writeFileSync(path.join(home, ".cursor", "mcp.json"), "{ mine\n}");
     result = await cli(["setup", "--client=cursor", "--yes"]);
     assert.equal(result.code, 1, "a client it could not set up fails the run");
     assert.match(result.stdout, /could not read .* as JSON/);
