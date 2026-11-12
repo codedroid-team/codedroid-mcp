@@ -8,10 +8,6 @@ through [CodeDroid](https://get.codedroid.com). Your phone and computer can be o
 
 You'll need **Node.js 20+** and an Android phone. Both devices need internet access.
 
-In Claude, the plugin's MCP server runs in Claude Code and in Cowork sessions on your computer.
-Chat on claude.ai and in the Claude apps doesn't start local MCP servers, so the phone tools aren't
-available there.
-
 ### Fastest: plug in your phone
 
 Turn on **USB debugging** on the phone, plug it into your computer, and run:
@@ -151,6 +147,11 @@ your CodeDroid account: pairing and connecting, whether a computer was allowed, 
 tool call its name, whether it worked and its error code, how long it took, the MCP client,
 session and versions involved, your computer's OS and a random id for it, and the task id of a
 `run_task`. Usage records never include tool arguments, screen contents, or text you type.
+
+A `run_task` goal is carried out by CodeDroid's agent, which sends the instruction, screen contents
+and screenshots to CodeDroid's AI model providers. While CodeDroid is in beta, it may keep these task
+records to improve the agent; deleting your CodeDroid account deletes them. See the
+[privacy policy](https://www.codedroid.com/privacy).
 
 ## Need help?
 
