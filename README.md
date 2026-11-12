@@ -8,6 +8,10 @@ through [CodeDroid](https://get.codedroid.com). Your phone and computer can be o
 
 You'll need **Node.js 20+** and an Android phone. Both devices need internet access.
 
+In Claude, the plugin's MCP server runs in Claude Code and in Cowork sessions on your computer.
+Chat on claude.ai and in the Claude apps doesn't start local MCP servers, so the phone tools aren't
+available there.
+
 ### Fastest: plug in your phone
 
 Turn on **USB debugging** on the phone, plug it into your computer, and run:
