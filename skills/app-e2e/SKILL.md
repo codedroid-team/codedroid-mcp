@@ -10,7 +10,7 @@ The run is five steps, each its own skill. Run them in order and stop at the two
 | Step | Skill | Writes (in the app's repo) | Then |
 | --- | --- | --- | --- |
 | 1 | app-e2e-explore | `e2e/EXPLORE.md` | go on |
-| 2 | app-e2e-prd | `e2e/PRD.md` | go on |
+| 2 | app-e2e-prd | `e2e/PRD.md`: features and requirements | go on |
 | 3 | app-e2e-cujs | `e2e/CUJs.md` | **Gate 1: the user reviews the CUJs.** Stop until they approve or edit. |
 | 4 | app-e2e-testcases | `e2e/TESTCASES.md` | **Gate 2: the user approves the cases, and any that run a CodeDroid task.** |
 | 5 | app-e2e-run | `e2e/reports/<date>/REPORT.md` and screenshots | report (below) |

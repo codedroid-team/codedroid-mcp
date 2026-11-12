@@ -25,14 +25,23 @@ or in the source is a guess.
 
 - Removed: mark its cases `Retired: <date> - <why>` instead of deleting them, and its CUJ in
   `CUJs.md`; leave them out of runs.
-- Added: explore its screens (as app-e2e-explore does), add its CUJ (as app-e2e-cujs does, with the
-  user's review), then its cases (as app-e2e-testcases does, with the user's approval).
+- Added: explore its screens (as app-e2e-explore does), add it to the PRD's features (as
+  app-e2e-prd does), add its CUJ (as app-e2e-cujs does, with the user's review), then its cases (as
+  app-e2e-testcases does, with the user's approval).
+
+## A CUJ or feature changed in the files
+
+An edit to a CUJ's outcomes, or to a feature's Gate or Harm lines, makes the cases built on it
+suspect. List every case numbered for that CUJ, or whose `Feature:` is that feature, and check each
+against the new text: rewrite it, add the missing negative case, or retire it if its CUJ was
+removed. Run the changed cases twice, as above.
 
 ## Coverage
 
-List, from the files: CUJs with no case, PRD requirements with no CUJ, cases that have not passed
-in the latest report, and cases whose `Needs:` names a missing case. Say which matter most (P0
-first) and offer to write the missing cases.
+List, from the files: screens in `EXPLORE.md` no feature claims, features in scope with no CUJ,
+Gate and Harm lines with no negative case, CUJs with no case, PRD requirements with no CUJ, cases
+that have not passed in the latest report, and cases whose `Needs:` names a missing case. Say
+which matter most (P0 first) and offer to write the missing cases.
 
 ## Changing an approved file
 

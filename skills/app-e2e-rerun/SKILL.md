@@ -1,6 +1,6 @@
 ---
 name: app-e2e-rerun
-description: Run some of an app's existing e2e test cases on the real phone through CodeDroid - by case id, by CUJ, by priority (a smoke run), the ones that failed last time, a flaky check, the ones a code change touches, or the same cases on two builds - and report what passed. Use when asked to run, rerun or retry specific test cases or CUJs, run a smoke or regression test, check whether a test is flaky, or check whether a change broke anything.
+description: Run some of an app's existing e2e test cases on the real phone through CodeDroid - by case id, by CUJ, by feature, by priority (a smoke run), the ones that failed last time, a flaky check, the ones a code change touches, or the same cases on two builds - and report what passed. Use when asked to run, rerun or retry specific test cases or CUJs, run a smoke or regression test, check whether a test is flaky, or check whether a change broke anything.
 ---
 
 # Rerun test cases
@@ -19,6 +19,7 @@ No `e2e/` yet? Say so and offer the app-e2e skill, which writes the cases first.
 | --- | --- |
 | "Run TC-12a" / "TC-12a and TC-14" | Those ids |
 | "Run CUJ-05" / "the history journey" | Every case numbered for that CUJ (TC-05a, TC-05b...) |
+| "Test the skills feature" / "F3" | Every case whose `Feature:` is that feature |
 | "Smoke test" / "run the P0s" | Every P0 case |
 | "Rerun what failed" | The cases the latest report lists as failed |
 | "Is TC-07 flaky?" | That case three times in a row |

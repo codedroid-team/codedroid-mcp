@@ -1,12 +1,12 @@
 ---
 name: app-e2e-prd
-description: Write the test PRD for testing an Android app end to end with CodeDroid - the release question, journeys in scope, non-goals, constraints of driving a real phone, priorities, numbered requirements and release criteria - into e2e/PRD.md. Use as step 2 of app-e2e, or when a test effort needs its scope and release criteria written down.
+description: Write the test PRD for testing an Android app end to end with CodeDroid - the release question, journeys in scope, non-goals, constraints of driving a real phone, priorities, the app's features with every screen assigned to one, numbered requirements per feature and release criteria - into e2e/PRD.md. Use as step 2 of app-e2e, or when a test effort needs its scope and release criteria written down.
 ---
 
 # Write the test PRD
 
 Input: `e2e/EXPLORE.md` and the app's docs. Output: `e2e/PRD.md`. It is a PRD for the test effort,
-not for the app. Keep it under two pages: names and numbers over adjectives.
+not for the app. Keep it short: names and numbers over adjectives.
 
 ## Sections, in this order
 
@@ -24,10 +24,38 @@ not for the app. Keep it under two pages: names and numbers over adjectives.
 5. **Priorities**: P0 = a new user is blocked or loses data; P1 = a main journey is degraded;
    P2 = the rest. Run modes: `phone` (drivable over CodeDroid), `task` (needs CodeDroid's agent to
    run something), `manual` (needs a wipe, a second account, a real payment or a store build).
-6. **Requirements**: numbered (R1, R2...), each a behavior a CUJ will prove.
+6. **Features and requirements**: the app's features (below), each with its requirements, numbered
+   across the file (R1, R2...), each a behavior a CUJ will prove.
 7. **Release criteria**: e.g. every P0 CUJ passes, nothing new in the crash buffer, every finding
    triaged.
 8. **Open questions** for the user.
+
+## Features
+
+A feature is what the app lets a user do, named after the surface or action they see ("Skills",
+"Downloads", "Sign-in"), never an umbrella ("User experience", "Core functionality").
+
+```markdown
+### F3 · Skills · P0
+What: save a prompt, fill its blanks, run it.
+Screens: Skills tab, My skills, Skill sheet, "Fill In" sheet.
+Gates: sign-in ("Sign in to save skills"); "Use Skill" disabled until every blank is filled.
+Harm: "Delete skill" on the skill sheet's menu.
+- R7 · A saved skill appears under "My skills".
+- R8 · "Use Skill" puts the filled prompt in the composer without sending it.
+```
+
+- Every screen in `EXPLORE.md` belongs to exactly one feature. Tabs, menus and other navigation
+  are not features: a screen goes to the feature it serves. A screen that fits none goes under
+  **Unassigned** with the reason; before handing the PRD over, make it a feature or a non-goal.
+- Priority from the scale above: the worst a broken feature does to a user.
+- Gates are what blocks the user (sign-in, a permission, a plan limit, a disabled button) and Harm
+  is the controls one tap from harm, both from `EXPLORE.md` with their exact words. The test cases
+  give each one a negative case. A gate the run cannot reach (mobile data on a Wi-Fi phone, a plan
+  limit the account never hits) goes under Non-goals with why.
+- Data the tests cannot name `e2e-...` (a public feed, a catalog, a server's own items): say in
+  Constraints which items are the test's own, and how the cases make and remove them.
+- A feature with no requirement is out of scope: say so under Non-goals.
 
 ## For a release
 
@@ -37,6 +65,9 @@ update path. Say who runs each.
 
 ## Rules
 
+- A requirement about a behavior `EXPLORE.md` only inferred (marked `?`, or written from a hunch
+  rather than seen or read in the source) is checked in the source before it goes in, or marked `?`
+  for the first run to confirm. A guessed behavior becomes a case that fails for the wrong reason.
 - Every requirement must be observable on the phone. If nothing on screen can show it, say how it
   will be checked instead, or make it a non-goal.
 - Never force-stop, clear or uninstall com.codedroid.agent.

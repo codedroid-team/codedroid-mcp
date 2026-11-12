@@ -67,8 +67,10 @@ cleanup changed the screen.
 
 `e2e/reports/<date>/REPORT.md`:
 
-- A header: build, device, account, date; passed / failed / not run.
-- A table by priority.
+- A header: build, device, account, date; passed / failed / not run. Without adb, say what the run
+  could not check: the installed build, the crash buffer, the screenshot files.
+- A table by priority, and one by feature (from each case's `Feature:` line): passed / failed /
+  not run per feature, so a feature with nothing run shows.
 - Each failure: the case, the step that failed, what the screen showed, its class, and its
   screenshot as a thumbnail linked to the full image:
   `<a href="TC-12a.png"><img src="TC-12a.png" alt="TC-12a" width="300"></a>` (width 120 inside
