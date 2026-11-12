@@ -148,6 +148,16 @@ tool call its name, whether it worked and its error code, how long it took, the 
 session and versions involved, your computer's OS and a random id for it, and the task id of a
 `run_task`. Usage records never include tool arguments, screen contents, or text you type.
 
+When your agent calls `run_task`, the instruction travels through the CodeDroid relay to your phone,
+which runs the task with CodeDroid's servers and our AI model provider (OpenAI). The relay passes
+messages through without storing them. CodeDroid does not keep task content (instructions, task
+history, screen contents, screenshots, text the agent types, clipboard contents, or model inputs and
+outputs) beyond what is needed to run the task, and never longer than 30 days. While your account is
+open we keep only task metadata: ids, timestamps, status, token counts, cost, tool names, error
+codes, and a one-way hash of the instruction. OpenAI may keep task conversations for a limited time
+under its own data policies. CodeDroid is not intended for users under 18. See the
+[privacy policy](https://www.codedroid.com/privacy).
+
 ## Need help?
 
 Check your connection:
