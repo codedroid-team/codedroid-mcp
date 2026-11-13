@@ -138,6 +138,25 @@ no adb, `setup` says how to pair by hand. If the phone removed this computer, `s
 again. Pairing over USB needs a CodeDroid version that has it; older ones are told to update.
 `setup` exits with 1 when the phone isn't set up (signed out, declined outside a terminal, failed).
 
+### Quality report for an app's e2e folder
+
+```bash
+npx -y @codedroid/mcp e2e report [dir] [--check]
+```
+
+Run it in an app's repo after writing the `app-e2e` documents. It reads `dir` (default `./e2e`:
+`INVENTORY.md`, `PRD.md`, `CUJs.md`, `TESTCASES.md` and the newest `reports/<date>/REPORT.md`) and
+writes `QUALITY.md`, `quality.json` and the HTML pages (`PRD.html`, `CUJs.html`, `TESTCASES.html`,
+`QUALITY.html`, and a `REPORT.html` beside the newest report) into that folder, overwriting earlier
+copies and deleting nothing. It prints the counts, each problem it found in the documents as
+`file:line: message`, and the path of `QUALITY.html`. It needs no phone, daemon or network.
+
+With `--check` it writes nothing and prints `stale: <file>` for every page that is missing or was
+built from older documents (and for a missing `QUALITY.md` or `quality.json`).
+
+Exit codes: 0 when all is well (`--check`: every page is current), 1 when the documents have
+problems (`--check`: a page is stale), 2 for a usage error or a folder that does not exist.
+
 ### Standalone Claude Code server
 
 ```bash
