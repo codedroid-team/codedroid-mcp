@@ -109,6 +109,68 @@ for (const args of [[], ["nonsense"]]) {
 const { runE2eReport } = await import("../src/e2e-report.js");
 assert.equal(runE2eReport({ dir: copy() }).code, 0);
 
+// Links never lead a write outside the folder; a refusal writes nothing at all.
+const outside = path.join(root, "outside");
+fs.mkdirSync(outside);
+const target = path.join(outside, "target");
+fs.writeFileSync(target, "precious");
+const linkedFile = copy((d) => fs.symlinkSync(target, path.join(d, "QUALITY.md")));
+r = run("report", linkedFile);
+assert.equal(r.status, 2, r.stdout);
+assert.equal(r.stdout.trim(), `Refusing to write QUALITY.md: it is a link or leads outside ${linkedFile}`);
+assert.equal(fs.readFileSync(target, "utf8"), "precious");
+assert.ok(!fs.existsSync(path.join(linkedFile, "PRD.html")), "nothing written after a refusal");
+const outDir = path.join(outside, "reports-dir");
+fs.mkdirSync(outDir);
+const linkedDir = copy((d) => {
+  fs.rmSync(path.join(d, "reports/2026-01-02"), { recursive: true });
+  fs.cpSync(path.join(fixture, "reports/2026-01-02"), outDir, { recursive: true });
+  fs.symlinkSync(outDir, path.join(d, "reports/2026-01-02"));
+});
+const outBefore = listing(outDir);
+r = run("report", linkedDir);
+assert.equal(r.status, 2, r.stdout);
+assert.ok(r.stdout.startsWith("Refusing to write reports/2026-01-02/REPORT.html"), r.stdout);
+assert.deepEqual(listing(outDir), outBefore);
+assert.ok(!fs.existsSync(path.join(linkedDir, "QUALITY.md")), "nothing written after a refusal");
+const real = copy();
+const viaLink = path.join(root, "link-to-e2e");
+fs.symlinkSync(real, viaLink);
+r = run("report", viaLink);
+assert.equal(r.status, 0, r.stdout);
+assert.ok(fs.existsSync(path.join(real, "QUALITY.html")), "a linked folder is fine");
+
+// A write failure is exit 2, not 1 (1 means the documents have problems).
+if (process.getuid?.() !== 0) {
+  const ro = copy();
+  fs.chmodSync(ro, 0o555);
+  try {
+    r = run("report", ro);
+    assert.equal(r.status, 2, r.stdout);
+    assert.match(r.stdout.trim(), /^Cannot write \S+: .+/);
+    assert.equal(r.stdout.trim().split("\n").length, 1);
+  } finally {
+    fs.chmodSync(ro, 0o755);
+  }
+}
+
+// More than 20 problems: a summary per kind, the first 20, and a pointer to the page.
+const many = copy((d) => {
+  for (const f of fs.readdirSync(d)) if (f.endsWith(".md")) fs.rmSync(path.join(d, f));
+  fs.rmSync(path.join(d, "reports"), { recursive: true });
+  fs.writeFileSync(path.join(d, "PRD.md"), "# PRD\n");
+  fs.writeFileSync(path.join(d, "TESTCASES.md"), Array.from({ length: 25 }, (_, i) => `### TC-${i + 1}a · P1 · Case ${i}\nFeature: F1 · Type: happy\nTier: core · Depth: screen\nRun mode: phone\n`).join("\n"));
+});
+const total = readE2e(many).problems.length;
+assert.ok(total > 20);
+r = run("report", many);
+assert.equal(r.status, 1);
+const out = r.stdout.split("\n");
+assert.equal(out.find((l) => l.endsWith("problems:")), `${total} problems:`);
+assert.ok(out.includes("  25 × <id> has no Covers: line"), r.stdout);
+assert.equal(out.filter((l) => /^\S+:\d+: /.test(l)).length, 20);
+assert.ok(out.includes(`and ${total - 20} more: see QUALITY.html`), r.stdout);
+
 assert.deepEqual(fs.readdirSync(home), [], "HOME still empty");
 fs.rmSync(root, { recursive: true, force: true });
 fs.rmSync(home, { recursive: true, force: true });

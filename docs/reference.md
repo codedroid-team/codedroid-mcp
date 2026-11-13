@@ -155,7 +155,9 @@ With `--check` it writes nothing and prints `stale: <file>` for every page that 
 built from older documents (and for a missing `QUALITY.md` or `quality.json`).
 
 Exit codes: 0 when all is well (`--check`: every page is current), 1 when the documents have
-problems (`--check`: a page is stale), 2 for a usage error or a folder that does not exist.
+problems (`--check`: a page is stale), 2 for a usage error, a folder that does not exist, or a file
+it cannot write. It refuses to write through a link that leads outside the folder, and writes nothing
+then. With more than 20 problems it prints a count per kind and the first 20; the pages list all.
 
 ### Standalone Claude Code server
 
