@@ -72,7 +72,8 @@ user can act on, including those only some states show (an error, an empty list,
 | C18 | text "Use Skill" | puts the filled prompt in the composer, unsent | app/src/main/java/skills/FillInSheet.kt:96 | disabled until every blank is filled | yes |
 ```
 
-- Ids `S<n>` and `C<n>`, each unique in the file; the heading names the screen's class and title.
+- Ids `S<n>` and `C<n>`, each unique in the file; the heading names the screen's class, then
+  its title on screen in double quotes.
 - Does and Source come from the handler (the click listener and what it calls), with file:line,
   never from the label: a "Save" may upload, store locally or only close the sheet.
 - States: when it is disabled or hidden, and every message its handler can show, in exact words.

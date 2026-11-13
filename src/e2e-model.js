@@ -120,7 +120,7 @@ export function readE2e(dir) {
     const finish = () => {
       if (!req) return;
       if (!req.has.caps) problem("PRD.md", req.line, `${req.id} has no Caps: line`);
-      if (!req.has.proof) problem("PRD.md", req.line, `${req.id} has no Proof: line`);
+      if (!req.has.proof) problem("PRD.md", req.line, `${req.id} has no Proof: line (${words(PROOF)})`);
       if (!req.has.fails) problem("PRD.md", req.line, `${req.id} has no Fails: line`);
       delete req.has;
       req = null;
@@ -136,13 +136,14 @@ export function readE2e(dir) {
       } else if (/^#{1,3} /.test(t)) {
         finish();
         if (/^### F\d/.test(t)) problem("PRD.md", n, UNREADABLE.feature);
-        if (/^#{1,2} /.test(t)) feature = null;
+        feature = null;
       } else if (feature && /^- R\d/.test(t) && !/^- (R\d+) · /.test(t)) {
         finish();
         problem("PRD.md", n, UNREADABLE.requirement);
       } else if ((h = t.match(/^- (R\d+) · (.*)$/))) {
         finish();
         defined("PRD.md", n, h[1]);
+        if (!feature) problem("PRD.md", n, `${h[1]} is under no feature`);
         req = { id: h[1], feature, text: h[2].trim(), caps: [], proof: null, fails: [], line: n, has: {} };
         m.requirements.push(req);
         inFails = false;
@@ -243,6 +244,10 @@ export function readE2e(dir) {
           if (parts.Depth !== undefined) { tc.has.depth = true; tc.depth = parts.Depth; }
           if (!oneOf(tc.tier, TIERS)) problem("TESTCASES.md", n, `Tier must be ${words(TIERS)}`);
           if (tc.has.depth && !oneOf(tc.depth, PROOF)) problem("TESTCASES.md", n, `Depth must be ${words(PROOF)}`);
+        } else if ((h = t.match(/^Depth:\s*(.*)$/))) {
+          tc.has.depth = true;
+          tc.depth = h[1].trim();
+          if (!oneOf(tc.depth, PROOF)) problem("TESTCASES.md", n, `Depth must be ${words(PROOF)}`);
         } else if ((h = t.match(/^Needs:\s*(.*)$/))) {
           tc.needs = h[1].match(/\bTC-[A-Za-z0-9]+/g) ?? [];
           for (const id of tc.needs) refs.push(["TESTCASES.md", n, id, "case"]);
@@ -254,8 +259,8 @@ export function readE2e(dir) {
       }
     }
     for (const c of m.cases) {
-      for (const [k, label] of [["covers", "Covers:"], ["tier", "Tier:"], ["depth", "Depth:"], ["mode", "Run mode:"]]) {
-        if (!c.has[k]) problem("TESTCASES.md", c.line, `${c.id} has no ${label} line`);
+      for (const [k, label] of [["covers", "Covers: line"], ["tier", `Tier: line (${words(TIERS)})`], ["depth", `Depth: line (${words(PROOF)})`], ["mode", `Run mode: line (${words(MODES)})`]]) {
+        if (!c.has[k]) problem("TESTCASES.md", c.line, `${c.id} has no ${label}`);
       }
       delete c.has;
     }

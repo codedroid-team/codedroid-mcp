@@ -48,6 +48,20 @@ no case, PRD requirements with no CUJ, cases that have not passed in the latest 
 whose `Needs:` names a missing case. Say which matter most (P0 first) and offer to write the
 missing cases.
 
+## Documents from before these formats
+
+The command then lists many problems of the same few kinds. Bring the documents up in their order,
+rerunning `npx -y @codedroid/mcp e2e report e2e` after each until it prints no problems:
+1. `INVENTORY.md` from the UI source, as app-e2e-explore writes it; Seen from what `EXPLORE.md` and
+   earlier reports show, `?` for the rest.
+2. Each requirement's Caps, Proof and Fails, from the source.
+3. Each CUJ's `Proves:` line.
+4. Each case's `Covers:`, `Tier:`, `Depth:` and `Run mode:`, from what its Steps and Expected lines
+   actually do. Don't change the steps.
+
+Existing approvals stay. Tell the user the documents were brought up to date and show them
+`e2e/QUALITY.html`.
+
 ## Changing an approved file
 
 `CUJs.md` and `TESTCASES.md` carry an `Approved:` line. Show the user what you changed (the diff),

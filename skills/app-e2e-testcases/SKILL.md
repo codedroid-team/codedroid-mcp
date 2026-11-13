@@ -37,11 +37,13 @@ Cleanup: clear the composer.
   large or awkward data, a long sequence of steps, or state carried across leaving and reopening
   the app. `edge`: failure, recovery, interruption (app killed, backgrounded, connection lost
   midway), limits.
-- `Depth:` the deepest place its Expected lines check, on the PRD's Proof scale. The two are
-  independent: a core case can check `kept`, a deep case only `screen`. A requirement whose
-  cases all look shallower than its Proof is not tested deep enough: a `kept` one needs a case
-  that reopens the app (`adb` `shell am force-stop <package>` of the app under test, `open_app`)
-  and checks again.
+- `Depth:` the deepest place its Expected lines check, in the same words as a requirement's
+  `Proof:`: `screen` (visible where the user acted), `elsewhere` (visible on another screen, a
+  notification, a file or the server), `kept` (still true after leaving and reopening the app). Tier
+  and Depth are independent: a core case can check `kept`, a deep case only `screen`. A requirement
+  whose cases all look shallower than its Proof is not tested deep enough: a `kept` one needs a case
+  that reopens the app (`adb` `shell am force-stop <package>` of the app under test, `open_app`) and
+  checks again.
 - Every Fails line of a P0 or P1 requirement is in some case's `Covers:`, usually an `edge` case
   (cut the network, cancel, bad input, reach the limit), or has a reason under the file's gaps.
 - Every P0 feature has at least one `deep` case, or a reason under the file's gaps.

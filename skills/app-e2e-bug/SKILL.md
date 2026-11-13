@@ -12,7 +12,8 @@ the app-e2e-run skill's for running one first.
 ## 1. Pin the bug down
 
 From the report (the user, an issue, a crash log), write down: the build, the start state, the
-steps, what happened and what should have. Ask for what is missing rather than guessing. If there
+steps, what happened and what should have. Ask for what is missing rather than guessing. If the
+documents are from before these formats, bring them up first (the app-e2e-maintain skill). If there
 is no `e2e/` yet, create it with the documents the case stands on, for the bug's screens only: an
 `INVENTORY.md`, a `PRD.md` with the requirement the bug breaks, a `CUJs.md` with its journey (as the
 app-e2e-explore, app-e2e-prd and app-e2e-cujs skills write them), then `TESTCASES.md`.

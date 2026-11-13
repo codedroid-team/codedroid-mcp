@@ -100,7 +100,7 @@ try {
     sub(d, "TESTCASES.md", "Feature: F2 · Type: happy", "Feature: F7 · Type: happy");
     sub(d, "reports/2026-01-02/REPORT.md", "| TC-3b |", "| TC-9z |");
   })).problems.map((x) => x.message);
-  for (const msg of ["R4 has no Caps: line", "TC-1c has no Tier: line", "TC-1c has no Depth: line", "R8 is referenced but not defined",
+  for (const msg of ["R4 has no Caps: line", "TC-1c has no Tier: line (smoke, core, deep or edge)", "TC-1c has no Depth: line (screen, elsewhere or kept)", "R8 is referenced but not defined",
     "F7 is referenced but not defined", "TC-9z is referenced but not defined"]) assert.ok(p.includes(msg), `${msg} in ${p}`);
 
   // A screen with no capability.
@@ -215,20 +215,45 @@ try {
   const unreadable = readE2e(copy((d) => {
     fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n### TC-12a P0 title\n\n```\n### TC-13 nope\n```\n");
     fs.appendFileSync(path.join(d, "CUJs.md"), "\n### CUJ-4 Export notes\n");
-    sub(d, "PRD.md", "### F2 · Search · P1", "### F2 Search\n- R5 has no separator");
+    sub(d, "PRD.md", "### F1 · Notes · P0", "### F1 · Notes · P0\n- R5 has no separator");
+    sub(d, "PRD.md", "### F2 · Search · P1", "### F2 Search");
     sub(d, "PRD.md", "## Non-goals\n", "## Non-goals\n- R10 and R13 tap Cancel, never Confirm.\n");
     fs.appendFileSync(path.join(d, "INVENTORY.md"), '\n## S3 SettingsFragment "Settings"\n');
   })).problems;
   assert.deepEqual(unreadable.map((x) => `${x.file}: ${x.message}`), [
     'INVENTORY.md: screen heading is not readable: use "## S<n> · <source> · "<title>""',
-    'PRD.md: feature heading is not readable: use "### F<n> · <name> · <priority>"',
     'PRD.md: requirement is not readable: use "- R<n> · <text>"',
+    'PRD.md: feature heading is not readable: use "### F<n> · <name> · <priority>"',
+    "PRD.md: R4 is under no feature", // the unreadable heading closes F1
     'CUJs.md: CUJ heading is not readable: use "### CUJ-<n> · <title> · <priority> · <run mode>"',
     'TESTCASES.md: case heading is not readable: use "### TC-<id> · <priority> · <title>"',
     "TESTCASES.md: F2 is referenced but not defined", // the unreadable F2 heading defines nothing
     "TESTCASES.md: F2 is referenced but not defined",
   ]);
   assert.ok(unreadable.every((x) => x.line > 0), "each on its line");
+
+  // A heading that is not a feature closes the feature: a requirement under it belongs to none (a
+  // problem, still counted), and a prose bullet under it is ignored.
+  const loose = readE2e(copy((d) => fs.writeFileSync(path.join(d, "PRD.md"), [
+    "### F1 · Notes · P0", "- R1 · A saved note appears.", "  Caps: C4", "  Proof: kept", "  Fails: none in source",
+    "", "### Unassigned", "- R2 · Search narrows the list.", "  Caps: C2", "  Proof: screen", "  Fails: none in source",
+    "", "### Notes", "- R10 and R13 tap Cancel, never Confirm.", "",
+  ].join("\n"))));
+  assert.deepEqual(loose.requirements.map((r) => [r.id, r.feature]), [["R1", "F1"], ["R2", null]]);
+  assert.deepEqual(loose.problems.filter((x) => x.file === "PRD.md"), [{ file: "PRD.md", line: 8, message: "R2 is under no feature" }]);
+
+  // Tier and Depth on one line or two; a missing line says which words it takes.
+  const twoLines = readE2e(copy((d) => sub(d, "TESTCASES.md", "Tier: deep · Depth: kept", "Tier: deep\nDepth: kept")));
+  assert.deepEqual(twoLines.problems, []);
+  assert.deepEqual([twoLines.cases[0].tier, twoLines.cases[0].depth], ["deep", "kept"]);
+  p = readE2e(copy((d) => sub(d, "TESTCASES.md", "Tier: deep · Depth: kept", "Depth: sideways"))).problems.map((x) => x.message);
+  assert.deepEqual(p, ["Depth must be screen, elsewhere or kept", "TC-1a has no Tier: line (smoke, core, deep or edge)"]);
+  p = readE2e(copy((d) => {
+    sub(d, "TESTCASES.md", "Tier: deep · Depth: kept\nRun mode: phone\n", "");
+    sub(d, "PRD.md", "  Proof: kept\n", "");
+  })).problems.map((x) => x.message);
+  assert.deepEqual(p, ["R1 has no Proof: line (screen, elsewhere or kept)", "TC-1a has no Tier: line (smoke, core, deep or edge)",
+    "TC-1a has no Depth: line (screen, elsewhere or kept)", "TC-1a has no Run mode: line (phone, task or manual)"]);
 
   assert.throws(() => readE2e(path.join(fixture, "nope")));
   console.log("ok e2e-model");

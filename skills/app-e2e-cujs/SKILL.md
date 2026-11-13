@@ -19,7 +19,8 @@ User action: tap own skill → fill "Fill In" → "Use Skill".
 ```
 
 - The title is the user's goal, not the screen.
-- Priority and run mode from the PRD's scale.
+- Priority and run mode from the PRD's scale: `phone` (drivable over CodeDroid), `task` (needs
+  CodeDroid's agent to run something), `manual` (needs a wipe, a second account, a payment).
 - `Proves:` the PRD requirements whose behavior its outcomes show, by id.
 - Each bullet is an outcome someone can see on the phone, with its exact words in quotes, taken
   from `EXPLORE.md` or the source. Not "works correctly".
