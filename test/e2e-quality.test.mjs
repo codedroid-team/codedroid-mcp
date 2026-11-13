@@ -153,6 +153,8 @@ try {
 
   // d. Any one case suffices. R4 is elsewhere: TC-3a is screen, TC-3b made elsewhere -> at_depth (3 of 4).
   assert.equal(edited(["TESTCASES.md", "Covers: R4\nTier: edge · Depth: screen", "Covers: R4\nTier: edge · Depth: elsewhere"]).requirements.at_depth, 3);
+  // Order does not matter: R1 (kept) is covered by TC-1a (kept, first in the file) and an added shallow TC-1e (screen, last).
+  assert.equal(withAdded(block("TC-1e", "F1", "R1", "phone")).requirements.at_depth, 2); // R1 and R2, as in the fixture
   // C2 by TC-3a pass + TC-3b fail (the fixture as is): passing. By TC-3a not run + TC-3b fail: exercised, not passing.
   assert.equal(q.capabilities.passing, 4);
   const nf = edited(["reports/2026-01-02/REPORT.md", "| TC-3a | pass |", "| TC-3a | not run |"]);
