@@ -75,16 +75,28 @@ cleanup changed the screen.
   screenshot as a thumbnail linked to the full image:
   `<a href="TC-12a.png"><img src="TC-12a.png" alt="TC-12a" width="300"></a>` (width 120 inside
   a table row). A plain `![TC-12a](TC-12a.png)` shows a phone screenshot at full size.
-- Every case in one table: result, priority, title, and "passed after N tries" where it took
-  reruns; earlier failed attempts listed under it with their cause.
+- Every case in one table, with exactly these columns; it must be the report's only table that
+  starts with Case and Result. Result is `pass`, `fail` or `not run`; "passed after N tries" goes in
+  Notes, earlier failed attempts are listed under the table with their cause.
+
+```markdown
+| Case | Result | Priority | Title | Notes |
+| --- | --- | --- | --- | --- |
+| TC-12a | pass | P0 | Use a skill with a blank: the prompt lands in the composer, not sent | passed after 2 tries |
+```
+
 - Findings with their status, what is not covered, and the release answer.
 
 After fixing a case, rerun it and every case that `Needs:` it, and report the last result with
 "passed after N tries". Rerun the whole suite only when a fix changed a shared step (the start
 state, a common cleanup) or before a release verdict. A bug you find mid-run that no case covers:
 add a case for it to `TESTCASES.md`, run it twice, and say in the report that it was added. Anything
-the run left that only "clear all" would remove: list it under cleanup, don't clear it. Give the
-user the report's path.
+the run left that only "clear all" would remove: list it under cleanup, don't clear it.
+
+Then run `npx -y @codedroid/mcp e2e report e2e`. Exit 1 means the documents have problems, printed
+as `file:line: message`: fix them and rerun until it prints none. It writes `REPORT.html` beside the
+report and refreshes `QUALITY.html`; never edit those, and commit them with the report. Give the
+user the path of `REPORT.html`.
 
 ## Never
 

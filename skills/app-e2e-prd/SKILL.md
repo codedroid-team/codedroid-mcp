@@ -5,8 +5,8 @@ description: Write the test PRD for testing an Android app end to end with CodeD
 
 # Write the test PRD
 
-Input: `e2e/EXPLORE.md` and the app's docs. Output: `e2e/PRD.md`. It is a PRD for the test effort,
-not for the app. Keep it short: names and numbers over adjectives.
+Input: `e2e/EXPLORE.md`, `e2e/INVENTORY.md` and the app's docs. Output: `e2e/PRD.md`. It is a PRD
+for the test effort, not for the app. Keep it short: names and numbers over adjectives.
 
 ## Sections, in this order
 
@@ -38,12 +38,31 @@ A feature is what the app lets a user do, named after the surface or action they
 ```markdown
 ### F3 · Skills · P0
 What: save a prompt, fill its blanks, run it.
-Screens: Skills tab, My skills, Skill sheet, "Fill In" sheet.
+Screens: Skills tab, My skills, "New skill" sheet, Skill sheet, "Fill In" sheet.
 Gates: sign-in ("Sign in to save skills"); "Use Skill" disabled until every blank is filled.
 Harm: "Delete skill" on the skill sheet's menu.
 - R7 · A saved skill appears under "My skills".
+  Caps: C14
+  Proof: kept
+  Fails:
+  - R7.f1 · signed out, "Save" shows "Sign in to save skills" and saves nothing
+  - R7.f2 · a server error shows "Couldn't save skill" and keeps the sheet open
 - R8 · "Use Skill" puts the filled prompt in the composer without sending it.
+  Caps: C17, C18
+  Proof: elsewhere
+  Fails:
+  - R8.f1 · "Use Skill" stays disabled until every blank is filled
 ```
+
+Each requirement carries three lines, read from the handlers in the source, not from the labels:
+- `Caps:` the `INVENTORY.md` capabilities it uses.
+- `Proof:` how far its effect reaches: `screen` (only this screen changes), `elsewhere` (it shows
+  somewhere else: another screen, a notification, a file, the server) or `kept` (stored, and must
+  survive reopening the app). Code that writes to storage or the network is never `screen`.
+- `Fails:` what the code does when it goes wrong (no connection, a server error, cancel, bad input,
+  a limit), one `R<n>.f<m>` line each with its exact message; or `Fails: none in source` once you
+  have read the handler and found none. These become the edge cases; a suite without them tests
+  only the happy path.
 
 - Every screen in `EXPLORE.md` belongs to exactly one feature. Tabs, menus and other navigation
   are not features: a screen goes to the feature it serves. A screen that fits none goes under
@@ -56,6 +75,10 @@ Harm: "Delete skill" on the skill sheet's menu.
 - Data the tests cannot name `e2e-...` (a public feed, a catalog, a server's own items): say in
   Constraints which items are the test's own, and how the cases make and remove them.
 - A feature with no requirement is out of scope: say so under Non-goals.
+- Every capability in `INVENTORY.md` is in some requirement's `Caps:`, or named under Non-goals
+  with why. The quality page lists the rest as "not in any feature".
+- Then run `npx -y @codedroid/mcp e2e report e2e` and fix every problem it prints as
+  `file:line: message`, except `CUJs.md is missing` and `TESTCASES.md is missing`.
 
 ## For a release
 

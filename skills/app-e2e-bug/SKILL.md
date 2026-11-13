@@ -28,6 +28,12 @@ Number it after the CUJ it belongs to (or `TC-B<n>` when none fits), title it wi
 that should hold, not the bug ("Delete a skill from search leaves the list correct"), and add a
 line `Bug: <link or one line>`. The Expected lines state the correct behavior, so the case fails
 now and passes once fixed. Everything it creates is named `e2e-...` and removed in its cleanup.
+`Covers:`, `Tier:` with `Depth:`, and `Run mode:` as app-e2e-testcases says. `Covers:` names the
+requirement or failure the bug breaks; a failure the PRD lacks gets its `R<n>.f<m>` line there
+first. With no `PRD.md`, leave `Covers:` empty.
+
+Run `npx -y @codedroid/mcp e2e report e2e` and fix every problem it prints as `file:line: message`
+(with only `TESTCASES.md`, the other files are reported missing; that is expected).
 
 ## 4. Prove it red
 

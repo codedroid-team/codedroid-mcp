@@ -1,6 +1,6 @@
 ---
 name: app-e2e
-description: End-to-end test an Android app on the user's real phone through CodeDroid, from exploring the app to a release verdict - explore, write a test PRD, critical user journeys (CUJs) and test cases into the app's repo, run them on the phone and report with screenshots. Use when asked to test an app end to end, prepare it for a release, write or run its CUJs or test cases, or for /app-e2e.
+description: End-to-end test an Android app on the user's real phone through CodeDroid, from exploring the app to a release verdict - explore, write a test PRD, critical user journeys (CUJs) and test cases into the app's repo, run them on the phone and report with screenshots, checked by the e2e report command, which writes HTML pages for review. Use when asked to test an app end to end, prepare it for a release, write or run its CUJs or test cases, or for /app-e2e.
 ---
 
 # App e2e
@@ -9,13 +9,22 @@ The run is five steps, each its own skill. Run them in order and stop at the two
 
 | Step | Skill | Writes (in the app's repo) | Then |
 | --- | --- | --- | --- |
-| 1 | app-e2e-explore | `e2e/EXPLORE.md` | go on |
+| 1 | app-e2e-explore | `e2e/EXPLORE.md`; `e2e/INVENTORY.md`: every screen and control | go on |
 | 2 | app-e2e-prd | `e2e/PRD.md`: features and requirements | go on |
-| 3 | app-e2e-cujs | `e2e/CUJs.md` | **Gate 1: the user reviews the CUJs.** Stop until they approve or edit. |
-| 4 | app-e2e-testcases | `e2e/TESTCASES.md` | **Gate 2: the user approves the cases, and any that run a CodeDroid task.** |
+| 3 | app-e2e-cujs | `e2e/CUJs.md` | **Gate 1: the user reviews `e2e/CUJs.html`.** Stop until they approve or edit. |
+| 4 | app-e2e-testcases | `e2e/TESTCASES.md` | **Gate 2: the user approves `e2e/TESTCASES.html`, and any case that runs a CodeDroid task.** |
 | 5 | app-e2e-run | `e2e/reports/<date>/REPORT.md` and screenshots | report (below) |
 
 Load each step's skill when you reach it; this table is not the step.
+
+After each step's document is written, run `npx -y @codedroid/mcp e2e report e2e` from the repo
+root. Exit 1 means the documents have problems, printed as `file:line: message`: fix every one
+before going on, and rerun until it prints none (`<file> is missing` for a later step's file is
+expected until that step). It writes `QUALITY.md`, `quality.json` and HTML pages into `e2e/`
+(`PRD.html`, `CUJs.html`, `TESTCASES.html`, `QUALITY.html`, `REPORT.html` beside the newest report).
+The Markdown stays the source: never edit a generated file, and commit them with the Markdown. At
+both gates give the user the page, not the Markdown, and `e2e/QUALITY.html` for what is not
+covered; the `Approved:` line still goes on the Markdown.
 
 Once `e2e/` exists, the everyday jobs have their own skills: app-e2e-rerun (run some cases: by id,
 CUJ, priority, last failures, a change; a flaky check; two builds), app-e2e-bug (a case that
@@ -62,7 +71,8 @@ own branch, with the failing case as its test.
 
 End with: the build tested; counts (passed / failed / not run, with why); each finding with its
 evidence and status (fixed, or open); what the cases got wrong and how it was fixed; what is not
-covered (manual CUJs); the report's path. Then the release question the results answer.
+covered (`e2e/QUALITY.html`, manual CUJs); the path of `REPORT.html`. Then the release question
+the results answer.
 
 ## Never
 
