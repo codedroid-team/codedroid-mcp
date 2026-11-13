@@ -69,6 +69,7 @@ export function readE2e(dir) {
     if (lines.open) problem(name, lines.open, "code fence opened here is never closed");
     return lines;
   };
+  const bracketed = []; // [line, ref, cap] Covers brackets, checked against the requirement's Caps
   const refs = []; // [file, line, id, kind] checked once every file is parsed
 
   const inv = read("INVENTORY.md");
@@ -198,7 +199,7 @@ export function readE2e(dir) {
             const caps = list(x[2] ?? "");
             tc.covers.push({ ref: x[1], caps });
             refs.push(["TESTCASES.md", n, x[1], "reqOrFail"]);
-            for (const c of caps) refs.push(["TESTCASES.md", n, c, "cap"]);
+            for (const c of caps) { refs.push(["TESTCASES.md", n, c, "cap"]); bracketed.push([n, x[1], c]); }
           }
         } else if ((h = t.match(/^Tier:\s*(.*)$/))) {
           tc.has.tier = true;
@@ -263,6 +264,10 @@ export function readE2e(dir) {
   };
   for (const [file, line, id, kind] of refs) {
     if (ids[kind] && !ids[kind].has(id)) problem(file, line, `${id} is referenced but not defined`);
+  }
+  for (const [line, ref, cap] of bracketed) {
+    const r = m.requirements.find((q) => q.id === ref.replace(/\.f\d+$/, ""));
+    if (r && !r.caps.includes(cap) && (!ids.cap || ids.cap.has(cap))) problem("TESTCASES.md", line, `${cap} is not in ${r.id}'s Caps`);
   }
   return m;
 }

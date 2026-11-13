@@ -156,6 +156,13 @@ try {
   assert.deepEqual(fence.problems, [{ file: "TESTCASES.md", line: 20, message: "code fence opened here is never closed" }]);
   assert.equal(fence.cases.length, 6);
 
+  // A Covers bracket naming a capability that is not in that requirement's Caps is a problem, on the Covers line
+  // (TC-3a's is line 34; TC-1b's R1.f1 entry checks R1's Caps, line 16). An undefined cap is only "not defined".
+  let notIn = readE2e(copy((d) => sub(d, "TESTCASES.md", "Covers: R4 (C2)", "Covers: R4 (C6)")));
+  assert.deepEqual(notIn.problems, [{ file: "TESTCASES.md", line: 34, message: "C6 is not in R4's Caps" }]);
+  notIn = readE2e(copy((d) => sub(d, "TESTCASES.md", "R1.f1 (C4)", "R1.f1 (C1)")));
+  assert.deepEqual(notIn.problems, [{ file: "TESTCASES.md", line: 16, message: "C1 is not in R1's Caps" }]);
+
   assert.throws(() => readE2e(path.join(fixture, "nope")));
   console.log("ok e2e-model");
 } finally {

@@ -30,7 +30,7 @@ export function quality(model) {
     for (const { ref, caps: bracket } of c.covers) {
       const r = reqs.get(ref.replace(/\.f\d+$/, ""));
       if (!r || (ref.includes(".f") && !failIds.has(ref))) continue;
-      for (const id of bracket.length ? bracket : r.caps) if (caps.has(id)) out.add(id);
+      for (const id of bracket.length ? bracket : r.caps) if (caps.has(id) && r.caps.includes(id)) out.add(id);
     }
     return out;
   };
