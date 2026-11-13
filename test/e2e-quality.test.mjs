@@ -9,6 +9,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { readE2e } from "../src/e2e-model.js";
+import { recordVerdicts } from "../src/e2e-verdicts.js";
 import { quality, qualityJson, qualityMd } from "../src/e2e-quality.js";
 
 const fixture = new URL("./fixtures/e2e-sample", import.meta.url).pathname;
@@ -32,18 +33,18 @@ try {
   const q = quality(model);
   assert.equal(q.ok, true);
   assert.deepEqual(q.problems, []);
-  assert.equal(q.verified, "not verified");
+  assert.equal("verified" in q, false, "the fixed not-verified field is gone");
 
   // Capabilities: C1-C6. C1-C5 are in a requirement's Caps (C6 in none). Runnable cases cover C4 (TC-1a),
   // C1+C3 (TC-1c), C2 (TC-3a, TC-3b); C5 only by the manual TC-2a. Reports: TC-1a/1b/1c/3a pass, TC-3b fail.
   // not_seen: C5 ("no: ...") and C6 ("?").
-  assert.deepEqual(q.capabilities, { total: 6, in_feature: 5, with_case: 4, exercised: 4, passing: 4, not_seen: 2, set_aside: 0 });
+  assert.deepEqual(q.capabilities, { total: 6, in_feature: 5, with_case: 4, approved: 1, exercised: 4, passing: 4, not_seen: 2, set_aside: 0 });
   assert.deepEqual(q.set_aside, []);
   // Requirements R1-R4: R3 only has the manual case. Proof: R1 kept (TC-1a kept), R2 screen (TC-1c screen),
   // R4 elsewhere (TC-3a, TC-3b only screen), so at_depth is below with_case.
-  assert.deepEqual(q.requirements, { total: 4, with_case: 3, at_depth: 2, acknowledged: 0, depth_acknowledged: 0 });
+  assert.deepEqual(q.requirements, { total: 4, with_case: 3, approved: 1, at_depth: 2, at_depth_approved: 1, acknowledged: 0, depth_acknowledged: 0 });
   // Failures R1.f1, R1.f2 (TC-1b), R2.f1 (no case).
-  assert.deepEqual(q.failures, { total: 3, with_case: 2, acknowledged: 0 });
+  assert.deepEqual(q.failures, { total: 3, with_case: 2, approved: 2, acknowledged: 0 });
   assert.deepEqual(q.cases, {
     total: 6, setup: 0, retired: 0, by_mode: { phone: 4, task: 1, manual: 1 }, by_tier: { smoke: 1, core: 2, deep: 1, edge: 2 },
   });
@@ -52,17 +53,17 @@ try {
     {
       id: "F1", name: "Notes", priority: "P0",
       // R1 C4, R2 C1+C3, R3 C5; C5 has only the manual case and is not seen.
-      capabilities: { total: 4, in_feature: 4, with_case: 3, exercised: 3, passing: 3, not_seen: 1 },
-      requirements: { total: 3, with_case: 2, at_depth: 2, acknowledged: 0, depth_acknowledged: 0 },
-      failures: { total: 3, with_case: 2, acknowledged: 0 },
+      capabilities: { total: 4, in_feature: 4, with_case: 3, approved: 1, exercised: 3, passing: 3, not_seen: 1 }, // approved: C4 (TC-1a, TC-1b)
+      requirements: { total: 3, with_case: 2, approved: 1, at_depth: 2, at_depth_approved: 1, acknowledged: 0, depth_acknowledged: 0 }, // R1 by TC-1a; R2 only by repair TC-1c
+      failures: { total: 3, with_case: 2, approved: 2, acknowledged: 0 },
       tiers: { smoke: 0, core: 2, deep: 1, edge: 1 }, // TC-1a deep, TC-1b + TC-1c core, TC-2a edge
       deep_cases: 1, deep_gap: null,
     },
     {
       id: "F2", name: "Search", priority: "P1",
-      capabilities: { total: 1, in_feature: 1, with_case: 1, exercised: 1, passing: 1, not_seen: 0 }, // C2
-      requirements: { total: 1, with_case: 1, at_depth: 0, acknowledged: 0, depth_acknowledged: 0 },
-      failures: { total: 0, with_case: 0, acknowledged: 0 },
+      capabilities: { total: 1, in_feature: 1, with_case: 1, approved: 0, exercised: 1, passing: 1, not_seen: 0 }, // C2; TC-3a unresolved, TC-3b unverified
+      requirements: { total: 1, with_case: 1, approved: 0, at_depth: 0, at_depth_approved: 0, acknowledged: 0, depth_acknowledged: 0 },
+      failures: { total: 0, with_case: 0, approved: 0, acknowledged: 0 },
       tiers: { smoke: 1, core: 0, deep: 0, edge: 1 }, // TC-3a smoke, TC-3b edge
       deep_cases: 0, deep_gap: null,
     },
@@ -72,15 +73,15 @@ try {
     {
       id: "CUJ-1", title: "Write a note and find it again", requirements: ["R1", "R2"],
       cases: ["TC-1a", "TC-1b", "TC-1c"],
-      capabilities: { total: 3, in_feature: 3, with_case: 3, exercised: 3, passing: 3, not_seen: 0 }, // C4 C1 C3
+      capabilities: { total: 3, in_feature: 3, with_case: 3, approved: 1, exercised: 3, passing: 3, not_seen: 0 }, // C4 C1 C3; only C4 approved
     },
     {
       id: "CUJ-2", title: "Delete a note", requirements: ["R3"], cases: ["TC-2a"],
-      capabilities: { total: 1, in_feature: 1, with_case: 0, exercised: 0, passing: 0, not_seen: 1 }, // C5
+      capabilities: { total: 1, in_feature: 1, with_case: 0, approved: 0, exercised: 0, passing: 0, not_seen: 1 }, // C5
     },
     {
       id: "CUJ-3", title: "Find a note by title", requirements: ["R4"], cases: ["TC-3a", "TC-3b"],
-      capabilities: { total: 1, in_feature: 1, with_case: 1, exercised: 1, passing: 1, not_seen: 0 }, // C2
+      capabilities: { total: 1, in_feature: 1, with_case: 1, approved: 0, exercised: 1, passing: 1, not_seen: 0 }, // C2; TC-3a unresolved, TC-3b unverified
     },
   ]);
 
@@ -94,7 +95,7 @@ try {
   const md = qualityMd(q, model);
   assert.match(md, /^# /);
   assert.match(md, /counts of the documents, not test results/);
-  assert.match(md, /Nothing has been verified by the verifier yet/);
+  assert.match(md, /The verifier approved 2 of 6 test cases; approval is of a test's design, not a run\./);
   assert.doesNotMatch(md, /## Problems/);
   assert.doesNotMatch(md, /NaN/);
   assert.match(md, /F1 · Notes/);
@@ -164,7 +165,7 @@ try {
   const aside = (edit) => quality(readE2e(copy((d) => fs.appendFileSync(path.join(d, "PRD.md"), "\n- Non-goal: C6 · sharing needs a second phone\n"))));
   const as = aside();
   assert.equal(as.ok, true);
-  assert.deepEqual(as.capabilities, { total: 6, in_feature: 5, with_case: 4, exercised: 4, passing: 4, not_seen: 1, set_aside: 1 });
+  assert.deepEqual(as.capabilities, { total: 6, in_feature: 5, with_case: 4, approved: 1, exercised: 4, passing: 4, not_seen: 1, set_aside: 1 });
   assert.deepEqual(as.untested.map((u) => u.id), ["C5"]);
   assert.deepEqual(as.set_aside, [{ id: "C6", screen: `"Edit note" (NoteEditorFragment)`, control: 'description "Share"', reason: "sharing needs a second phone" }]);
   const asModel = readE2e(copy((d) => fs.appendFileSync(path.join(d, "PRD.md"), "\n- Non-goal: C6 · sharing needs a second phone\n")));
@@ -192,8 +193,8 @@ try {
   const gq = quality(gapModel);
   assert.equal(gq.ok, true);
   assert.deepEqual(gq.open, []);
-  assert.deepEqual(gq.requirements, { total: 4, with_case: 3, at_depth: 2, acknowledged: 1, depth_acknowledged: 1 });
-  assert.deepEqual(gq.failures, { total: 3, with_case: 2, acknowledged: 1 });
+  assert.deepEqual(gq.requirements, { total: 4, with_case: 3, approved: 1, at_depth: 2, at_depth_approved: 1, acknowledged: 1, depth_acknowledged: 1 });
+  assert.deepEqual(gq.failures, { total: 3, with_case: 2, approved: 2, acknowledged: 1 });
   assert.deepEqual(gq.by_feature.map((f) => [f.id, f.deep_cases, f.deep_gap, f.requirements.acknowledged, f.failures.acknowledged]), [["F1", 1, null, 1, 1], ["F2", 0, "one screen", 0, 0]]);
   assert.deepEqual(gq.gaps, [
     { ref: "R2.f1", kind: "failure", reason: "cannot be staged" },
@@ -224,7 +225,7 @@ try {
   // a6. Failure lines are open only under a P0 or P1 feature; P2 ones still count in failures.
   const p2 = quality(readE2e(copy((d) => sub(d, "PRD.md", "### F1 · Notes · P0", "### F1 · Notes · P2"))));
   assert.deepEqual(p2.open.map((o) => o.ref), ["R3", "R4"], "R2.f1 is in a P2 feature: not open");
-  assert.deepEqual(p2.failures, { total: 3, with_case: 2, acknowledged: 0 });
+  assert.deepEqual(p2.failures, { total: 3, with_case: 2, approved: 2, acknowledged: 0 });
   assert.deepEqual(q.open.map((o) => o.ref), ["R3", "R4", "R2.f1"], "a P0 feature's failure is open");
   assert.ok(quality(readE2e(copy((d) => sub(d, "PRD.md", "### F1 · Notes · P0", "### F1 · Notes · P1")))).open.some((o) => o.ref === "R2.f1"), "P1 too");
   // a7. Caps: none: no capability, still a requirement.
@@ -256,13 +257,13 @@ try {
   const mnr = withAdded(block("TC-4a", "F2", "R4 (C2)", "manual"),
     ["reports/2026-01-02/REPORT.md", "| TC-3a | pass |", "| TC-3a | not run |"],
     ["reports/2026-01-02/REPORT.md", "| TC-3b | fail |", "| TC-3b | not run |"]);
-  assert.deepEqual(mnr.capabilities, { total: 6, in_feature: 5, with_case: 4, exercised: 3, passing: 3, not_seen: 2, set_aside: 0 });
+  assert.deepEqual(mnr.capabilities, { total: 6, in_feature: 5, with_case: 4, approved: 1, exercised: 3, passing: 3, not_seen: 2, set_aside: 0 });
   assert.deepEqual(mnr.untested.map((u) => u.id), ["C5", "C6"]);
 
   // c. R2.f1 covered only by a manual case: failures with_case stays 2 (R1.f1, R1.f2).
-  assert.deepEqual(withAdded(block("TC-1d", "F1", "R2.f1", "manual")).failures, { total: 3, with_case: 2, acknowledged: 0 });
+  assert.deepEqual(withAdded(block("TC-1d", "F1", "R2.f1", "manual")).failures, { total: 3, with_case: 2, approved: 2, acknowledged: 0 });
   // ...and a runnable case does count it.
-  assert.deepEqual(withAdded(block("TC-1d", "F1", "R2.f1", "phone")).failures, { total: 3, with_case: 3, acknowledged: 0 });
+  assert.deepEqual(withAdded(block("TC-1d", "F1", "R2.f1", "phone")).failures, { total: 3, with_case: 3, approved: 2, acknowledged: 0 });
 
   // d. Any one case suffices. R4 is elsewhere: TC-3a is screen, TC-3b made elsewhere -> at_depth (3 of 4).
   assert.equal(edited(["TESTCASES.md", "Covers: R4\nTier: edge · Depth: screen", "Covers: R4\nTier: edge · Depth: elsewhere"]).requirements.at_depth, 3);
@@ -310,6 +311,93 @@ try {
   const bad2 = quality(readE2e(copy((d) => sub(d, "TESTCASES.md", "Covers: R4\n", "Covers: R4, R9\n"))));
   assert.equal(bad2.ok, false);
   assert.equal(bad2.requirements.total, 4);
+
+  // v. Verifier counts. The fixture's VERIFY.md: TC-1a approved on attempt 1; TC-1b approved on attempt 2 (after a
+  // repair); TC-1c repair; TC-2a (manual) question; TC-3a unresolved (three repairs); TC-3b no row.
+  assert.deepEqual(q.verify, {
+    judged: 6, approved: 2, approved_first: 1, approved_after_repair: 1, repair: 1, question: 1, unresolved: 1, stale: 0, unverified: 1, invalid: 0,
+    by: { independent: 4, same: 1 }, // latest rows: TC-1a, TC-1c, TC-2a, TC-3a independent; TC-1b same; TC-3b has none
+  });
+  assert.deepEqual(q.not_approved, [
+    { id: "TC-1c", status: "repair", reason: "R2: an app that opens an empty note passes; Expected only checks the screen title." },
+    { id: "TC-2a", status: "question", reason: "Is a confirmation dialog on delete required, or is undo enough? Only the user can say." },
+    { id: "TC-3a", status: "unresolved", reason: "R4: Expected names no title that must be absent, so an unfiltered list passes." },
+    { id: "TC-3b", status: "unverified", reason: "not judged yet" },
+  ]);
+  // Approved counters: only TC-1a (R1, C4, kept) and TC-1b (R1.f1 (C4), R1.f2) are approved and runnable.
+  assert.deepEqual([q.capabilities.approved, q.requirements.approved, q.requirements.at_depth_approved, q.failures.approved], [1, 1, 1, 2]);
+  assert.ok(q.capabilities.approved < q.capabilities.with_case && q.requirements.at_depth_approved < q.requirements.at_depth);
+  assert.match(md, /\| Capabilities with an approved case \| 1 of 6 \(17%\) \|\n\| Capabilities with a case \| 4 of 6 \(67%\) \|/);
+  assert.match(md, /\| Requirements with an approved case \| 1 of 4 \(25%\) \|/);
+  assert.match(md, /\| Failures with an approved case \| 2 of 3 \(67%\) \|/);
+  assert.match(md, /## Verifier\n\n- TC-1c · repair · R2: an app that opens an empty note passes; Expected only checks the screen title\.\n- TC-2a · question · Is a confirmation dialog[^\n]*\n- TC-3a · unresolved · R4: Expected names[^\n]*\n- TC-3b · unverified · not judged yet\n\nJudged by an independent agent: 4\. By the same agent: 1\.\n\n## Left open/);
+  assert.deepEqual([j.verify, j.not_approved], [q.verify, q.not_approved]);
+
+  // v2. No VERIFY.md: nothing approved, every judged case unverified, and the page says nobody judged yet.
+  const noVerifyModel = readE2e(copy((d) => fs.rmSync(path.join(d, "VERIFY.md"))));
+  const nv = quality(noVerifyModel);
+  assert.deepEqual(nv.verify, { judged: 6, approved: 0, approved_first: 0, approved_after_repair: 0, repair: 0, question: 0, unresolved: 0, stale: 0, unverified: 6, invalid: 0, by: { independent: 0, same: 0 } });
+  assert.deepEqual([nv.capabilities.approved, nv.requirements.approved, nv.requirements.at_depth_approved, nv.failures.approved], [0, 0, 0, 0]);
+  assert.deepEqual(nv.by_feature.map((f) => [f.capabilities.approved, f.requirements.approved, f.requirements.at_depth_approved, f.failures.approved]), [[0, 0, 0, 0], [0, 0, 0, 0]]);
+  assert.equal(nv.not_approved.length, 6);
+  assert.deepEqual(nv.open, q.open, "open is about missing cases, not unapproved ones");
+  const nvMd = qualityMd(nv, noVerifyModel);
+  assert.match(nvMd, /These are counts of the documents, not test results\. No test case has been judged by the verifier yet\./);
+  assert.match(nvMd, /Judged by an independent agent: 0\. By the same agent: 0\./);
+
+  // Statuses the fixture lacks are made on copies; an approved row is written by recordVerdicts, the real writer.
+  const approve = (dir, ...ids) => {
+    const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "e2e-quality-v-")), "v.jsonl");
+    tmps.push(path.dirname(f));
+    fs.writeFileSync(f, ids.map((id) => JSON.stringify({ id, verdict: "approved", by: "independent", reason: "R1: a broken app is rejected by Expected" })).join("\n") + "\n");
+    assert.equal(recordVerdicts({ dir, file: f }).code, 0);
+  };
+  const vq = (edit) => quality(readE2e(copy(edit)));
+  const approvedCounters = (x) => [x.capabilities.approved, x.requirements.approved, x.requirements.at_depth_approved, x.failures.approved];
+
+  // v3. A capability reached by one approved and one unapproved case is approved: C2 by TC-3a (unresolved) and TC-3b
+  // (approved now, attempt 1). R4 is approved too, but its Proof is elsewhere and TC-3b is screen: not deep enough.
+  const one = vq((d) => approve(d, "TC-3b"));
+  assert.equal(one.verify.approved, 3);
+  assert.equal(one.verify.approved_first, 2);
+  assert.deepEqual(approvedCounters(one), [2, 2, 1, 2]);
+  assert.deepEqual(one.by_feature[1].capabilities, { total: 1, in_feature: 1, with_case: 1, approved: 1, exercised: 1, passing: 1, not_seen: 0 });
+  assert.equal(one.by_cuj[2].capabilities.approved, 1);
+  // ...and approving the repair case TC-1c (attempt 2, after a repair) approves C1, C3 and R2, deep enough (Proof screen).
+  const rep2 = vq((d) => approve(d, "TC-1c"));
+  assert.deepEqual([rep2.verify.approved, rep2.verify.approved_first, rep2.verify.approved_after_repair], [3, 1, 2]);
+  assert.deepEqual(approvedCounters(rep2), [3, 2, 2, 2]);
+  assert.equal(rep2.by_feature[0].requirements.approved, 2);
+
+  // v4. An approved manual case counts as approved but approves nothing: TC-2a covers R3 (C5), manual.
+  const man = vq((d) => approve(d, "TC-2a"));
+  assert.equal(man.verify.approved, 3);
+  assert.deepEqual(approvedCounters(man), [1, 1, 1, 2]);
+  assert.equal(man.by_cuj[1].capabilities.approved, 0);
+  assert.deepEqual(man.not_approved.map((n) => n.id), ["TC-1c", "TC-3a", "TC-3b"]);
+
+  // v5. A stale case (its steps changed after it was approved) approves nothing: TC-1a is R1's only approver.
+  const stale = vq((d) => sub(d, "TESTCASES.md", "type a title, tap", "type a long title, tap"));
+  assert.equal(stale.verify.stale, 1);
+  assert.equal(stale.verify.approved, 1);
+  assert.deepEqual(approvedCounters(stale), [1, 0, 0, 2]); // C4 and R1.f1/f2 still through TC-1b
+  assert.deepEqual(stale.not_approved[0], { id: "TC-1a", status: "stale", reason: "changed since it was judged" });
+  assert.equal(stale.verify.approved + stale.verify.repair + stale.verify.question + stale.verify.unresolved + stale.verify.stale + stale.verify.unverified + stale.verify.invalid, stale.verify.judged);
+
+  // v6. An invalid case (an unreadable row names it) approves nothing and is listed with the model's reason.
+  const inv = vq((d) => fs.appendFileSync(path.join(d, "VERIFY.md"), "| TC-1a | 2 | approved | independent | not-a-hash | 2026-11-16 | broken |\n"));
+  assert.equal(inv.verify.invalid, 1);
+  assert.equal(inv.verify.approved, 1);
+  assert.deepEqual(approvedCounters(inv), [1, 0, 0, 2]);
+  assert.match(inv.not_approved[0].reason, /^VERIFY\.md line \d+ cannot be read$/);
+  assert.equal(inv.not_approved[0].status, "invalid");
+
+  // v7. Setup and retired cases are not judged and not listed.
+  const su2 = withAdded("\n### TC-00 · P1 · Remove leftovers\nFeature: all · Type: setup\nRun mode: phone\n");
+  assert.deepEqual(su2.verify, q.verify);
+  assert.deepEqual(su2.not_approved, q.not_approved);
+  // A case added without a verdict is judged and unverified.
+  assert.equal(withAdded(block("TC-1d", "F1", "R1", "phone")).verify.unverified, 2);
 
   console.log("ok e2e-quality");
 } finally {
