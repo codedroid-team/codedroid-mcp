@@ -200,6 +200,36 @@ try {
   assert.deepEqual(needs.cases[0].needs, ["TC-1b", "TC-9z"]);
   assert.deepEqual(needs.problems, [{ file: "TESTCASES.md", line: 8, message: "TC-9z is referenced but not defined" }]);
 
+  // Any letters or digits after TC- make a case id (a bug case TC-B1 too); its report row is stored.
+  const bug = readE2e(copy((d) => {
+    fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n### TC-B1 · P1 · Saving twice keeps one note\nFeature: F1 · Type: negative\nCovers: R1 (C4)\nTier: edge · Depth: kept\nRun mode: phone\n");
+    fs.appendFileSync(path.join(d, "reports/2026-01-02/REPORT.md"), "| TC-B1 | fail | P1 | Saving twice keeps one note | |\n");
+  }));
+  assert.deepEqual(bug.problems, []);
+  const b1 = bug.cases.find((c) => c.id === "TC-B1");
+  assert.deepEqual([b1?.covers, b1?.tier, b1?.depth, b1?.mode], [[{ ref: "R1", caps: ["C4"] }], "edge", "kept", "phone"]);
+  assert.equal(bug.results.byCase["TC-B1"], "fail");
+
+  // A line that looks like a heading or requirement but cannot be read is a problem, never skipped;
+  // inside a fence, or a prose "- R10 and ..." outside any feature, it is ignored.
+  const unreadable = readE2e(copy((d) => {
+    fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n### TC-12a P0 title\n\n```\n### TC-13 nope\n```\n");
+    fs.appendFileSync(path.join(d, "CUJs.md"), "\n### CUJ-4 Export notes\n");
+    sub(d, "PRD.md", "### F2 · Search · P1", "### F2 Search\n- R5 has no separator");
+    sub(d, "PRD.md", "## Non-goals\n", "## Non-goals\n- R10 and R13 tap Cancel, never Confirm.\n");
+    fs.appendFileSync(path.join(d, "INVENTORY.md"), '\n## S3 SettingsFragment "Settings"\n');
+  })).problems;
+  assert.deepEqual(unreadable.map((x) => `${x.file}: ${x.message}`), [
+    'INVENTORY.md: screen heading is not readable: use "## S<n> · <source> · "<title>""',
+    'PRD.md: feature heading is not readable: use "### F<n> · <name> · <priority>"',
+    'PRD.md: requirement is not readable: use "- R<n> · <text>"',
+    'CUJs.md: CUJ heading is not readable: use "### CUJ-<n> · <title> · <priority> · <run mode>"',
+    'TESTCASES.md: case heading is not readable: use "### TC-<id> · <priority> · <title>"',
+    "TESTCASES.md: F2 is referenced but not defined", // the unreadable F2 heading defines nothing
+    "TESTCASES.md: F2 is referenced but not defined",
+  ]);
+  assert.ok(unreadable.every((x) => x.line > 0), "each on its line");
+
   assert.throws(() => readE2e(path.join(fixture, "nope")));
   console.log("ok e2e-model");
 } finally {

@@ -53,7 +53,7 @@ export function runE2eReport({ dir, check = false }) {
     if (ps.length > MAX) {
       const kinds = new Map();
       for (const p of ps) {
-        const k = p.message.replace(/\b(?:TC-\d+[a-z]*|CUJ-\d+|R\d+(?:\.f\d+)?|[CFS]\d+)\b/g, "<id>");
+        const k = p.message.replace(/\b(?:TC-[A-Za-z0-9]+|CUJ-\d+|R\d+(?:\.f\d+)?|[CFS]\d+)\b/g, "<id>");
         kinds.set(k, (kinds.get(k) ?? 0) + 1);
       }
       lines.push(...[...kinds].sort((x, y) => y[1] - x[1]).map(([k, n]) => `  ${n} \u00d7 ${k}`));

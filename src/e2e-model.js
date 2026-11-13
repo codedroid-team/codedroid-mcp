@@ -13,6 +13,13 @@ const TYPES = ["happy", "negative", "setup"];
 const RESULTS = ["pass", "fail", "not run"];
 const PRIORITIES = ["P0", "P1", "P2"];
 const SOURCES = ["INVENTORY.md", "PRD.md", "CUJs.md", "TESTCASES.md"];
+const UNREADABLE = {
+  screen: 'screen heading is not readable: use "## S<n> · <source> · "<title>""',
+  feature: 'feature heading is not readable: use "### F<n> · <name> · <priority>"',
+  requirement: 'requirement is not readable: use "- R<n> · <text>"',
+  cuj: 'CUJ heading is not readable: use "### CUJ-<n> · <title> · <priority> · <run mode>"',
+  case: 'case heading is not readable: use "### TC-<id> · <priority> · <title>"',
+};
 
 /** The cells of a Markdown table row: split on `|` outside backticks, trimmed, edge pipes make no cell. */
 export function splitCells(row) {
@@ -90,7 +97,10 @@ export function readE2e(dir) {
         defined("INVENTORY.md", n, h[1]);
         screen = { id: h[1], source: h[2], title: h[3], line: n };
         m.screens.push(screen);
-      } else if (/^#{1,2} /.test(t)) screen = null;
+      } else if (/^#{1,2} /.test(t)) {
+        if (/^## S\d/.test(t)) problem("INVENTORY.md", n, UNREADABLE.screen);
+        screen = null;
+      }
       else if (screen && t.trim().startsWith("|")) {
         const c = splitCells(t);
         if (!/^C\d+$/.test(c[0] ?? "")) continue;
@@ -123,8 +133,14 @@ export function readE2e(dir) {
         if (!oneOf(h[3], PRIORITIES)) problem("PRD.md", n, `${h[1]} priority must be ${words(PRIORITIES)}`);
         feature = h[1];
         m.features.push({ id: h[1], name: h[2], priority: h[3], line: n });
-      } else if (/^#{1,3} /.test(t)) { finish(); if (/^#{1,2} /.test(t)) feature = null; }
-      else if ((h = t.match(/^- (R\d+) · (.*)$/))) {
+      } else if (/^#{1,3} /.test(t)) {
+        finish();
+        if (/^### F\d/.test(t)) problem("PRD.md", n, UNREADABLE.feature);
+        if (/^#{1,2} /.test(t)) feature = null;
+      } else if (feature && /^- R\d/.test(t) && !/^- (R\d+) · /.test(t)) {
+        finish();
+        problem("PRD.md", n, UNREADABLE.requirement);
+      } else if ((h = t.match(/^- (R\d+) · (.*)$/))) {
         finish();
         defined("PRD.md", n, h[1]);
         req = { id: h[1], feature, text: h[2].trim(), caps: [], proof: null, fails: [], line: n, has: {} };
@@ -165,7 +181,11 @@ export function readE2e(dir) {
         cuj = { id: h[1], title: h[2], priority: h[3], mode: h[4], feature: group, proves: [], line: n, has: false };
         m.cujs.push(cuj);
       } else if ((h = t.match(/^## (F\d+)\b/))) { group = h[1]; cuj = null; }
-      else if (/^#{1,3} /.test(t)) { if (/^#{1,2} /.test(t)) group = null; cuj = null; }
+      else if (/^#{1,3} /.test(t)) {
+        if (/^### CUJ-/.test(t)) problem("CUJs.md", n, UNREADABLE.cuj);
+        if (/^#{1,2} /.test(t)) group = null;
+        cuj = null;
+      }
       else if (cuj && (h = t.match(/^Proves:\s*(.*)$/))) {
         cuj.has = true;
         cuj.proves = list(h[1]);
@@ -181,12 +201,15 @@ export function readE2e(dir) {
     let tc = null;
     for (const { n, t } of tcs) {
       let h;
-      if ((h = t.match(/^### (TC-\d+[a-z]*) · (P\d+) · (.+?)\s*$/))) {
+      if ((h = t.match(/^### (TC-[A-Za-z0-9]+) · (P\d+) · (.+?)\s*$/))) {
         defined("TESTCASES.md", n, h[1]);
         if (!oneOf(h[2], PRIORITIES)) problem("TESTCASES.md", n, `${h[1]} priority must be ${words(PRIORITIES)}`);
         tc = { id: h[1], priority: h[2], title: h[3], feature: null, type: null, covers: [], tier: null, depth: null, mode: null, needs: [], line: n, has: {} };
         m.cases.push(tc);
-      } else if (/^#{1,3} /.test(t)) tc = null;
+      } else if (/^#{1,3} /.test(t)) {
+        if (/^### TC-/.test(t)) problem("TESTCASES.md", n, UNREADABLE.case);
+        tc = null;
+      }
       else if (tc) {
         if ((h = t.match(/^Feature:\s*(\S+)(?:\s*·\s*Type:\s*(\S+))?/))) {
           tc.feature = h[1];

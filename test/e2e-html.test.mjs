@@ -152,6 +152,18 @@ try {
   assert.ok(early["QUALITY.html"].includes("Not written yet: PRD.md, CUJs.md, TESTCASES.md."));
   for (const p of Object.values(early)) assert.ok(!p.includes('class="banner"'), "no problem banner for a pending document");
   assert.ok(!render(fixture)["PRD.html"].includes("not written yet"));
+  // A bug case TC-B1: its screenshots are embedded, it counts, and it belongs to no CUJ.
+  const bugDir = copy((d) => {
+    fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n### TC-B1 · P1 · Saving twice keeps one note\nFeature: F1 · Type: negative\nCovers: R1 (C4)\nTier: edge · Depth: kept\nRun mode: phone\n");
+    fs.appendFileSync(path.join(d, "reports/2026-01-02/REPORT.md"), "| TC-B1 | fail | P1 | Saving twice keeps one note | |\n");
+    for (const n of ["TC-B1.png", "TC-B1-before.png"]) fs.copyFileSync(path.join(d, "reports/2026-01-02/TC-1a.png"), path.join(d, "reports/2026-01-02", n));
+  });
+  const bugModel = readE2e(bugDir);
+  const bugQ = quality(bugModel);
+  const bugRep = renderPages(bugModel, bugQ)["reports/2026-01-02/REPORT.html"];
+  assert.ok(bugRep.includes("TC-B1.png") && bugRep.includes("TC-B1-before.png"), "both TC-B1 screenshots embedded");
+  assert.equal(bugQ.cases.total, 7);
+  assert.ok(bugQ.by_cuj.every((j) => !j.cases.includes("TC-B1")));
   console.log("e2e-html ok");
 } finally {
   for (const d of tmps) fs.rmSync(d, { recursive: true, force: true });
