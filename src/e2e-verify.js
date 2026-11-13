@@ -77,6 +77,11 @@ export function parseVerify(markdown) {
   return { rows, problems, rejected };
 }
 
+/** The rows of the current cycle: those after the last approved or reopen row (all verdict rows, none reopen). */
+export function cycleOf(rows) {
+  return rows.slice(rows.findLastIndex((r) => r.verdict === "approved" || r.verdict === "reopen") + 1);
+}
+
 /**
  * One case's status from its rows (file order) and current hash. A cycle is the verdict rows after the last
  * approved or reopen row. Order: no rows or only reopen rows -> unverified; latest verdict row's Text is not the
@@ -89,8 +94,7 @@ export function statusOf(rows, hash) {
   const verdicts = rows.filter((r) => r.verdict !== "reopen");
   const last = verdicts.at(-1);
   if (!last) return { status: "unverified", attempt: 0, by: null, reason: null, history: rows };
-  const cut = Math.max(rows.findLastIndex((r) => r.verdict === "approved" || r.verdict === "reopen"), -1);
-  const cycle = rows.slice(cut + 1);
+  const cycle = cycleOf(rows);
   const reopened = rows.at(-1).verdict === "reopen";
   const status = last.text !== hash ? "stale" : last.verdict === "approved" ? "approved" : cycle.length >= 3 ? "unresolved" : last.verdict;
   return { status, attempt: reopened ? 0 : last.attempt, by: last.by, reason: last.reason, history: rows };

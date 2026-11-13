@@ -7,6 +7,7 @@ import path from "node:path";
 import { readE2e } from "./e2e-model.js";
 import { quality, qualityJson, qualityMd } from "./e2e-quality.js";
 import { renderPages, stalePages } from "./e2e-html.js";
+import { escapesRoot } from "./e2e-write.js";
 
 const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
@@ -27,11 +28,7 @@ export function runE2eReport({ dir, check = false }) {
   const targets = Object.keys(files).map((rel) => [rel, path.join(root, rel)]);
   // Check every target before writing any: no link may lead a write outside the folder.
   for (const [rel, full] of targets) {
-    let at = path.dirname(full);
-    while (!fs.existsSync(at)) at = path.dirname(at); // the nearest folder that exists; the rest is made below it
-    const real = fs.realpathSync(at);
-    if (real !== root && !real.startsWith(root + path.sep)) return refuse(rel);
-    try { if (fs.lstatSync(full).isSymbolicLink()) return refuse(rel); } catch { /* not there yet */ }
+    if (escapesRoot(root, full)) return refuse(rel);
   }
   for (const [rel, full] of targets) {
     try {

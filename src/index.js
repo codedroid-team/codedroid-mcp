@@ -20,6 +20,7 @@
  *   codedroid-mcp call <tool> [json]  call one tool and print the result (scripts, CI)
  *   codedroid-mcp skill install|path  the agent skills, for clients without the plugin
  *   codedroid-mcp e2e report [dir] [--check]  quality report and HTML pages for an app's e2e folder
+ *   codedroid-mcp e2e verdicts <file> [dir]   record the verifier's verdicts (JSON Lines) in e2e/VERIFY.md
  *
  * Options: --port=<n> (or CODEDROID_MCP_PORT), default 4826. --server=<url> for pair. --no-adb (or
  * CODEDROID_MCP_ADB=0) leaves out the host-side adb tool. CODEDROID_SERIAL picks its device.
@@ -95,6 +96,9 @@ Usage:
   codedroid-mcp skill path          Print where the skill files are
   codedroid-mcp e2e report [dir]    Write QUALITY.md, quality.json and HTML pages for an app's e2e
                                     folder (default ./e2e); --check lists the stale pages instead
+  codedroid-mcp e2e verdicts <file> [dir]
+                                    Check the verifier's JSON Lines <file> and append its verdicts
+                                    to VERIFY.md in the e2e folder (default ./e2e)
 
 Pair first: plug the phone in with USB debugging on and run setup, or on the phone, open CodeDroid >
 Settings > Computers > Pair a computer, and run the command it shows here; do the same on every
@@ -200,14 +204,16 @@ async function main() {
   }
 
   if (command === "e2e") {
-    const usage = "Usage: codedroid-mcp e2e report [dir] [--check]";
-    if (args._[1] !== "report" || args._.length > 3) {
+    const sub = args._[1];
+    const usage = sub === "verdicts" ? "Usage: codedroid-mcp e2e verdicts <file> [dir]" : "Usage: codedroid-mcp e2e report [dir] [--check]";
+    if ((sub !== "report" && sub !== "verdicts") || (sub === "report" ? args._.length > 3 : args._.length < 3 || args._.length > 4)) {
       process.stderr.write(`${usage}\n`);
       process.exitCode = 2;
       return;
     }
-    const { runE2eReport } = await import("./e2e-report.js");
-    const { code, lines } = runE2eReport({ dir: args._[2] ?? "e2e", check: !!args.check });
+    const { code, lines } = sub === "report"
+      ? (await import("./e2e-report.js")).runE2eReport({ dir: args._[2] ?? "e2e", check: !!args.check })
+      : (await import("./e2e-verdicts.js")).recordVerdicts({ file: args._[2], dir: args._[3] ?? "e2e" });
     process.stdout.write(lines.join("\n") + "\n");
     process.exitCode = code;
     return;

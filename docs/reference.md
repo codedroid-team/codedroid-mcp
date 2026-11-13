@@ -200,6 +200,31 @@ problems (`--check`: a page is stale), 2 for a usage error, a folder that does n
 it cannot write. It refuses to write through a link that leads outside the folder, and writes nothing
 then. With more than 20 problems it prints a count per kind and the first 20; the pages list all.
 
+### Record the verifier's verdicts
+
+```bash
+npx -y @codedroid/mcp e2e verdicts <file> [dir]
+```
+
+`<file>` is the verifier's output: UTF-8 JSON Lines, one object per judged case, each with exactly
+the string fields `id`, `verdict` (`approved`, `repair`, `question` or `reopen`), `by` (`independent`
+or `same`) and `reason`. Blank lines are skipped; the file may live anywhere and is only read. The
+command checks every line against one read of `dir` (default `./e2e`) and, only if all are valid,
+appends one row per line to `VERIFY.md`, creating it with its header if needed. It stamps the attempt
+(the next in the case's current cycle; a `reopen` row is `0`), the hash of the case text and the
+requirements it covers, and today's local date. A reason's line breaks become one space and `|` is
+written `\|`. Existing lines are never rewritten, and nothing is written through a link or outside
+`dir`. Nobody edits `VERIFY.md` by hand.
+
+On success it prints one line per verdict (`TC-12a: repair (attempt 1 of 3)`, `TC-12a: reopened`)
+and a reminder to run `e2e report`, and exits 0. Otherwise it exits 2 with nothing appended and one
+`<file>:<line>: <message>` per fault: invalid JSON, a missing, extra or non-string field, an id that
+is not a current judged case, a verdict or `by` outside the lists, an empty reason, an id twice, a
+case with an unreadable row in `VERIFY.md`, a fourth verdict in a cycle (only `reopen`, on the
+user's word, allows more), or `reopen` for a case that is not unresolved. It also exits 2, with one
+line, for a missing file or folder, a file with no verdicts, problems in `TESTCASES.md` or `PRD.md`,
+a `VERIFY.md` with no table, or a write failure. It needs no phone, daemon or network.
+
 ### Standalone Claude Code server
 
 ```bash
