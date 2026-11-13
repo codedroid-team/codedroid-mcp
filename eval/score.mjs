@@ -16,14 +16,31 @@ const KINDS = ["happy", "failure", "recovery", "limit", "conflict"];
 export const LIMITS =
   "Limits: the judge is a model, so its verdicts are checked by hand on a sample; the authoring model may have seen this app's public test plans in training; one app is one data point.";
 
-/** Case ids from `### TC-12a · P0 · title [· task|· manual]` headings, in document order. */
+/**
+ * Case ids from `### TC-12a · P0 · title [· task|· manual]` headings, in document order.
+ * The run mode is a trailing ` · manual` / ` · task` segment or a body line `Run mode: manual|task`; manual wins.
+ */
 export function caseIds(markdown) {
   const cases = new Map();
+  let id = null;
+  const set = (mode) => {
+    if (mode === "manual" || (mode === "task" && cases.get(id) === "phone")) cases.set(id, mode);
+  };
   for (const line of markdown.split("\n")) {
     const m = line.match(/^###\s+(TC-[\w-]+)(.*)$/);
-    if (!m) continue;
-    const segs = m[2].split("·").map((s) => s.trim());
-    cases.set(m[1], segs.includes("manual") ? "manual" : segs.includes("task") ? "task" : "phone");
+    if (m) {
+      id = m[1];
+      if (cases.has(id)) throw new Error(`TESTCASES.md repeats ${id}`);
+      cases.set(id, "phone");
+      for (const seg of m[2].split(" · ").slice(1)) {
+        const mode = seg.trim().match(/^(manual|task)(?:\s*\(.*\))?$/i);
+        if (mode) set(mode[1].toLowerCase());
+      }
+    } else if (/^###\s/.test(line)) id = null;
+    else if (id) {
+      const mode = line.match(/^\s*Run mode:\s*(manual|task)\b/i);
+      if (mode) set(mode[1].toLowerCase());
+    }
   }
   return cases;
 }
@@ -61,6 +78,7 @@ export function score(key, judge, cases) {
     const j = byId.get(row.id);
     if (!j) throw new Error(`no judge row for ${row.id}`);
     if (!VERDICTS.includes(j.verdict)) throw new Error(`${row.id}: bad verdict ${JSON.stringify(j.verdict)}`);
+    if (typeof j.off_phone !== "boolean") throw new Error(`${row.id}: off_phone must be true or false`);
     if (!KINDS.includes(j.kind)) throw new Error(`${row.id}: bad kind ${JSON.stringify(j.kind)}`);
     const ids = j.tc_ids ?? [];
     for (const id of ids) if (!cases.has(id)) throw new Error(`${row.id} cites ${id}, which is not in TESTCASES.md`);
@@ -81,7 +99,7 @@ export function score(key, judge, cases) {
 }
 
 export const spread = (a, b) => Math.abs(rate(a.on_phone) - rate(b.on_phone));
-export const verdict = (base, spreadValue, next) => (Math.abs(next - base) <= spreadValue ? "no change" : next > base ? "up" : "down");
+export const verdict = (base, spreadValue, next) => (Math.abs(next - base) <= spreadValue + 1e-9 ? "no change" : next > base ? "up" : "down");
 
 function table(title, rows) {
   const head = ["", ...Object.keys(KEYS), "total"];
@@ -111,16 +129,16 @@ function scoreMd(s) {
   ].join("\n");
 }
 
-export function main(runDir, keyRows = loadKey(path.join(here, ".cache"))) {
+export function main(runDir, keyRows) {
   const cases = caseIds(fs.readFileSync(path.join(runDir, "e2e", "TESTCASES.md"), "utf8"));
   const judge = parseJudge(fs.readFileSync(path.join(runDir, "judge.jsonl"), "utf8"));
-  const s = score(keyRows, judge, cases);
+  const s = score(keyRows ?? loadKey(path.join(here, ".cache")), judge, cases);
   fs.writeFileSync(path.join(runDir, "summary.json"), JSON.stringify(s, null, 2));
   fs.writeFileSync(path.join(runDir, "SCORE.md"), scoreMd(s));
   console.log(`score ${(s.score * 100).toFixed(1)}%  (${s.on_phone.covered_runnable}/${s.on_phone.total} on phone)`);
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url))) {
   if (!process.argv[2]) {
     console.error("usage: node eval/score.mjs <run-dir>");
     process.exit(2);

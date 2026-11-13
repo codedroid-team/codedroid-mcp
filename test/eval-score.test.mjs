@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { LIMITS, caseIds, main, parseJudge, score, spread, verdict } from "../eval/score.mjs";
 
 const key = [1, 2, 3].map((n) => ({ id: `K-x-${n}`, file: "x.md", section: "s", title: `t${n}`, steps: "", expected: "" }));
@@ -48,6 +49,46 @@ throws([j(1, "partly", ["TC-9z"]), good[1], good[2]], "TC-9z");
 throws([j(1, "covered", []), good[1], good[2]], "K-x-1");
 throws([j(1, "maybe", []), good[1], good[2]], "K-x-1");
 throws([j(1, "missed", [], { kind: "odd" }), good[1], good[2]], "K-x-1");
+
+// F2: off_phone must be a JSON boolean
+throws([j(1, "missed", [], { off_phone: "false" }), good[1], good[2]], "K-x-1: off_phone must be true or false");
+throws([{ key_id: "K-x-1", verdict: "missed", tc_ids: [], kind: "happy" }, good[1], good[2]], "K-x-1: off_phone must be true or false");
+
+// F3: run mode from the heading's last segments or a body line; a title that merely contains the word stays phone
+const modes = caseIds(
+  [
+    "### TC-1 · P1 · A · manual (needs a second account)",
+    "### TC-2 · P1 · B · Manual",
+    "### TC-3 · P1 · C",
+    "Run mode: manual",
+    "### TC-4 · P1 · D",
+    "run mode: Task",
+    "### TC-5 · P1 · E · task",
+    "Run mode: manual",
+    "### TC-6a · P1 · Manual upload of a file",
+  ].join("\n"),
+);
+assert.deepEqual([...modes], [["TC-1", "manual"], ["TC-2", "manual"], ["TC-3", "manual"], ["TC-4", "task"], ["TC-5", "manual"], ["TC-6a", "phone"]]);
+// F4: a repeated heading
+assert.throws(() => caseIds("### TC-1 · P0 · a\n### TC-1 · P0 · b"), (e) => e.message === "TESTCASES.md repeats TC-1");
+
+// F5: a tie in counts is no change, whatever the floats say
+assert.equal(verdict(50 / 300, 5 / 300, 55 / 300), "no change");
+assert.equal(verdict(50 / 300, 5 / 300, 56 / 300), "up");
+assert.equal(verdict(55 / 300, 5 / 300, 50 / 300), "no change");
+assert.equal(verdict(56 / 300, 5 / 300, 50 / 300), "down");
+
+// F7: a symlinked path still runs the CLI (fails on the missing file instead of exiting 0)
+{
+  const t = fs.mkdtempSync(path.join(os.tmpdir(), "eval-link-"));
+  const link = path.join(t, "score-link.mjs");
+  fs.symlinkSync(path.resolve("eval/score.mjs"), link);
+  fs.mkdirSync(path.join(t, "run"));
+  const r = spawnSync(process.execPath, [link, path.join(t, "run")], { encoding: "utf8" });
+  assert.notEqual(r.status, 0);
+  assert.ok(r.stderr.includes("TESTCASES.md"), r.stderr);
+  fs.rmSync(t, { recursive: true });
+}
 
 // empty TESTCASES.md, all missed: score 0, and on_phone.total 0 scores 0 too
 const none = score(key, key.map((_, i) => j(i + 1, "missed", [])), caseIds(""));
