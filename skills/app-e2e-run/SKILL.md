@@ -6,7 +6,7 @@ description: Run an app's approved e2e test cases on the real phone through Code
 # Run the cases and report
 
 Input: approved `e2e/TESTCASES.md`. Output: `e2e/reports/<date>/REPORT.md` with a screenshot per
-case beside it.
+case beside it. A case the verifier has not approved may still be run; passing does not approve it.
 
 ## Before the run
 

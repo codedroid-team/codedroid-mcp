@@ -211,6 +211,7 @@ then. With more than 20 problems it prints a count per kind and the first 20; th
 npx -y @codedroid/mcp e2e verdicts <file> [dir]
 ```
 
+The `app-e2e-verify` skill has a fresh agent judge each case and runs this command on its output.
 `<file>` is the verifier's output: UTF-8 JSON Lines, one object per judged case, each with exactly
 the string fields `id`, `verdict` (`approved`, `repair`, `question` or `reopen`), `by` (`independent`
 or `same`) and `reason`. Blank lines are skipped; the file may live anywhere and is only read. The
