@@ -188,6 +188,11 @@ try {
   assert.ok(gq2.includes('href="PRD.html#R2.f1"'), "gap ref links to the PRD");
   assert.ok(!gq2.includes("R2.f1</a> · a note deleted"), "an acknowledged failure is not in the open list");
   assert.ok(!gapPages["TESTCASES.html"].includes("Gap:"), "gap lines are not shown as case text");
+  // Too shallow: listed as open with the depths; a depth Gap moves it to the acknowledged list.
+  assert.ok(qual.includes("shallow") && qual.includes("must be checked at elsewhere; the deepest case checks screen"), "shallow item");
+  const dp = render(copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n## Gaps\n- Gap: R4 depth · <b>one</b> screen\n")))["QUALITY.html"];
+  assert.ok(!dp.includes("must be checked at"), "acknowledged, so not open");
+  assert.ok(dp.includes("</a> depth") && dp.includes("&lt;b&gt;one&lt;/b&gt; screen"), "listed under acknowledged gaps, escaped");
   console.log("e2e-html ok");
 } finally {
   for (const d of tmps) fs.rmSync(d, { recursive: true, force: true });

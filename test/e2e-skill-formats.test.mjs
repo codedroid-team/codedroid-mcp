@@ -45,9 +45,9 @@ try {
   const m = readE2e(dir);
   // The examples parse without a problem: TC-12a's `Needs: TC-10` names a case in the same example.
   assert.deepEqual(m.problems.map((p) => `${p.file}:${p.line}: ${p.message}`), []);
-  // They show a Non-goal line, a setup case and the Gap lines.
+  // They show a Non-goal line, a setup case and the Gap lines (failure, deep, depth).
   assert.deepEqual(m.nonGoals.map((g) => g.caps), [["C19"]]);
-  assert.deepEqual(m.gaps.map((g) => [g.ref, g.kind]), [["R7.f2", "failure"], ["F3", "deep"]]);
+  assert.deepEqual(m.gaps.map((g) => [g.ref, g.kind]), [["R7.f2", "failure"], ["F3", "deep"], ["R7", "depth"]]);
   assert.deepEqual(m.cases.filter((c) => c.type === "setup").map((c) => c.id), ["TC-00"]);
   // The examples join: the case in the report is the testcases example's, and it covers the PRD's requirement.
   assert.ok(m.cases.length && m.cases.every((c) => c.id in m.results.byCase), "the report example names the case example");

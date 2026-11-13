@@ -14,6 +14,7 @@ const TYPES = ["happy", "negative", "setup"];
 const RESULTS = ["pass", "fail", "not run"];
 const PRIORITIES = ["P0", "P1", "P2"];
 const SOURCES = ["INVENTORY.md", "PRD.md", "CUJs.md", "TESTCASES.md"];
+const FAILS_FORM = (id) => `${id} Fails: must list failures or say "none in source"`;
 const UNREADABLE = {
   screen: 'screen heading is not readable: use "## S<n> · <source> · "<title>""',
   feature: 'feature heading is not readable: use "### F<n> · <name> · <priority>"',
@@ -123,6 +124,7 @@ export function readE2e(dir) {
       if (!req.has.caps) problem("PRD.md", req.line, `${req.id} has no Caps: line`);
       if (!req.has.proof) problem("PRD.md", req.line, `${req.id} has no Proof: line (${words(PROOF)})`);
       if (!req.has.fails) problem("PRD.md", req.line, `${req.id} has no Fails: line`);
+      else if (req.has.failsEmpty && !req.fails.length) problem("PRD.md", req.has.failsLine, FAILS_FORM(req.id));
       delete req.has;
       req = null;
     };
@@ -161,8 +163,9 @@ export function readE2e(dir) {
         let k;
         if ((k = t.match(/^\s+Caps:\s*(.*)$/))) {
           req.has.caps = true; inFails = false;
-          req.caps = k[1].trim() === "none" ? [] : list(k[1]); // `Caps: none`: no control in the inventory
-          if (!req.caps.length && k[1].trim() !== "none") problem("PRD.md", n, `${req.id} Caps: names nothing`);
+          const noCaps = /^none$/i.test(k[1].trim()); // `Caps: none`: no control in the inventory
+          req.caps = noCaps ? [] : list(k[1]);
+          if (!req.caps.length && !noCaps) problem("PRD.md", n, `${req.id} Caps: names nothing`);
           for (const c of req.caps) refs.push(["PRD.md", n, c, "cap"]);
         } else if ((k = t.match(/^\s+Proof:\s*(.*)$/))) {
           req.has.proof = true; inFails = false;
@@ -170,6 +173,10 @@ export function readE2e(dir) {
           if (!oneOf(req.proof, PROOF)) problem("PRD.md", n, `Proof must be ${words(PROOF)}`);
         } else if ((k = t.match(/^\s+Fails:\s*(.*)$/))) {
           req.has.fails = true; inFails = true;
+          const text = k[1].trim();
+          req.has.failsLine = n;
+          if (!text) req.has.failsEmpty = true; // items must follow
+          else if (text.toLowerCase() !== "none in source") problem("PRD.md", n, FAILS_FORM(req.id));
         } else if (inFails && (k = t.match(/^\s+- (R\d+\.f\d+) · (.*)$/))) {
           defined("PRD.md", n, k[1]);
           req.fails.push({ id: k[1], text: k[2].trim() });
@@ -226,9 +233,11 @@ export function readE2e(dir) {
         const ref = (cut < 0 ? h[1] : h[1].slice(0, cut)).trim();
         const reason = cut < 0 ? "" : h[1].slice(cut + 1).trim();
         let x;
-        const kind = /^R\d+$/.test(ref) ? "requirement" : /^R\d+\.f\d+$/.test(ref) ? "failure" : (x = ref.match(/^(F\d+)\s+deep$/)) ? "deep" : null;
-        if (!kind) { problem("TESTCASES.md", n, `Gap "${ref}" is not R<n>, R<n>.f<m> or F<n> deep`); continue; }
-        const id = kind === "deep" ? x[1] : ref;
+        const kind = /^R\d+$/.test(ref) ? "requirement" : /^R\d+\.f\d+$/.test(ref) ? "failure"
+          : (x = ref.match(/^(F\d+)\s+deep$/)) ? "deep" : (x = ref.match(/^(R\d+)\s+depth$/)) ? "depth" : null;
+        if (!kind) { problem("TESTCASES.md", n, `Gap "${ref}" is not R<n>, R<n> depth, R<n>.f<m> or F<n> deep`); continue; }
+        const id = kind === "deep" || kind === "depth" ? x[1] : ref;
+        if (m.gaps.some((g) => g.ref === id && g.kind === kind)) problem("TESTCASES.md", n, `${id} has two Gap lines`);
         m.gaps.push({ ref: id, kind, reason, line: n });
         if (!reason) problem("TESTCASES.md", n, `Gap ${ref} has no reason`);
         refs.push(["TESTCASES.md", n, id, kind === "deep" ? "feature" : kind === "failure" ? "fail" : "req"]);
@@ -335,10 +344,17 @@ export function readE2e(dir) {
     if (ids[kind] && !ids[kind].has(id)) problem(file, line, `${id} is referenced but not defined`);
   }
   for (const g of m.gaps) {
-    const real = m.cases.filter((c) => c.type !== "setup");
-    if (g.kind === "deep" ? real.some((c) => c.feature === g.ref && c.tier === "deep")
-      : real.some((c) => RUNNABLE.includes(c.mode) && c.covers.some((e) => e.ref === g.ref))) {
-      problem("TESTCASES.md", g.line, `${g.ref} has a Gap line and a ${g.kind === "deep" ? "deep " : ""}case`);
+    const run = m.cases.filter((c) => c.type !== "setup" && RUNNABLE.includes(c.mode));
+    const covering = run.filter((c) => c.covers.some((e) => e.ref === g.ref));
+    if (g.kind === "deep") {
+      if (run.some((c) => c.feature === g.ref && c.tier === "deep")) problem("TESTCASES.md", g.line, `${g.ref} has a Gap line and a deep case`);
+    } else if (g.kind === "depth") {
+      const r = m.requirements.find((q) => q.id === g.ref);
+      if (!r) continue;
+      if (!covering.length) problem("TESTCASES.md", g.line, `${g.ref} has a depth Gap line but no runnable case`);
+      else if (covering.some((c) => PROOF.indexOf(c.depth) >= PROOF.indexOf(r.proof))) problem("TESTCASES.md", g.line, `${g.ref} has a depth Gap line but is tested deep enough`);
+    } else if (covering.length) {
+      problem("TESTCASES.md", g.line, `${g.ref} has a Gap line and a case`);
     }
   }
   for (const g of m.nonGoals) {

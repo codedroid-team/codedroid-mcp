@@ -299,7 +299,7 @@ try {
   const msgs = (...lines) => gp(...lines).problems.map((x) => x.message);
   assert.deepEqual(msgs("- Gap: R9 · x", "- Gap: R1.f9 · x", "- Gap: F9 deep · x"), ["R9 is referenced but not defined", "R1.f9 is referenced but not defined", "F9 is referenced but not defined"]);
   assert.deepEqual(msgs("- Gap: R3", "- Gap: R2.f1 ·  "), ["Gap R3 has no reason", "Gap R2.f1 has no reason"]);
-  assert.deepEqual(msgs("- Gap: banana · x", "- Gap: F2 · x"), ['Gap "banana" is not R<n>, R<n>.f<m> or F<n> deep', 'Gap "F2" is not R<n>, R<n>.f<m> or F<n> deep']);
+  assert.deepEqual(msgs("- Gap: banana · x", "- Gap: F2 · x"), ['Gap "banana" is not R<n>, R<n> depth, R<n>.f<m> or F<n> deep', 'Gap "F2" is not R<n>, R<n> depth, R<n>.f<m> or F<n> deep']);
   // A gap for something a runnable case covers is a problem; a manual case does not cover (R3), a deep case ends F1's gap.
   assert.deepEqual(msgs("- Gap: R1.f2 · x", "- Gap: R4 · x"), ["R1.f2 has a Gap line and a case", "R4 has a Gap line and a case"]);
   assert.deepEqual(msgs("- Gap: F1 deep · x"), ["F1 has a Gap line and a deep case"]);
@@ -315,6 +315,36 @@ try {
   assert.deepEqual(readE2e(copy((d) => sub(d, "TESTCASES.md", "Covers: R4 (C2)", "Covers: R4 (C2)"))).problems, []);
   assert.deepEqual(readE2e(copy((d) => sub(d, "TESTCASES.md", "Covers: R4 (C2)", "Covers: none"))).problems.map((x) => x.message), ['Covers entry "none" is not a requirement id']);
   assert.deepEqual(readE2e(copy((d) => sub(d, "CUJs.md", "Proves: R4", "Proves: none"))).problems.map((x) => x.message), ["none is referenced but not defined"]);
+
+  // Round 2. A manual deep case is not a deep case: it neither closes F2 nor blocks `Gap: F2 deep`.
+  const manualDeep = "\n### TC-3m · P2 · Manual deep\nFeature: F2 · Type: happy\nCovers: R4 (C2)\nTier: deep · Depth: screen\nRun mode: manual\n";
+  g = readE2e(copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), `${manualDeep}\n## Gaps\n- Gap: F2 deep · only a wipe goes deeper\n`)));
+  assert.deepEqual(g.problems, []);
+  g = readE2e(copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), `${manualDeep.replace("manual", "phone")}\n## Gaps\n- Gap: F2 deep · x\n`)));
+  assert.deepEqual(g.problems.map((x) => x.message), ["F2 has a Gap line and a deep case"]);
+  // A setup case is not a deep case either.
+  g = readE2e(copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n### TC-00 · P1 · Setup\nFeature: F2 · Type: setup\nTier: deep\nRun mode: phone\n\n## Gaps\n- Gap: F2 deep · x\n")));
+  assert.deepEqual(g.problems, []);
+  // Depth gaps: R4 (elsewhere) has only screen cases, so it is too shallow and may be acknowledged.
+  g = gp("- Gap: R4 depth · no second screen to check");
+  assert.deepEqual(g.problems, []);
+  assert.deepEqual(g.gaps, [{ ref: "R4", kind: "depth", reason: "no second screen to check", line: first }]);
+  assert.deepEqual(msgs("- Gap: R1 depth · x"), ["R1 has a depth Gap line but is tested deep enough"]);
+  assert.deepEqual(msgs("- Gap: R3 depth · x"), ["R3 has a depth Gap line but no runnable case"]);
+  assert.deepEqual(msgs("- Gap: R9 depth · x"), ["R9 is referenced but not defined"]);
+  assert.deepEqual(msgs("- Gap: R4 depth"), ["Gap R4 depth has no reason"]);
+  // Two Gap lines for one ref and kind: a problem on the second. R4 and R4 depth are different gaps.
+  assert.deepEqual(gp("- Gap: R2.f1 · a", "- Gap: R2.f1 · b").problems, [{ file: "TESTCASES.md", line: first + 1, message: "R2.f1 has two Gap lines" }]);
+  assert.deepEqual(msgs("- Gap: R3 · a", "- Gap: R3 depth · b").filter((x) => x.includes("two")), []);
+  // Fails: either items below or exactly "none in source" (any case, any spacing).
+  const fails = (text) => readE2e(copy((d) => sub(d, "PRD.md", "  Caps: C5\n  Proof: elsewhere\n  Fails: none in source", `  Caps: C5\n  Proof: elsewhere\n  Fails:${text}`))).problems;
+  const bad = [{ file: "PRD.md", line: 23, message: 'R3 Fails: must list failures or say "none in source"' }];
+  assert.deepEqual(fails("  None In Source  "), []);
+  assert.deepEqual(fails(" not traced yet"), bad);
+  assert.deepEqual(fails(""), bad);
+  assert.deepEqual(fails("\n  - R3.f1 · it fails"), []);
+  // Caps: none in any case.
+  for (const word of ["None", "NONE"]) assert.deepEqual(readE2e(copy((d) => { sub(d, "PRD.md", "  Caps: C2\n", `  Caps: ${word}\n`); sub(d, "TESTCASES.md", "Covers: R4 (C2)", "Covers: R4"); })).problems, [], word);
 
   assert.throws(() => readE2e(path.join(fixture, "nope")));
   console.log("ok e2e-model");

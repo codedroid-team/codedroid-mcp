@@ -65,10 +65,11 @@ Each requirement carries three lines, read from the handlers in the source, not 
   somewhere else: another screen, a notification, a file, the server) or `kept` (stored, and must
   survive reopening the app). Code that writes to storage or the network is never `screen`.
 - `Fails:` what the code does when it goes wrong (no connection, a server error, cancel, bad input,
-  a limit), one `R<n>.f<m>` line each with its exact message; or `Fails: none in source` once you
-  have read the handler and what it calls to the end and found none. A handler you only skimmed
-  gets `Fails: not traced yet`; trace it before the cases are written. These become the edge
-  cases; a suite without them tests only the happy path.
+  a limit), one `R<n>.f<m>` line each with its exact message; or exactly `Fails: none in source`.
+  Nothing else follows `Fails:` on its line, and the command rejects an empty one. Trace the
+  handler and what it calls to the end before you write either; a requirement with no handler to
+  trace (install, upgrade) says `none in source`. These become the edge cases; a suite without
+  them tests only the happy path.
 
 - Every screen in `EXPLORE.md` belongs to exactly one feature. Tabs, menus and other navigation
   are not features: a screen goes to the feature it serves. A screen that fits none goes under

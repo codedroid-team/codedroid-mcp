@@ -58,14 +58,17 @@ assert.deepEqual(listing(parent).filter((f) => !f.startsWith("e2e")), parentBefo
 assert.deepEqual(fs.readdirSync(home), [], "HOME untouched: no daemon state");
 
 // Open items (no case, no Gap line) are not problems: exit 0, one line before the path.
-assert.equal(q.open.length, 2);
-assert.equal(lines.at(-2), `2 left open (no case and no Gap line): see ${dir}/QUALITY.md`);
-const acked = copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n## Gaps\n- Gap: R3 · needs a wipe\n- Gap: R2.f1 · cannot be staged\n"));
+assert.equal(q.open.length, 3);
+assert.equal(lines.at(-2), `3 left open (no case and no Gap line): see ${dir}/QUALITY.md`);
+const acked = copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n## Gaps\n- Gap: R3 · needs a wipe\n- Gap: R2.f1 · cannot be staged\n- Gap: R4 depth · one screen\n"));
 r = run("report", acked);
 assert.equal(r.status, 0, r.stdout + r.stderr);
 assert.ok(!r.stdout.includes("left open"), r.stdout);
-assert.ok(r.stdout.split("\n")[0].includes("2 acknowledged") || r.stdout.split("\n")[0].includes("1 acknowledged"), r.stdout);
-const oneOpen = copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n## Gaps\n- Gap: R3 · needs a wipe\n"));
+assert.equal(r.stdout.split("\n")[0], "6 capabilities, 4 with a case; 4 requirements, 3 with a case, 1 acknowledged, 2 tested deep enough; 3 failures, 2 with a case, 1 acknowledged; 6 cases.");
+// Set-aside capabilities: the headline names the scope exactly.
+r = run("report", copy((d) => fs.appendFileSync(path.join(d, "PRD.md"), "\n- Non-goal: C6 · sharing needs a second phone\n")));
+assert.equal(r.stdout.split("\n")[0], "5 capabilities in scope (1 set aside), 4 with a case; 4 requirements, 3 with a case, 2 tested deep enough; 3 failures, 2 with a case; 6 cases.");
+const oneOpen = copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n## Gaps\n- Gap: R3 · needs a wipe\n- Gap: R4 depth · one screen\n"));
 r = run("report", oneOpen);
 assert.equal(r.stdout.split("\n").at(-3), `1 left open (no case and no Gap line): see ${oneOpen}/QUALITY.md`);
 assert.ok(fs.readFileSync(path.join(oneOpen, "QUALITY.md"), "utf8").includes("## Left open"), "the named file has the list");

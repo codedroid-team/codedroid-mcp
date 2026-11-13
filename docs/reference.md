@@ -160,15 +160,22 @@ built from older documents (and for a missing `QUALITY.md` or `quality.json`).
 
 It also reads two lines the skills teach. In `PRD.md`, `- Non-goal: C40, C41 · reason` sets
 capabilities aside: they leave "not in any feature", the percentages count the capabilities in
-scope, and `QUALITY.html` lists them with the reason. In `TESTCASES.md`, `- Gap: <ref> · reason`
-acknowledges something with no case; `<ref>` is a requirement (`R4`), a failure (`R1.f2`) or a feature
-with no deep case (`F1 deep`). A gap is never counted as covered. A case with `Type: setup` needs
-only its `Run mode:` line and is counted apart. Requirements and failure lines with no runnable case
-and no Gap line, and P0 features with no deep case and no Gap line, are listed under "Left open";
-when there are any, the command prints `N left open (no case and no Gap line): see <dir>/QUALITY.md` (the Markdown has the full lists; so
-does the overflow line `and M more: see <dir>/QUALITY.md`). A requirement with no control in the
-inventory writes `Caps: none`. Failure lines count as open only under a P0 or P1 feature.
-They are not problems and do not change the exit code.
+scope, and the quality pages list them with the reason. A requirement with no control in the
+inventory writes `Caps: none`; `Fails:` is either failure items below it or `none in source`.
+
+In `TESTCASES.md`, `- Gap: <ref> · reason` acknowledges something no case covers. `<ref>` is a
+requirement (`R4`), a failure line (`R1.f2`), a feature with no deep case (`F1 deep`) or a
+requirement with a case but none deep enough for its Proof (`R3 depth`). A gap is never counted as
+covered; the quality pages list it under "Acknowledged gaps". A case with `Type: setup` needs only
+its `Run mode:` line and is counted apart. Only a runnable case (phone or task) counts as covering
+something or as a deep case.
+
+"Left open" is what has neither a case nor a Gap line: P0 features with no deep case, requirements
+with no runnable case, requirements too shallow for their Proof, and failure lines under a P0 or P1
+feature. When there are any, the command prints `N left open (no case and no Gap line): see
+<dir>/QUALITY.md`; the full "Left open" and "Acknowledged gaps" lists are in that Markdown file
+(and in `QUALITY.html`), and so is the full problem list that the line `and M more: see
+<dir>/QUALITY.md` points to. Open items are not problems and do not change the exit code.
 
 Exit codes: 0 when all is well (`--check`: every page is current), 1 when the documents have
 problems (`--check`: a page is stale), 2 for a usage error, a folder that does not exist, or a file

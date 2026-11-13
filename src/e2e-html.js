@@ -190,12 +190,12 @@ ${groups.filter(([, cs]) => cs.length).map(([f, cs]) => `<h2${f ? ` id="${esc(f.
     const gaps = q.untested.length
       ? [...rows].map(([sid, us]) => { const s = screens.get(sid); return `<h3><a href="#${esc(sid)}">${esc(sid)}</a> · ${s ? `${esc(s.title)} <span class="muted">${esc(s.source)}</span>` : ""}</h3>${table(["Id", "Control", "Why"], us.map((u) => tr([link(u.id), inline(u.control), esc(u.why)])))}`; }).join("\n")
       : "<p>Every capability has a case.</p>";
-    const rest = (o) => inline(o.what.slice(o.ref.length + 3));
+    const rest = (o) => inline(o.what.slice(o.what.startsWith(`${o.ref} · `) ? o.ref.length + 3 : o.ref.length));
     const open = `<h2 id="open">Left open</h2>\n${q.open.length
       ? `<p class="muted">No case and no Gap line. Write a case or a Gap line for each.</p><ul class="plain">${q.open.map((o) => `<li>${link(o.ref)} ${chip(o.kind, "warn")} ${rest(o)}</li>`).join("")}</ul>`
       : "<p>Nothing is left open.</p>"}`;
     const acknowledged = q.gaps.length
-      ? `<h2>Acknowledged gaps</h2>\n<ul class="plain">${q.gaps.map((g) => `<li>${link(g.ref)}${g.kind === "deep" ? " deep" : ""} <span class="muted">&mdash;</span> ${esc(g.reason)}</li>`).join("")}</ul>`
+      ? `<h2>Acknowledged gaps</h2>\n<ul class="plain">${q.gaps.map((g) => `<li>${link(g.ref)}${g.kind === "deep" || g.kind === "depth" ? ` ${g.kind}` : ""} <span class="muted">&mdash;</span> ${esc(g.reason)}</li>`).join("")}</ul>`
       : "";
     const asideRows = new Map();
     for (const u of q.set_aside) asideRows.set(caps.get(u.id).screen, [...(asideRows.get(caps.get(u.id).screen) ?? []), u]);

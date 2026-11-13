@@ -41,8 +41,9 @@ removed. Run the changed cases twice, as above.
 
 ## Coverage
 
-Start from `e2e/QUALITY.html`: its "Left open" list (requirements and Fails lines with no case and
-no Gap line, P0 features with no deep case) is what remains to write; then capabilities no
+Start from `e2e/QUALITY.html`: its "Left open" list (P0 features with no deep case, requirements with no case,
+requirements too shallow for their Proof, Fails lines with no case; none with a Gap line) is what
+remains to write; then capabilities no
 runnable case covers and requirements tested shallower than their Proof. Then list, from the files: screens in `EXPLORE.md` no
 feature claims, features in scope with no CUJ, Gate and Harm lines with no negative case, CUJs with
 no case, PRD requirements with no CUJ, cases that have not passed in the latest report, and cases
@@ -60,8 +61,9 @@ rerunning `npx -y @codedroid/mcp e2e report e2e` after each until it prints no p
 4. Each case's `Covers:`, `Tier:`, `Depth:` and `Run mode:`, from what its Steps and Expected lines
    actually do. Don't change the steps. A setup case needs only its `Run mode:` line: drop the
    `Covers:`, `Tier:` and `Depth:` an older file gave it.
-5. A reason an older file gave for a missing case, in free prose, becomes a `- Gap: <ref> · reason`
-   line (as app-e2e-testcases writes it); a capability the PRD left out on purpose becomes a
+5. A reason an older file gave for a missing case or a shallow one, in free prose, becomes a
+   `- Gap: <ref> · reason` line (`R4`, `R1.f2`, `F1 deep` or `R3 depth`, as app-e2e-testcases writes
+   it); a capability the PRD left out on purpose becomes a
    `- Non-goal: C<n> · reason` line. The quality page's "Left open" list is then what remains to write.
 
 Existing approvals stay. Tell the user the documents were brought up to date and show them

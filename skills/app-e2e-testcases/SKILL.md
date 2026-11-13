@@ -46,6 +46,7 @@ Steps:
 ## Gaps
 - Gap: R7.f2 · a server error cannot be staged from the phone
 - Gap: F3 deep · one screen, no long sequence to extend
+- Gap: R7 depth · the account cannot reopen the app signed in
 ```
 
 - Number by CUJ (TC-12a for CUJ-12); the number is compared as a number, so TC-01a is for CUJ-1
@@ -70,10 +71,16 @@ Steps:
 - Every P0 feature has at least one `deep` case, or a `Gap: F<n> deep` line.
 - A gap is a line `- Gap: <ref> · <reason>` under a `## Gaps` heading at the end of the file.
   `<ref>` is a requirement id (`R4`), a failure id (`R1.f2`), or a feature id and the word deep
-  (`F1 deep`: that feature has no deep case, on purpose). A ref a runnable case covers needs no
-  Gap line, and the command reports one that has both. A Gap line never counts as covered: the
+  (`F1 deep`: that feature has no deep case, on purpose) or a requirement id and the word depth
+  (`R7 depth`: it has a case, but none checks as deep as its Proof). A ref a runnable case covers
+  needs no Gap line, and the command reports one that has both, and a depth Gap line for a
+  requirement that has no case or is already deep enough. A manual case is not a runnable case,
+  and does not count as a deep case. A Gap line never counts as covered: the
   quality page lists it under "Acknowledged gaps". "Left open" is what has neither a case nor a
-  Gap line; it is what is left to write, so empty it before handing over.
+  Gap line; it is what is left to write, so empty it before handing over. A requirement listed
+  as too shallow is fixed by a case whose Expected lines check at its Proof depth (for `kept`,
+  reopen the app and check again); give it a `depth` Gap line only when this phone or account
+  cannot do that.
 - `Feature:` is the PRD feature of its CUJ. `Type:` is `happy` (the journey works), `negative`
   (the app refuses or protects, and says so) or `setup` (a case that only prepares or cleans up,
   with `Feature: all`). A setup case proves nothing: it needs only its `Run mode:` line, and

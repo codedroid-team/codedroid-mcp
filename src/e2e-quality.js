@@ -55,16 +55,20 @@ export function quality(model) {
 
   const coverRefs = new Set(runnable.flatMap((c) => c.covers.map((e) => e.ref)));
   // A Gap line acknowledges a requirement or failure line no runnable case covers; it never counts as covered.
-  const gapped = new Set(model.gaps.filter((g) => g.kind !== "deep").map((g) => g.ref));
+  const gapped = new Set(model.gaps.filter((g) => g.kind === "requirement" || g.kind === "failure").map((g) => g.ref));
   const acked = (id) => gapped.has(id) && !coverRefs.has(id);
-  const deepCases = (f) => real.filter((c) => c.feature === f.id && c.tier === "deep").length;
+  const depthGapped = new Set(model.gaps.filter((g) => g.kind === "depth").map((g) => g.ref));
+  const deepest = (r) => Math.max(-1, ...runnable.filter((c) => c.covers.some((e) => e.ref === r.id)).map((c) => DEPTH.indexOf(c.depth)));
+  const atDepth = (r) => runnable.some((c) => c.covers.some((e) => e.ref === r.id) && DEPTH.indexOf(c.depth) >= DEPTH.indexOf(r.proof));
+  const shallow = (r) => coverRefs.has(r.id) && !atDepth(r);
+  const deepCases = (f) => runnable.filter((c) => c.feature === f.id && c.tier === "deep").length;
   const deepGap = (f) => model.gaps.find((g) => g.kind === "deep" && g.ref === f.id)?.reason ?? null;
   const reqCounts = (list) => ({
     total: list.length,
     with_case: list.filter((r) => coverRefs.has(r.id)).length,
     acknowledged: list.filter((r) => acked(r.id)).length,
-    at_depth: list.filter((r) => runnable.some((c) => c.covers.some((e) => e.ref === r.id)
-      && DEPTH.indexOf(c.depth) >= DEPTH.indexOf(r.proof))).length,
+    at_depth: list.filter(atDepth).length,
+    depth_acknowledged: list.filter((r) => shallow(r) && depthGapped.has(r.id)).length,
   });
   const failCounts = (list) => {
     const f = list.flatMap((r) => r.fails);
@@ -113,11 +117,13 @@ export function quality(model) {
         .map((f) => ({ ref: f.id, kind: "deep", what: `${f.id} · ${f.name} is P0 and has no deep case` })),
       ...model.requirements.filter((r) => !coverRefs.has(r.id) && !acked(r.id))
         .map((r) => ({ ref: r.id, kind: "requirement", what: `${r.id} · ${r.text}: no runnable case` })),
+      ...model.requirements.filter((r) => shallow(r) && !depthGapped.has(r.id))
+        .map((r) => ({ ref: r.id, kind: "shallow", what: `${r.id} must be checked at ${r.proof}; the deepest case checks ${DEPTH[deepest(r)]}` })),
       ...model.requirements.filter((r) => ["P0", "P1"].includes(model.features.find((f) => f.id === r.feature)?.priority))
         .flatMap((r) => r.fails).filter((x) => !coverRefs.has(x.id) && !acked(x.id))
         .map((x) => ({ ref: x.id, kind: "failure", what: `${x.id} · ${x.text}: no runnable case` })),
     ],
-    gaps: model.gaps.filter((g) => (g.kind === "deep" ? model.features.some((f) => f.id === g.ref && !deepCases(f)) : (g.kind === "failure" ? failIds.has(g.ref) : reqs.has(g.ref)) && acked(g.ref)))
+    gaps: model.gaps.filter((g) => g.kind === "depth" ? model.requirements.some((r) => r.id === g.ref && shallow(r)) : (g.kind === "deep" ? model.features.some((f) => f.id === g.ref && !deepCases(f)) : (g.kind === "failure" ? failIds.has(g.ref) : reqs.has(g.ref)) && acked(g.ref)))
       .map((g) => ({ ref: g.ref, kind: g.kind, reason: g.reason })),
     set_aside: model.capabilities.filter((c) => reasons.has(c.id)).map((c) => ({ id: c.id, screen: screenOf(c), control: c.control, reason: reasons.get(c.id) })),
     untested: model.capabilities.filter((c) => !withCase.has(c.id) && !reasons.has(c.id)).map((c) => {
@@ -180,7 +186,7 @@ export function qualityMd(q, model) {
   for (const o of q.open) out.push(`- ${o.what}`);
   if (q.gaps.length) {
     out.push("", "## Acknowledged gaps", "");
-    for (const g of q.gaps) out.push(`- ${g.kind === "deep" ? `${g.ref} deep` : g.ref}: ${g.reason}`);
+    for (const g of q.gaps) out.push(`- ${g.kind === "deep" || g.kind === "depth" ? `${g.ref} ${g.kind}` : g.ref}: ${g.reason}`);
   }
   out.push("", "## Not covered by a runnable case", "");
   if (!q.untested.length) out.push("Every capability has a case.");
