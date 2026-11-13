@@ -225,9 +225,11 @@ export function readE2e(dir) {
 
   // The newest report: the reports/<name>/REPORT.md whose folder name sorts last.
   const rdir = path.join(dir, "reports");
-  const folders = fs.existsSync(rdir)
-    ? fs.readdirSync(rdir).filter((f) => fs.existsSync(path.join(rdir, f, "REPORT.md"))).sort()
-    : [];
+  const withReport = fs.existsSync(rdir) ? fs.readdirSync(rdir).filter((f) => fs.existsSync(path.join(rdir, f, "REPORT.md"))).sort() : [];
+  const folders = withReport.filter((f) => /^[A-Za-z0-9._-]+$/.test(f));
+  for (const f of withReport) {
+    if (!folders.includes(f)) problem("reports", 0, `report folder "${f}" is skipped: use only letters, digits, dot, dash and underscore`);
+  }
   if (folders.length) {
     const name = `reports/${folders.at(-1)}/REPORT.md`;
     m.results.report = name;

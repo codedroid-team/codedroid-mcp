@@ -163,6 +163,15 @@ try {
   notIn = readE2e(copy((d) => sub(d, "TESTCASES.md", "R1.f1 (C4)", "R1.f1 (C1)")));
   assert.deepEqual(notIn.problems, [{ file: "TESTCASES.md", line: 16, message: "C1 is not in R1's Caps" }]);
 
+  // A report folder with an unsafe name is never chosen and is reported.
+  const odd = '2027"><s>';
+  const unsafe = readE2e(copy((d) => {
+    fs.mkdirSync(path.join(d, "reports", odd));
+    fs.copyFileSync(path.join(d, "reports/2026-01-02/REPORT.md"), path.join(d, "reports", odd, "REPORT.md"));
+  }));
+  assert.equal(unsafe.results.report, "reports/2026-01-02/REPORT.md");
+  assert.deepEqual(unsafe.problems, [{ file: "reports", line: 0, message: `report folder "${odd}" is skipped: use only letters, digits, dot, dash and underscore` }]);
+
   assert.throws(() => readE2e(path.join(fixture, "nope")));
   console.log("ok e2e-model");
 } finally {

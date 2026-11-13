@@ -17,7 +17,8 @@ const tr = (cells, attr = "") => `<tr${attr}>${cells.map((c) => `<td>${c}</td>`)
 const MIME = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg" };
 
 const sources = (model) => esc(Object.entries(model.files).sort(([a], [b]) => (a < b ? -1 : 1)).map(([n, f]) => `${n}:${f.sha256}`).join(" "));
-const reportPage = (model) => model.results.report?.replace(/\.md$/, ".html") ?? null;
+// Only a path of the shape the model accepts becomes a page name (and so a key and an href).
+const reportPage = (model) => (/^reports\/[A-Za-z0-9._-]+\/REPORT\.md$/.test(model.results.report ?? "") ? model.results.report.replace(/\.md$/, ".html") : null);
 const pagePaths = (model) => [PRD, CUJS, TCS, QUAL, ...(reportPage(model) ? [reportPage(model)] : [])];
 
 /** The lines under a heading (line is the heading's 1-based number) up to the next heading, labels set off. */
@@ -82,13 +83,13 @@ export function renderPages(model, q) {
     const link = (id) => {
       const f = home.get(id);
       if (!f) return `<span>${esc(id)}</span>`;
-      return `<a class="nw" href="${f === cur ? "" : root + f}#${esc(id)}">${esc(id)}</a>`;
+      return `<a class="nw" href="${f === cur ? "" : esc(root + f)}#${esc(id)}">${esc(id)}</a>`;
     };
     const rp = reportPage(model);
     const nav = [[QUAL, "Quality"], [PRD, "PRD"], [CUJS, "CUJs"], [TCS, "Test cases"]]
-      .map(([f, label]) => `<a href="${root}${f}"${f === cur ? ' aria-current="page"' : ""}>${label}</a>`);
-    nav.push(rp ? `<a href="${rp === cur ? path.basename(rp) : root + rp}"${rp === cur ? ' aria-current="page"' : ""}>Report</a>` : "<span>Report (none yet)</span>");
-    const banner = q.ok ? "" : `<p class="banner" role="alert">The documents have problems, so the counts may be wrong. <a href="${cur === QUAL ? "" : root + QUAL}#problems">See the ${q.problems.length} problem${q.problems.length === 1 ? "" : "s"}</a>.</p>`;
+      .map(([f, label]) => `<a href="${esc(root + f)}"${f === cur ? ' aria-current="page"' : ""}>${label}</a>`);
+    nav.push(rp ? `<a href="${esc(rp === cur ? path.basename(rp) : root + rp)}"${rp === cur ? ' aria-current="page"' : ""}>Report</a>` : "<span>Report (none yet)</span>");
+    const banner = q.ok ? "" : `<p class="banner" role="alert">The documents have problems, so the counts may be wrong. <a href="${cur === QUAL ? "" : esc(root + QUAL)}#problems">See the ${q.problems.length} problem${q.problems.length === 1 ? "" : "s"}</a>.</p>`;
     return {
       link,
       html: `<!doctype html>

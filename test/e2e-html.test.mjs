@@ -86,11 +86,22 @@ try {
   assert.ok(bad["PRD.html"].includes("click (https://evil.example/x)"), "link shown as text");
   for (const html of Object.values(bad)) {
     assert.ok(!html.includes("<script") && !html.includes("<img src=x"));
-    for (const [, h] of html.matchAll(/href="([^"]*)"/g)) assert.match(h, /^(#|((\.\.\/)*|reports\/[\w-]+\/)[A-Za-z]+\.html#?)[\w.\-]*$/, h);
+    for (const [, h] of html.matchAll(/href="([^"]*)"/g)) assert.match(h, /^(#|((\.\.\/)*|reports\/[\w.-]+\/)[A-Za-z]+\.html#?)[\w.\-]*$/, h);
   }
   const row = bad["QUALITY.html"].split("<tr").find((r) => r.includes("a | b"));
   assert.ok(row, "capability row exists");
   assert.equal((row.match(/<t[dh][ >]/g) ?? []).length, 6);
+
+  // A hostile report path built by hand (bypassing the model's folder filter) never reaches an attribute raw.
+  const hm = readE2e(fixture);
+  const hostile = 'reports/x" onmouseover="alert(1)" a="/REPORT.md';
+  hm.files[hostile] = hm.files["reports/2026-01-02/REPORT.md"];
+  hm.results.report = hostile;
+  for (const [key, html] of Object.entries(renderPages(hm, quality(hm)))) {
+    assert.ok(!/["<]/.test(key), `key ${key}`);
+    assert.ok(!html.includes('" onmouseover='), "raw attribute injection");
+    for (const [, h] of html.matchAll(/href="([^"]*)"/g)) assert.ok(!/[<]/.test(h), h);
+  }
 
   // Banner when the documents have problems.
   const broken = render(copy((d) => sub(d, "TESTCASES.md", "Covers: R4 (C2)", "Covers: R99")));
