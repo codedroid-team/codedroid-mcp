@@ -9,6 +9,13 @@ Write only for these areas, and for nothing else in the app:
 - transfers (upload, download, available offline)
 - settings, including security and auto uploads
 
+Already settled by the operator for this run:
+
+- The build under test is the debug build of this checkout. It is already installed on the connected phone and is the release candidate.
+- The app is already connected to a local test server and signed in to a test account.
+- Do not install, uninstall, sign in, sign out or type any password. Read the package name from the source and confirm it against the installed build.
+- If the phone is not ready, or the app is not installed or not signed in, stop and report that. Do not fix it.
+
 Rules for this run:
 
 - Both user gates (CUJs, test cases) are passed without edits. Treat each as approved and go on. Do not write an `Approved:` line in any file.

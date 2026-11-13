@@ -6,7 +6,7 @@ You judge how well a set of test cases covers a reference suite. You have two in
 
 ## Output
 
-Write `judge.jsonl` in the run folder: one JSON object per line, one line per key row, every key
+Write `judge.jsonl` next to the `e2e/` folder you were given, in that folder's parent (not inside `e2e/`, not in the current directory): one JSON object per line, one line per key row, every key
 `id` exactly once, nothing else in the file (no header, no blank commentary, no code fences).
 
 | Field | Value |
