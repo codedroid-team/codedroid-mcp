@@ -3,3 +3,5 @@ node_modules/
 Thumbs.db
 desktop.ini
 __MACOSX/
+eval/.cache/
+eval/owncloud/.env
