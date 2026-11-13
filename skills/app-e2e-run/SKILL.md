@@ -18,7 +18,8 @@ case beside it.
 3. `adb` `logcat -c -b crash`, so crashes read later are from this run.
 4. Cases that run a CodeDroid task only with the user's OK for this run.
 5. Create `e2e/reports/<date>/` in the repo you are working in, with your own file tools: `adb`
-   pull cannot create a folder, so every screenshot would fail without it.
+   pull cannot create a folder, so every screenshot would fail without it. A full run's folder is the
+   zero-padded date alone; the quality numbers read the newest such folder.
 
 ## Each case
 

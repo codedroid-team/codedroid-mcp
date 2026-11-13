@@ -45,7 +45,8 @@ again and compare: a case that passes on one build and fails on the other is the
 
 ## The report
 
-`e2e/reports/<date>-<what>/REPORT.md` (e.g. `2026-11-05-smoke`): which cases and why they were
+`e2e/reports/<date>-<what>/REPORT.md` (e.g. `2026-11-05-smoke`; never the date alone, which is the full
+run's folder that the quality numbers read): which cases and why they were
 picked, the build, then each case's result with its screenshot, as app-e2e-run writes it. For a
 flaky check, all three results side by side and a verdict: flaky (find which kind before calling
 it a finding), consistently failing, or fine. Lead your reply with the failures.

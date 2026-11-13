@@ -27,7 +27,7 @@ never edit the pages it writes.
 ## A feature was added or removed
 
 - Removed: mark its cases `Retired: <date> - <why>` instead of deleting them, and its CUJ in
-  `CUJs.md`; leave them out of runs.
+  `CUJs.md`; leave them out of runs. Retired items no longer count in the quality numbers.
 - Added: explore its screens and add their controls to `INVENTORY.md` (as app-e2e-explore does),
   add it to the PRD's features (as app-e2e-prd does), add its CUJ (as app-e2e-cujs does, with the
   user's review), then its cases (as app-e2e-testcases does, with the user's approval).
