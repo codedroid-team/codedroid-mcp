@@ -30,6 +30,28 @@ assert.equal(rows[3].section, "Errors"); // same title, different id
 assert.equal(rows[3].title, rows[0].title);
 assert.equal(rows[3].file, "Mobile/Android/Feature template/X/My File.md");
 
+// other header names, tables without an Expected column, section rows with text, continuous numbering
+const md2 = [
+  "| Scenario | Actions | Expected outcome |",
+  "| :--- | :--- | :--- |",
+  "|**S1**| some text |||",
+  "| One | Tap `Go` | Done |",
+  "",
+  "| Title | Result |",
+  "| --- | --- |",
+  "| Grid row | ok |",
+  "",
+  "| Name | Steps | Expected |",
+  "|---|---|---|",
+  "| Two | Tap | Shown |",
+].join("\n");
+const rows2 = parseKeyFile(md2, "Z.md");
+assert.deepEqual(rows2.map((r) => [r.id, r.title, r.section, r.steps, r.expected]), [
+  ["K-z-1", "One", "S1", "Tap `Go`", "Done"],
+  ["K-z-2", "Two", "S1", "Tap", "Shown"],
+]);
+assert.equal(parseKeyFile("| Title | Result |\n| --- | --- |\n| a | b |", "Y.md").length, 0);
+
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "eval-key-"));
 fs.writeFileSync(path.join(dir, "key.json"), JSON.stringify({ qaSha: "deadbeef", rows: [] }));
 const pinned = JSON.parse(fs.readFileSync(new URL("../eval/config.json", import.meta.url), "utf8")).qaSha;

@@ -30,21 +30,37 @@ function splitCells(line) {
   return cells.map((c) => c.trim().replace(/<br\s*\/?>/gi, "\n"));
 }
 
+const isAlign = (cells) => cells.length > 0 && cells.every((c) => /^:?-+:?$/.test(c) || c === "");
+
 export function parseKeyFile(markdown, file) {
   const stem = path.basename(file, path.extname(file)).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   const rows = [];
   let section = "";
-  for (const line of markdown.split("\n")) {
-    if (!line.startsWith("|")) continue;
-    const [title = "", steps = "", expected = "", ...rest] = splitCells(line);
-    if (title === "Test Case") continue;
-    if (/^[:\-\s]*$/.test(title) && [steps, expected, ...rest].every((c) => /^[:\-\s]*$/.test(c))) continue;
+  let table = null; // { exp, steps } for a table that has an Expected column
+  const lines = markdown.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    if (!lines[i].startsWith("|")) {
+      table = null;
+      continue;
+    }
+    const cells = splitCells(lines[i]);
+    const next = lines[i + 1]?.startsWith("|") ? splitCells(lines[i + 1]) : null;
+    if (next && isAlign(next) && next.some((c) => c !== "")) {
+      // the line before an alignment row is that table's header, never a case
+      const exp = cells.findIndex((c) => /expected/i.test(c));
+      const steps = cells.findIndex((c) => /steps/i.test(c));
+      table = exp < 0 ? null : { exp, steps: steps < 0 ? 1 : steps };
+      continue;
+    }
+    if (isAlign(cells) && cells.some((c) => c !== "")) continue;
+    if (!table) continue;
+    const title = cells[0] ?? "";
     const name = title.match(/^\*\*(.+)\*\*$/);
-    if (name && [steps, expected, ...rest].every((c) => c === "")) {
+    if (name && cells.slice(table.exp).every((c) => c === "")) {
       section = name[1];
       continue;
     }
-    rows.push({ id: `K-${stem}-${rows.length + 1}`, file, section, title, steps, expected });
+    rows.push({ id: `K-${stem}-${rows.length + 1}`, file, section, title, steps: cells[table.steps] ?? "", expected: cells[table.exp] ?? "" });
   }
   return rows;
 }
