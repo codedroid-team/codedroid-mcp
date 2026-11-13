@@ -401,10 +401,12 @@ export function readE2e(dir) {
   }
 
   // The verifier's ledger: rows for cases that are judged (not setup, not retired) give each its status; other rows are orphans.
+  let rejected = [];
   if (read("VERIFY.md")) {
     const v = parseVerify(m.files["VERIFY.md"].text);
     for (const p of v.problems) problem("VERIFY.md", p.line, p.message);
     m.verify.rows = v.rows;
+    rejected = v.rejected;
   }
   const judged = new Set(m.cases.filter((c) => c.retired === null && c.type !== "setup").map((c) => c.id));
   m.verify.orphans = m.verify.rows.filter((r) => !judged.has(r.item)).length;
@@ -412,6 +414,8 @@ export function readE2e(dir) {
     if (!judged.has(c.id)) { c.verify = null; continue; }
     const hash = caseHash(m, c.id);
     c.verify = { ...statusOf(m.verify.rows.filter((r) => r.item === c.id), hash), hash };
+    const bad = rejected.find((r) => r.item === c.id); // a damaged ledger for this case: never approved until the row is fixed
+    if (bad) Object.assign(c.verify, { status: "invalid", reason: `VERIFY.md line ${bad.line} cannot be read` });
   }
 
   // References, checked only against files that were read.

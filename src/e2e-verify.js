@@ -39,18 +39,22 @@ const cellsOf = (row) => {
 
 /**
  * Rows of the ledger table and the problems in them. A reopen row carries attempt 0 (written `0`; `-` also read).
- * A row with a problem in its cells is dropped; a row whose attempt breaks the numbering is kept.
+ * A row that cannot be read goes to `rejected` ({ item, line, message }; item is its first cell) and is skipped
+ * by the numbering; a row whose attempt breaks the numbering is readable and kept. Fenced lines are not read.
  */
 export function parseVerify(markdown) {
   const rows = [];
   const problems = [];
+  const rejected = [];
+  let fenced = false;
   const next = new Map(); // item -> attempt number of its last verdict row in this cycle
   markdown.split(/\r?\n/).forEach((t, i) => {
     const line = i + 1;
-    if (!t.trim().startsWith("|")) return;
+    if (/^\s*```/.test(t)) { fenced = !fenced; return; }
+    if (fenced || !t.trim().startsWith("|")) return;
     const c = cellsOf(t);
     if (c[0] === "Item" || c.every((x) => /^:?-+:?$/.test(x))) return; // header, separator
-    const bad = (message) => { problems.push({ line, message }); return null; };
+    const bad = (message) => { problems.push({ line, message }); rejected.push({ item: c[0] ?? "", line, message }); return null; };
     if (c.length !== COLS) return bad(`row has ${c.length} cells, expected ${COLS}`);
     const [item, att, verdict, by, text, date, reason] = c;
     if (!VERDICTS.includes(verdict)) return bad(`verdict must be ${words(VERDICTS)}`);
@@ -70,7 +74,7 @@ export function parseVerify(markdown) {
     }
     rows.push({ item, attempt, verdict, by, text, date, reason, line });
   });
-  return { rows, problems };
+  return { rows, problems, rejected };
 }
 
 /**
@@ -79,6 +83,7 @@ export function parseVerify(markdown) {
  * hash -> stale; latest is approved -> approved; three or more in the cycle -> unresolved; latest question ->
  * question; else repair. A trailing reopen empties the cycle (attempt 0), so it takes the status of the latest
  * verdict with the counter reset: approved stays approved, question stays question, anything else is repair.
+ * (`invalid`, an unreadable row for the case, is set by the model, which sees the rejected rows.)
  */
 export function statusOf(rows, hash) {
   const verdicts = rows.filter((r) => r.verdict !== "reopen");

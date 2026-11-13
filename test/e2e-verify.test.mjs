@@ -137,6 +137,31 @@ try {
   assert.deepEqual(withBad.problems.map((p) => [p.file, p.message]), [["VERIFY.md", "Text must be 16 hex characters"]]);
   assert.equal(withBad.problems[0].line, fs.readFileSync(path.join(fixture, "VERIFY.md"), "utf8").trimEnd().split("\n").length + 1);
 
+  // A row that cannot be read marks its case invalid (checked before every other status); numbering skips it.
+  const badRow = (item, rest = "| 1 | repair | independent | " + H + " | 2026-11-14") => `| ${item} ${rest} |`; // six cells
+  const six = pv(row("TC-1a", 1, "approved") + "\n" + badRow("TC-1a") + "\n" + row("TC-1a", 1, "repair") + "\n");
+  assert.deepEqual(six.problems, [{ line: 4, message: "row has 6 cells, expected 7" }], "one problem, none on the following valid row");
+  assert.deepEqual(six.rejected, [{ item: "TC-1a", line: 4, message: "row has 6 cells, expected 7" }]);
+  assert.equal(six.rows.length, 2);
+  const inv = (body, extra) => readE2e(copy((d) => fs.appendFileSync(path.join(d, "VERIFY.md"), body)));
+  const sixM = inv(badRow("TC-1a") + "\n");
+  assert.equal(sixM.cases[0].verify.status, "invalid");
+  assert.match(sixM.cases[0].verify.reason, /^VERIFY\.md line \d+ cannot be read$/);
+  assert.equal(sixM.problems.length, 1);
+  assert.equal(inv(row("TC-1a", 1, "repair").replace("2026-11-14", "14/11/2026") + "\n").cases[0].verify.status, "invalid");
+  const unk = inv(badRow("TC-0z") + "\n");
+  assert.equal(unk.problems.length, 1);
+  assert.deepEqual(unk.cases.map((c) => c.verify.status), m.cases.map((c) => c.verify.status), "an unknown id changes no case");
+  // An unreadable row first, then a valid approved attempt 1: still invalid.
+  const firstBad = readE2e(copy((d) => fs.writeFileSync(path.join(d, "VERIFY.md"), HEAD + badRow("TC-1a") + "\n" + row("TC-1a", 1, "approved", caseHash(m, "TC-1a")) + "\n")));
+  assert.equal(firstBad.cases[0].verify.status, "invalid");
+  assert.equal(firstBad.problems.length, 1);
+  assert.equal(firstBad.cases[0].verify.history.length, 1);
+
+  // A table row inside a fenced block is not a ledger row.
+  const fenced = pv("```\n" + row("TC-1a", 1, "repair") + "\n" + badRow("TC-1b") + "\n```\n");
+  assert.deepEqual([fenced.rows, fenced.problems, fenced.rejected], [[], [], []]);
+
   // statusOf.
   const r = (attempt, verdict, text = H) => ({ item: "x", attempt, verdict, by: "same", text, date: "d", reason: `why${attempt}`, line: 1 });
   const s = (rows, hash = H) => statusOf(rows, hash);
