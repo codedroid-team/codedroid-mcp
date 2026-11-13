@@ -48,7 +48,7 @@ try {
     fails: [
       { id: "R1.f1", text: `saving with no connection shows "Couldn't save" and keeps the text` },
       { id: "R1.f2", text: `an empty title leaves "Save" disabled` },
-    ], line: 9,
+    ], line: 9, lines: [9, 14],
   });
   assert.deepEqual(m.requirements[1].caps, ["C1", "C3"]);
   assert.deepEqual(m.requirements[2].fails, []);
@@ -61,9 +61,11 @@ try {
   assert.equal(m.cujs[0].priority, "P0");
   assert.equal(m.cases.length, 6);
   assert.deepEqual(m.cases.map((c) => c.mode), ["phone", "phone", "task", "manual", "phone", "phone"]);
-  assert.deepEqual(m.cases[1], {
+  const { verify: v1b, ...tc1b } = m.cases[1]; // the verifier's status is tested in e2e-verify.test.mjs
+  assert.equal(v1b.status, "approved");
+  assert.deepEqual(tc1b, {
     id: "TC-1b", priority: "P1", title: "Saving with no connection keeps the text", feature: "F1", type: "negative",
-    covers: [{ ref: "R1.f1", caps: ["C4"] }, { ref: "R1.f2", caps: [] }], tier: "core", depth: "screen", mode: "phone", needs: [], retired: null, line: 14,
+    covers: [{ ref: "R1.f1", caps: ["C4"] }, { ref: "R1.f2", caps: [] }], tier: "core", depth: "screen", mode: "phone", needs: [], retired: null, line: 14, lines: [14, 19],
   });
   assert.equal(m.results.report, "reports/2026-01-02/REPORT.md");
   const r = Object.values(m.results.byCase);
@@ -71,7 +73,7 @@ try {
   assert.equal(r.filter((x) => x === "fail").length, 1);
   assert.equal(r.filter((x) => x === "not run").length, 1);
   assert.equal(m.results.byCase["TC-3b"], "fail");
-  assert.deepEqual(Object.keys(m.files).sort(), ["CUJs.md", "INVENTORY.md", "PRD.md", "TESTCASES.md", "reports/2026-01-02/REPORT.md"]);
+  assert.deepEqual(Object.keys(m.files).sort(), ["CUJs.md", "INVENTORY.md", "PRD.md", "TESTCASES.md", "VERIFY.md", "reports/2026-01-02/REPORT.md"]);
   const f = m.files["PRD.md"];
   assert.equal(f.path, path.join(fixture, "PRD.md"));
   assert.equal(f.sha256, crypto.createHash("sha256").update(fs.readFileSync(f.path)).digest("hex"));
@@ -116,7 +118,7 @@ try {
 
   // An old-style folder: PRD.md and TESTCASES.md only, no new lines.
   const old = readE2e(copy((d) => {
-    for (const n of ["INVENTORY.md", "CUJs.md", "reports"]) fs.rmSync(path.join(d, n), { recursive: true });
+    for (const n of ["INVENTORY.md", "CUJs.md", "reports", "VERIFY.md"]) fs.rmSync(path.join(d, n), { recursive: true });
     fs.writeFileSync(path.join(d, "PRD.md"), "### F1 · Notes · P0\n- R1 · A saved note appears.\n");
     fs.writeFileSync(path.join(d, "TESTCASES.md"), "### TC-1a · P0 · Save\nFeature: F1 · Type: happy\n\n### TC-1b · P1 · Open\nFeature: F1 · Type: happy\n");
   }));

@@ -5,6 +5,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { caseHash, parseVerify, statusOf } from "./e2e-verify.js";
 
 const PROOF = ["screen", "elsewhere", "kept"];
 const TIERS = ["smoke", "core", "deep", "edge"];
@@ -76,12 +77,18 @@ export function leavesFolder(root, rel) {
 /** The heading's level and text, or null. */
 const heading = (t) => { const h = t.match(/^(#{1,6}) (.*)$/); return h ? { level: h[1].length, text: h[2] } : null; };
 
+/** Each item's block runs from its first line to the line before the next boundary (or the end of the file). */
+function closeBlocks(items, bounds, text) {
+  const total = text.split(/\r?\n/).length;
+  for (const it of items) it.lines[1] = (bounds.find((b) => b > it.lines[0]) ?? total + 1) - 1;
+}
+
 export function readE2e(dir) {
   if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) throw new Error(`e2e folder not found: ${dir}`);
   const root = fs.realpathSync(dir);
   const m = {
     dir, screens: [], capabilities: [], features: [], requirements: [], nonGoals: [], gaps: [], cujs: [], cases: [],
-    results: { report: null, byCase: {} }, problems: [], pending: [], files: {},
+    results: { report: null, byCase: {} }, problems: [], pending: [], files: {}, verify: { rows: [], orphans: 0 },
   };
   const exists = SOURCES.map((n) => lexists(path.join(root, n)));
   const problem = (file, line, message) => m.problems.push({ file, line, message });
@@ -94,6 +101,7 @@ export function readE2e(dir) {
   const read = (name) => {
     const p = path.join(root, name);
     if (!lexists(p)) {
+      if (name === "VERIFY.md") return null; // optional: nothing judged yet
       const i = SOURCES.indexOf(name);
       if (i >= 0 && !exists.slice(i + 1).some(Boolean)) m.pending.push(name);
       else problem(name, 0, `${name} is missing`);
@@ -141,6 +149,7 @@ export function readE2e(dir) {
     let feature = null;
     let req = null;
     let inFails = false;
+    const bounds = []; // lines where a requirement's block can end
     const finish = () => {
       if (!req) return;
       if (!req.has.caps) problem("PRD.md", req.line, `${req.id} has no Caps: line`);
@@ -153,6 +162,7 @@ export function readE2e(dir) {
     for (const { n, t } of prd) {
       let h;
       const hd = heading(t);
+      if (hd || /^[-*] Non-goal:/.test(t) || /^- R\d/.test(t)) bounds.push(n);
       if (hd && (h = t.match(/^### (F\d+) · (.+?) · (P\d+)\s*$/))) {
         finish();
         defined("PRD.md", n, h[1]);
@@ -181,7 +191,7 @@ export function readE2e(dir) {
         finish();
         defined("PRD.md", n, h[1]);
         if (!feature) problem("PRD.md", n, `${h[1]} is under no feature`);
-        req = { id: h[1], feature, text: h[2].trim(), caps: [], proof: null, fails: [], line: n, has: {} };
+        req = { id: h[1], feature, text: h[2].trim(), caps: [], proof: null, fails: [], line: n, lines: [n, 0], has: {} };
         m.requirements.push(req);
         inFails = false;
       } else if (req && /^\s+\S/.test(t)) {
@@ -213,6 +223,7 @@ export function readE2e(dir) {
       }
     }
     finish();
+    closeBlocks(m.requirements, bounds, m.files["PRD.md"].text);
   }
 
   const cujs = read("CUJs.md");
@@ -251,13 +262,15 @@ export function readE2e(dir) {
   const tcs = read("TESTCASES.md");
   if (tcs) {
     let tc = null;
+    const bounds = [];
     for (const { n, t } of tcs) {
       let h;
       const hd = heading(t);
+      if (hd) bounds.push(n);
       if (hd && (h = t.match(/^### (TC-[A-Za-z0-9]+) · (P\d+) · (.+?)\s*$/))) {
         defined("TESTCASES.md", n, h[1]);
         if (!oneOf(h[2], PRIORITIES)) problem("TESTCASES.md", n, `${h[1]} priority must be ${words(PRIORITIES)}`);
-        tc = { id: h[1], priority: h[2], title: h[3], feature: null, type: null, covers: [], tier: null, depth: null, mode: null, needs: [], retired: null, line: n, has: {} };
+        tc = { id: h[1], priority: h[2], title: h[3], feature: null, type: null, covers: [], tier: null, depth: null, mode: null, needs: [], retired: null, line: n, lines: [n, 0], has: {} };
         m.cases.push(tc);
       } else if (hd) {
         if (/^TC-/.test(hd.text)) problem("TESTCASES.md", n, UNREADABLE.case);
@@ -329,6 +342,7 @@ export function readE2e(dir) {
         }
       }
     }
+    closeBlocks(m.cases, bounds, m.files["TESTCASES.md"].text);
     for (const c of m.cases) {
       if (c.retired !== null) { delete c.has; continue; } // retired: no missing line is a problem
       if (!c.has.feature) problem("TESTCASES.md", c.line, `${c.id} has no Feature: line`);
@@ -384,6 +398,20 @@ export function readE2e(dir) {
         else m.results.byCase[id] = result;
       }
     }
+  }
+
+  // The verifier's ledger: rows for cases that are judged (not setup, not retired) give each its status; other rows are orphans.
+  if (read("VERIFY.md")) {
+    const v = parseVerify(m.files["VERIFY.md"].text);
+    for (const p of v.problems) problem("VERIFY.md", p.line, p.message);
+    m.verify.rows = v.rows;
+  }
+  const judged = new Set(m.cases.filter((c) => c.retired === null && c.type !== "setup").map((c) => c.id));
+  m.verify.orphans = m.verify.rows.filter((r) => !judged.has(r.item)).length;
+  for (const c of m.cases) {
+    if (!judged.has(c.id)) { c.verify = null; continue; }
+    const hash = caseHash(m, c.id);
+    c.verify = { ...statusOf(m.verify.rows.filter((r) => r.item === c.id), hash), hash };
   }
 
   // References, checked only against files that were read.
