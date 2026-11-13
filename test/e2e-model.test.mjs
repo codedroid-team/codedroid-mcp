@@ -255,6 +255,18 @@ try {
   assert.deepEqual(p, ["R1 has no Proof: line (screen, elsewhere or kept)", "TC-1a has no Tier: line (smoke, core, deep or edge)",
     "TC-1a has no Depth: line (screen, elsewhere or kept)", "TC-1a has no Run mode: line (phone, task or manual)"]);
 
+  // A setup case needs only its Run mode: line; Covers, Tier and Depth are optional and ignored if present.
+  const setup = readE2e(copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n### TC-00 · P1 · Remove leftovers\nFeature: all · Type: setup\nRun mode: phone\n")));
+  assert.deepEqual(setup.problems, []);
+  assert.deepEqual([setup.cases.at(-1).type, setup.cases.at(-1).mode, setup.cases.at(-1).tier], ["setup", "phone", null]);
+  p = readE2e(copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n### TC-00 · P1 · Remove leftovers\nFeature: all · Type: setup\n"))).problems.map((x) => x.message);
+  assert.deepEqual(p, ["TC-00 has no Run mode: line (phone, task or manual)"]);
+  p = readE2e(copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n### TC-00 · P1 · Remove leftovers\nFeature: all · Type: setup\nCovers: R1\nTier: core · Depth: kept\nRun mode: phone\n"))).problems;
+  assert.deepEqual(p, []);
+  // A case that is not setup still needs all four.
+  p = readE2e(copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n### TC-4a · P1 · Plain\nFeature: F1 · Type: happy\nRun mode: phone\n"))).problems.map((x) => x.message);
+  assert.deepEqual(p, ["TC-4a has no Covers: line", "TC-4a has no Tier: line (smoke, core, deep or edge)", "TC-4a has no Depth: line (screen, elsewhere or kept)"]);
+
   assert.throws(() => readE2e(path.join(fixture, "nope")));
   console.log("ok e2e-model");
 } finally {

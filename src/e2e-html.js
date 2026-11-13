@@ -168,13 +168,13 @@ ${groups.filter(([, js]) => js.length).map(([f, js]) => `<h2${f ? ` id="${esc(f.
     const card = (c) => {
       const j = q.by_cuj.find((x) => x.cases.includes(c.id));
       const covers = c.covers.map((e) => `${link(e.ref)}${e.caps.length ? ` (${e.caps.map(link).join(", ")})` : ""}`);
-      return `<article class="card" id="${esc(c.id)}"><div class="head"><h3>${esc(c.id)} · ${esc(c.title)}</h3><span class="chips">${chip(c.priority)}${chip(c.type ?? "no type")}${chip(`tier: ${c.tier}`)}${chip(`depth: ${c.depth}`)}${chip(`mode: ${c.mode}`)}${result(c.id)}${notVerified}</span></div>
-<dl class="meta"><dt>Covers</dt><dd>${covers.join(", ") || '<span class="muted">nothing</span>'}</dd>${j ? `<dt>Journey</dt><dd>${link(j.id)}</dd>` : ""}</dl>
+      return `<article class="card" id="${esc(c.id)}"><div class="head"><h3>${esc(c.id)} · ${esc(c.title)}</h3><span class="chips">${chip(c.priority)}${chip(c.type ?? "no type")}${c.type === "setup" ? "" : chip(`tier: ${c.tier}`) + chip(`depth: ${c.depth}`)}${chip(`mode: ${c.mode}`)}${result(c.id)}${notVerified}</span></div>
+<dl class="meta">${c.type === "setup" ? "" : `<dt>Covers</dt><dd>${covers.join(", ") || '<span class="muted">nothing</span>'}</dd>`}${j ? `<dt>Journey</dt><dd>${link(j.id)}</dd>` : ""}</dl>
 ${section(model, "TESTCASES.md", c.line, /^(Feature|Covers|Tier|Run mode):/)}</article>`;
     };
     const groups = [...model.features.map((f) => [f, model.cases.filter((c) => c.feature === f.id)]), [null, model.cases.filter((c) => !featureOf(c.feature))]];
     return `<h1>Test cases</h1>
-${pending("TESTCASES.md")}<p class="lede">${q.cases.total} cases: ${q.cases.by_mode.phone} phone, ${q.cases.by_mode.task} task, ${q.cases.by_mode.manual} manual.${hasReport ? "" : " No report yet, so no results."}</p>
+${pending("TESTCASES.md")}<p class="lede">${q.cases.total} cases: ${q.cases.by_mode.phone} phone, ${q.cases.by_mode.task} task, ${q.cases.by_mode.manual} manual${q.cases.setup ? `, ${q.cases.setup} setup` : ""}.${hasReport ? "" : " No report yet, so no results."}</p>
 ${groups.filter(([, cs]) => cs.length).map(([f, cs]) => `<h2${f ? ` id="${esc(f.id)}"` : ""}>${f ? `${link(f.id)} · ${esc(f.name)}` : "Other cases"}</h2>\n${cs.map(card).join("\n")}`).join("\n")}`;
   });
 

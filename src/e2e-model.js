@@ -260,6 +260,7 @@ export function readE2e(dir) {
     }
     for (const c of m.cases) {
       for (const [k, label] of [["covers", "Covers: line"], ["tier", `Tier: line (${words(TIERS)})`], ["depth", `Depth: line (${words(PROOF)})`], ["mode", `Run mode: line (${words(MODES)})`]]) {
+        if (c.type === "setup" && k !== "mode") continue; // a setup case proves nothing: only its Run mode matters
         if (!c.has[k]) problem("TESTCASES.md", c.line, `${c.id} has no ${label}`);
       }
       delete c.has;

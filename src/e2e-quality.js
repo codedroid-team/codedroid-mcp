@@ -22,7 +22,8 @@ export function quality(model) {
   const reqs = new Map(model.requirements.map((r) => [r.id, r]));
   const failIds = new Set(model.requirements.flatMap((r) => r.fails.map((f) => f.id)));
   const result = (c) => model.results.byCase[c.id];
-  const runnable = model.cases.filter((c) => RUNNABLE.includes(c.mode));
+  const real = model.cases.filter((c) => c.type !== "setup"); // a setup case proves nothing: counted on its own
+  const runnable = real.filter((c) => RUNNABLE.includes(c.mode));
 
   // What each case reaches. Covers entries the model reported as undefined are dropped here.
   const reach = (c) => {
@@ -45,7 +46,7 @@ export function quality(model) {
       if (result(c) === "pass") passing.add(id);
     }
   }
-  const manualOnly = new Set(model.cases.filter((c) => c.mode === "manual").flatMap((c) => [...reach(c)]));
+  const manualOnly = new Set(real.filter((c) => c.mode === "manual").flatMap((c) => [...reach(c)]));
   const seenYes = new Set(model.capabilities.filter((c) => c.seen.startsWith("yes")).map((c) => c.id));
   const counts = (ids) => capCounts(ids, inFeature, withCase, exercised, passing, seenYes);
 
@@ -73,8 +74,9 @@ export function quality(model) {
     failures: failCounts(model.requirements),
     cases: {
       total: model.cases.length,
+      setup: model.cases.length - real.length,
       by_mode: tally(model.cases, "mode", ["phone", "task", "manual"]),
-      by_tier: tally(model.cases, "tier", ["smoke", "core", "deep", "edge"]),
+      by_tier: tally(real, "tier", ["smoke", "core", "deep", "edge"]),
     },
     by_feature: model.features.map((f) => {
       const rs = model.requirements.filter((r) => r.feature === f.id);
@@ -83,14 +85,14 @@ export function quality(model) {
         capabilities: counts(capsOf(rs)),
         requirements: reqCounts(rs),
         failures: failCounts(rs),
-        tiers: tally(model.cases.filter((c) => c.feature === f.id), "tier", ["smoke", "core", "deep", "edge"]),
+        tiers: tally(real.filter((c) => c.feature === f.id), "tier", ["smoke", "core", "deep", "edge"]),
       };
     }),
     by_cuj: model.cujs.map((j) => {
       const n = Number(j.id.replace("CUJ-", ""));
       return {
         id: j.id, title: j.title, requirements: j.proves,
-        cases: model.cases.filter((c) => /^TC-(\d+)[A-Za-z]+$/.test(c.id) && Number(c.id.match(/^TC-(\d+)/)[1]) === n).map((c) => c.id),
+        cases: real.filter((c) => /^TC-(\d+)[A-Za-z]+$/.test(c.id) && Number(c.id.match(/^TC-(\d+)/)[1]) === n).map((c) => c.id),
         capabilities: counts(capsOf(j.proves.map((id) => reqs.get(id)).filter(Boolean))),
       };
     }),

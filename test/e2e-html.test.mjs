@@ -164,6 +164,13 @@ try {
   assert.ok(bugRep.includes("TC-B1.png") && bugRep.includes("TC-B1-before.png"), "both TC-B1 screenshots embedded");
   assert.equal(bugQ.cases.total, 7);
   assert.ok(bugQ.by_cuj.every((j) => !j.cases.includes("TC-B1")));
+  // A setup case shows a setup chip and no tier or depth chip.
+  const setupPages = render(copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n### TC-00 · P1 · Remove leftovers\nFeature: all · Type: setup\nRun mode: phone\n")));
+  const card = setupPages["TESTCASES.html"].split('<article class="card" id="TC-00">')[1].split("</article>")[0];
+  assert.ok(card.includes('<span class="chip ">setup</span>'), card);
+  assert.ok(!card.includes("tier:") && !card.includes("depth:") && !card.includes("no type"), card);
+  assert.ok(setupPages["TESTCASES.html"].includes("1 setup"), "lede counts setup cases");
+  assert.ok(render(fixture)["TESTCASES.html"].includes("tier: deep"), "other cases keep their tier chip");
   console.log("e2e-html ok");
 } finally {
   for (const d of tmps) fs.rmSync(d, { recursive: true, force: true });

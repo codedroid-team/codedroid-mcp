@@ -44,7 +44,7 @@ try {
   // Failures R1.f1, R1.f2 (TC-1b), R2.f1 (no case).
   assert.deepEqual(q.failures, { total: 3, with_case: 2 });
   assert.deepEqual(q.cases, {
-    total: 6, by_mode: { phone: 4, task: 1, manual: 1 }, by_tier: { smoke: 1, core: 2, deep: 1, edge: 2 },
+    total: 6, setup: 0, by_mode: { phone: 4, task: 1, manual: 1 }, by_tier: { smoke: 1, core: 2, deep: 1, edge: 2 },
   });
 
   assert.deepEqual(q.by_feature, [
@@ -146,6 +146,16 @@ try {
   // ...and a zero-padded CUJ id (CUJ-01, CUJ-03) matches TC-1a, TC-03b alike.
   const paddedCuj = withAdded(block("TC-03c", "F2", "R4", "phone"), ["CUJs.md", "### CUJ-1 ·", "### CUJ-01 ·"], ["CUJs.md", "### CUJ-3 ·", "### CUJ-03 ·"]);
   assert.deepEqual(paddedCuj.by_cuj.map((j) => [j.id, j.cases]), [["CUJ-01", ["TC-1a", "TC-1b", "TC-1c"]], ["CUJ-2", ["TC-2a"]], ["CUJ-03", ["TC-3a", "TC-3b", "TC-03c"]]]);
+
+  // a3. A setup case is counted on its own: not in by_tier, not in coverage, and what it lists is ignored.
+  const setupOnly = "\n### TC-00 · P1 · Remove leftovers\nFeature: all · Type: setup\nRun mode: phone\n";
+  const su = withAdded(setupOnly);
+  assert.equal(su.ok, true);
+  assert.deepEqual(su.cases, { total: 7, setup: 1, by_mode: { phone: 5, task: 1, manual: 1 }, by_tier: q.cases.by_tier });
+  assert.deepEqual(su.by_cuj.map((j) => j.cases), q.by_cuj.map((j) => j.cases));
+  const faked = withAdded("\n### TC-00 · P1 · Remove leftovers\nFeature: all · Type: setup\nCovers: R3 (C5), R2.f1\nTier: core · Depth: kept\nRun mode: phone\n");
+  assert.deepEqual([faked.capabilities, faked.requirements, faked.failures, faked.cases.by_tier], [q.capabilities, q.requirements, q.failures, q.cases.by_tier]);
+  assert.deepEqual(faked.untested, q.untested);
 
   // b. Manual plus a not-run runnable case on C2: with a case, not exercised, not passing, not untested.
   const mnr = withAdded(block("TC-4a", "F2", "R4 (C2)", "manual"),
