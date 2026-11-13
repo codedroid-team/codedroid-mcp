@@ -27,7 +27,8 @@ for the test effort, not for the app. Keep it short: names and numbers over adje
 6. **Features and requirements**: the app's features (below), each with its requirements, numbered
    across the file (R1, R2...), each a behavior a CUJ will prove.
 7. **Release criteria**: e.g. every P0 CUJ passes, nothing new in the crash buffer, every finding
-   triaged.
+   triaged. A property of the whole run (no crash) goes here, not in a requirement: a requirement
+   sits under a feature and names the capabilities it uses.
 8. **Open questions** for the user.
 
 ## Features
@@ -52,6 +53,9 @@ Harm: "Delete skill" on the skill sheet's menu.
   Proof: elsewhere
   Fails:
   - R8.f1 · "Use Skill" stays disabled until every blank is filled
+
+## Non-goals
+- Non-goal: C19 · needs a second account
 ```
 
 Each requirement carries three lines, read from the handlers in the source, not from the labels:
@@ -61,8 +65,9 @@ Each requirement carries three lines, read from the handlers in the source, not 
   survive reopening the app). Code that writes to storage or the network is never `screen`.
 - `Fails:` what the code does when it goes wrong (no connection, a server error, cancel, bad input,
   a limit), one `R<n>.f<m>` line each with its exact message; or `Fails: none in source` once you
-  have read the handler and found none. These become the edge cases; a suite without them tests
-  only the happy path.
+  have read the handler and what it calls to the end and found none. A handler you only skimmed
+  gets `Fails: not traced yet`; trace it before the cases are written. These become the edge
+  cases; a suite without them tests only the happy path.
 
 - Every screen in `EXPLORE.md` belongs to exactly one feature. Tabs, menus and other navigation
   are not features: a screen goes to the feature it serves. A screen that fits none goes under
@@ -75,8 +80,10 @@ Each requirement carries three lines, read from the handlers in the source, not 
 - Data the tests cannot name `e2e-...` (a public feed, a catalog, a server's own items): say in
   Constraints which items are the test's own, and how the cases make and remove them.
 - A feature with no requirement is out of scope: say so under Non-goals.
-- Every capability in `INVENTORY.md` is in some requirement's `Caps:`, or named under Non-goals
-  with why. The quality page lists the rest as "not in any feature".
+- Every capability in `INVENTORY.md` is in some requirement's `Caps:`, or in a Non-goal line (the
+  example above, under the Non-goals heading): `- Non-goal: C40, C41 · why`. A capability you will
+  not test is named there with its reason; one in both places is a problem. The quality page lists
+  the rest as "not in any feature" and counts percentages over the capabilities not set aside.
 - Then run `npx -y @codedroid/mcp e2e report e2e`; it must print no problems before you go on.
   Fix each one it prints as `file:line: message`, and rerun.
 

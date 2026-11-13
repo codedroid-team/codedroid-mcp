@@ -43,12 +43,15 @@ try {
     fs.writeFileSync(path.join(dir, file), stitched[kind].join("\n"));
   }
   const m = readE2e(dir);
-  // The only allowed problem: TC-12a's `Needs: TC-10` names the case that makes its skill, which the
-  // single-case example leaves out on purpose.
-  assert.deepEqual(m.problems.map((p) => `${p.file}:${p.line}: ${p.message}`), ["TESTCASES.md:6: TC-10 is referenced but not defined"]);
+  // The examples parse without a problem: TC-12a's `Needs: TC-10` names a case in the same example.
+  assert.deepEqual(m.problems.map((p) => `${p.file}:${p.line}: ${p.message}`), []);
+  // They show a Non-goal line, a setup case and the Gap lines.
+  assert.deepEqual(m.nonGoals.map((g) => g.caps), [["C19"]]);
+  assert.deepEqual(m.gaps.map((g) => [g.ref, g.kind]), [["R7.f2", "failure"], ["F3", "deep"]]);
+  assert.deepEqual(m.cases.filter((c) => c.type === "setup").map((c) => c.id), ["TC-00"]);
   // The examples join: the case in the report is the testcases example's, and it covers the PRD's requirement.
   assert.ok(m.cases.length && m.cases.every((c) => c.id in m.results.byCase), "the report example names the case example");
-  assert.ok(m.cujs.every((j) => j.proves.length) && m.cases.every((c) => c.covers.length), "Proves and Covers name something");
+  assert.ok(m.cujs.every((j) => j.proves.length) && m.cases.filter((c) => c.type !== "setup").every((c) => c.covers.length), "Proves and Covers name something");
 } finally {
   fs.rmSync(path.dirname(dir), { recursive: true, force: true });
 }

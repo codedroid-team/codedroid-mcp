@@ -158,6 +158,16 @@ Next: PRD.md.`) and its page says so. One missing before a document that exists 
 With `--check` it writes nothing and prints `stale: <file>` for every page that is missing or was
 built from older documents (and for a missing `QUALITY.md` or `quality.json`).
 
+It also reads two lines the skills teach. In `PRD.md`, `- Non-goal: C40, C41 · reason` sets
+capabilities aside: they leave "not in any feature", the percentages count the capabilities in
+scope, and `QUALITY.html` lists them with the reason. In `TESTCASES.md`, `- Gap: <ref> · reason`
+acknowledges something with no case; `<ref>` is a requirement (`R4`), a failure (`R1.f2`) or a feature
+with no deep case (`F1 deep`). A gap is never counted as covered. A case with `Type: setup` needs
+only its `Run mode:` line and is counted apart. Requirements and failure lines with no runnable case
+and no Gap line, and P0 features with no deep case and no Gap line, are listed under "Left open";
+when there are any, the command prints `N left open (no case and no Gap line): see QUALITY.html`.
+They are not problems and do not change the exit code.
+
 Exit codes: 0 when all is well (`--check`: every page is current), 1 when the documents have
 problems (`--check`: a page is stale), 2 for a usage error, a folder that does not exist, or a file
 it cannot write. It refuses to write through a link that leads outside the folder, and writes nothing

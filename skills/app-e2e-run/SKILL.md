@@ -82,6 +82,8 @@ cleanup changed the screen.
 ```markdown
 | Case | Result | Priority | Title | Notes |
 | --- | --- | --- | --- | --- |
+| TC-00 | pass | P1 | Remove every e2e-... skill an earlier run left | |
+| TC-10 | pass | P1 | Save a skill: it appears under "My skills" | |
 | TC-12a | pass | P0 | Use a skill with a blank: the prompt lands in the composer, not sent | passed after 2 tries |
 ```
 

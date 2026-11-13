@@ -70,16 +70,22 @@ user can act on, including those only some states show (an error, an empty list,
 | --- | --- | --- | --- | --- | --- |
 | C17 | text field per blank ("Minutes") | holds that blank's value | app/src/main/java/skills/FillInSheet.kt:58 | | yes |
 | C18 | text "Use Skill" | puts the filled prompt in the composer, unsent | app/src/main/java/skills/FillInSheet.kt:96 | disabled until every blank is filled | yes |
+| C19 | description "Share" | sends the skill to another account | app/src/main/java/skills/FillInSheet.kt:120 | | no: needs a second account |
 ```
 
 - Ids `S<n>` and `C<n>`, each unique in the file; the heading names the screen's class, then
-  its title on screen in double quotes.
+  its title on screen in double quotes, and nothing after the closing quote. A screen whose title
+  is data (an episode page, a mini player) takes a string that stays on it, or a placeholder such
+  as `<episode title>`; notes go in the table, not the heading.
+- One row per control: a menu's items are one row each, never one row for the menu.
 - Does and Source come from the handler (the click listener and what it calls), with file:line,
-  never from the label: a "Save" may upload, store locally or only close the sheet.
+  never from the label: a "Save" may upload, store locally or only close the sheet. A control the
+  framework supplies (Navigate up, a tab bar) cites the file that declares it (the menu or layout
+  XML, the activity), not a nearby line.
 - States: when it is disabled or hidden, and every message its handler can show, in exact words.
   The PRD turns these into failure lines.
-- Seen: `yes` once the walk shows it, `no: <why>` when it cannot (needs data, an account, a state),
-  `?` until then.
+- Seen: `yes` once a walk on the phone shows it (this one, or an earlier recorded one), `no: <why>`
+  when it cannot (needs data, an account, a state), `?` until then.
 
 Then run `npx -y @codedroid/mcp e2e report e2e`; it must print no problems before you go on. Fix
 each one it prints as `file:line: message`, and rerun.
@@ -89,4 +95,6 @@ each one it prints as `file:line: message`, and rerun.
 - A label you did not see on screen or in the source is a guess: mark it `?`.
 - Evidence you read must come from the state you are describing: a screen read after something
   else changed it (a tab switched, a dialog closed) proves nothing about the earlier state.
+- Two places in `EXPLORE.md` that disagree: the one a walk on the phone confirmed wins; correct
+  the other and say so.
 - Never force-stop, clear or uninstall com.codedroid.agent.

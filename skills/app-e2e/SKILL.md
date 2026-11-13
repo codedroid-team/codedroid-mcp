@@ -12,7 +12,7 @@ The run is five steps, each its own skill. Run them in order and stop at the two
 | 1 | app-e2e-explore | `e2e/EXPLORE.md`; `e2e/INVENTORY.md`: every screen and control | go on |
 | 2 | app-e2e-prd | `e2e/PRD.md`: features and requirements | go on |
 | 3 | app-e2e-cujs | `e2e/CUJs.md` | **Gate 1: the user reviews `e2e/CUJs.html`.** Stop until they approve or edit. |
-| 4 | app-e2e-testcases | `e2e/TESTCASES.md` | **Gate 2: the user approves `e2e/TESTCASES.html`, and any case that runs a CodeDroid task.** |
+| 4 | app-e2e-testcases | `e2e/TESTCASES.md` | **Gate 2: the user approves `e2e/TESTCASES.html`, and any case that runs a CodeDroid task.** Point them at the "Left open" list on `e2e/QUALITY.html`. |
 | 5 | app-e2e-run | `e2e/reports/<date>/REPORT.md` and screenshots | report (below) |
 
 Load each step's skill when you reach it; this table is not the step.
@@ -23,7 +23,9 @@ root. It must print no problems before you go on: exit 1 means it found some, pr
 (`PRD.html`, `CUJs.html`, `TESTCASES.html`, `QUALITY.html`, `REPORT.html` beside the newest report).
 The Markdown stays the source: never edit a generated file, and commit them with the Markdown. At
 both gates give the user the page, not the Markdown, and `e2e/QUALITY.html` for what is not
-covered; the `Approved:` line still goes on the Markdown.
+covered; at gate 2 the page to look at is its "Left open" list, what has no case and no `Gap:`
+line. You read `QUALITY.md` (the same content, plain text); before `TESTCASES.md` exists the
+open count is the work ahead, not a defect. The `Approved:` line still goes on the Markdown.
 
 Once `e2e/` exists, the everyday jobs have their own skills: app-e2e-rerun (run some cases: by id,
 CUJ, priority, last failures, a change; a flaky check; two builds), app-e2e-bug (a case that

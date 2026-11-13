@@ -36,6 +36,9 @@ User action: tap own skill → fill "Fill In" → "Use Skill".
 - Every PRD requirement is in some CUJ's `Proves:`. A requirement with none is a gap: add a CUJ or
   move it to non-goals. A feature in scope with no CUJ is a gap too. Write no coverage table: the
   quality page shows it.
+- A journey that proves no requirement means the PRD is missing one: add the requirement (with its
+  Caps, Proof and Fails) rather than leaving `Proves:` empty. A manual journey proves a
+  requirement too.
 - Robustness checks (rotation, dark theme, Back, crash buffer) as a short list folded into cases,
   not CUJs of their own.
 
