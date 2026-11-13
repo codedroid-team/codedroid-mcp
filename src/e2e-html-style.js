@@ -1,9 +1,9 @@
 // The one stylesheet shared by every e2e page. Light by default, dark through prefers-color-scheme.
 export const CSS = `
 :root{color-scheme:light dark;--bg:#f6f6f3;--fg:#1c2226;--muted:#566069;--card:#fff;--line:#d8dce0;--link:#0a5aa8;
---pass-bg:#dff3e5;--pass-fg:#124a26;--fail-bg:#fbe3e3;--fail-fg:#821a1a;--warn-bg:#fdf0cc;--warn-fg:#5f3d00;--info-bg:#e9edf1;--info-fg:#34404a;--code:#eef0f2}
+--pass-bg:#dff3e5;--pass-fg:#124a26;--fail-bg:#fbe3e3;--fail-fg:#821a1a;--warn-bg:#fdf0cc;--warn-fg:#5f3d00;--ask-bg:#dde9fa;--ask-fg:#0b3d75;--info-bg:#e9edf1;--info-fg:#34404a;--code:#eef0f2}
 @media (prefers-color-scheme: dark){:root{--bg:#14181c;--fg:#e4e8eb;--muted:#a1abb4;--card:#1c2227;--line:#34404a;--link:#7ab8f2;
---pass-bg:#16391f;--pass-fg:#b6eac7;--fail-bg:#471a1c;--fail-fg:#ffc8c8;--warn-bg:#3e3210;--warn-fg:#ffe09a;--info-bg:#2a333b;--info-fg:#d0d7dd;--code:#262e35}}
+--pass-bg:#16391f;--pass-fg:#b6eac7;--fail-bg:#471a1c;--fail-fg:#ffc8c8;--warn-bg:#3e3210;--warn-fg:#ffe09a;--ask-bg:#1b3350;--ask-fg:#c3dcfa;--info-bg:#2a333b;--info-fg:#d0d7dd;--code:#262e35}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
 a{color:var(--link)}
@@ -34,6 +34,18 @@ h4,h5,h6{font-size:1rem;margin:1rem 0 .3rem}
 .chip.pass{background:var(--pass-bg);color:var(--pass-fg)}
 .chip.fail{background:var(--fail-bg);color:var(--fail-fg)}
 .chip.warn{background:var(--warn-bg);color:var(--warn-fg)}
+.chip.ask{background:var(--ask-bg);color:var(--ask-fg)}
+.by{color:var(--muted);font-size:.78rem}
+.verdict{margin:.5rem 0;padding:.35rem .7rem;border-left:3px solid var(--line);font-size:.9rem;overflow-wrap:anywhere}
+.verdict.warn{border-color:var(--warn-fg)}
+.verdict.fail{border-color:var(--fail-fg)}
+.verdict.ask{border-color:var(--ask-fg)}
+details.history{margin:.6rem 0 0;font-size:.9rem}
+details.history summary{cursor:pointer;color:var(--muted)}
+details.history ol{margin:.4rem 0;padding-left:1.4rem}
+details.history li{margin:.4rem 0;overflow-wrap:anywhere}
+ul.inline{display:flex;flex-wrap:wrap;gap:.4rem 1rem}
+.tile small.sub{display:block;margin-top:.2rem}
 .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(10rem,1fr));gap:.6rem;margin:.8rem 0}
 .tile{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:.6rem .8rem}
 .tile b{display:block;font-size:1.35rem;line-height:1.3}

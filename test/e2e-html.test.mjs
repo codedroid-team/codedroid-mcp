@@ -11,6 +11,7 @@ import { readE2e } from "../src/e2e-model.js";
 import { quality } from "../src/e2e-quality.js";
 import { renderPages, stalePages } from "../src/e2e-html.js";
 import { md } from "../src/e2e-markdown.js";
+import { recordVerdicts } from "../src/e2e-verdicts.js";
 
 const fixture = new URL("./fixtures/e2e-sample", import.meta.url).pathname;
 const tmps = [];
@@ -50,7 +51,7 @@ try {
   assert.ok(prd.includes("Keep short notes on the phone."), "PRD prose");
   assert.ok(prd.includes("Sync between phones."), "PRD non-goals");
   assert.ok(prd.includes("Edit note"), "capability shows its screen's title");
-  assert.ok(prd.includes("not verified"));
+  assert.ok(!prd.includes("not verified"), "no fixed not-verified chip: items the verifier does not judge show none");
   assert.ok(prd.indexOf("Keep short notes") < prd.indexOf('id="F1"'), "prose above the features");
   assert.ok(prd.includes('<meta name="e2e-sources"'));
 
@@ -193,6 +194,73 @@ try {
   const dp = render(copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n## Gaps\n- Gap: R4 depth · <b>one</b> screen\n")))["QUALITY.html"];
   assert.ok(!dp.includes("must be checked at"), "acknowledged, so not open");
   assert.ok(dp.includes("</a> depth") && dp.includes("&lt;b&gt;one&lt;/b&gt; screen"), "listed under acknowledged gaps, escaped");
+
+  // Verifier verdicts on the pages. Fixture: TC-1a approved (1 try), TC-1b approved after a repair (same agent),
+  // TC-1c repair, TC-2a question (manual), TC-3a unresolved, TC-3b no row.
+  const cardOf = (html, id) => html.split('<article class="card"').find((a) => a.startsWith(` id="${id}">`)).split("</article>")[0];
+  const chipOf = (html, id, kind, word) => assert.ok(cardOf(html, id).includes(`<span class="chip ${kind}">${word}</span>`), `${id} chip ${word}: ${cardOf(html, id).slice(0, 600)}`);
+  chipOf(tcs, "TC-1a", "pass", "approved");
+  chipOf(tcs, "TC-1b", "pass", "approved");
+  chipOf(tcs, "TC-1c", "warn", "repair");
+  chipOf(tcs, "TC-2a", "ask", "question");
+  chipOf(tcs, "TC-3a", "warn", "unresolved");
+  chipOf(tcs, "TC-3b", "", "unverified");
+  assert.ok(cardOf(tcs, "TC-1c").includes("independent agent, attempt 1") && cardOf(tcs, "TC-1b").includes("same agent, attempt 2") && cardOf(tcs, "TC-3a").includes("independent agent, attempt 3"));
+  // A case that is not approved shows its latest reason without opening anything; an approved one does not.
+  assert.ok(/class="verdict[^"]*">[^]*Verifier:[^]*an app that opens an empty note passes; Expected only checks the screen title\./.test(cardOf(tcs, "TC-1c")));
+  assert.ok(cardOf(tcs, "TC-3a").includes("Expected names no title that must be absent") && cardOf(tcs, "TC-2a").includes("Only the user can say"));
+  assert.ok(cardOf(tcs, "TC-3b").includes("Not judged yet"));
+  assert.ok(!cardOf(tcs, "TC-1a").includes('class="verdict'), "approved: the reason sits in the history only");
+  // History: closed, oldest first, titled with the row count; omitted with no rows.
+  assert.ok(/<details class="history"><summary>Verdict history \(1\)<\/summary>/.test(cardOf(tcs, "TC-1a")) && !cardOf(tcs, "TC-1a").includes("<details open"));
+  const h1b = cardOf(tcs, "TC-1b");
+  assert.ok(h1b.includes("Verdict history (2)"));
+  assert.ok(h1b.indexOf("an app that shows no error and discards") < h1b.indexOf("the new Expected checks the error"), "oldest first");
+  assert.ok(h1b.includes("2026-11-14") && h1b.includes("2026-11-15"));
+  assert.ok(!cardOf(tcs, "TC-3b").includes("<details"), "no history block without rows");
+  assert.ok(!tcs.includes("not verified") && !qual.includes("not verified") && !rep.includes("not verified") && !cujs.includes("not verified"));
+  for (const p of Object.values(pages)) assert.ok(!p.includes("nothing here has been verified"), "footer sentence replaced");
+  // Items the verifier does not judge show no verifier chip; the PRD and CUJs show each linked case's status word.
+  assert.ok(!cardOf(prd, "R1").includes("verified"));
+  assert.ok(/TC-1c<\/a>[^]*?<span class="chip warn">repair<\/span>/.test(cardOf(prd, "R2")), "PRD: case status beside its link");
+  assert.ok(cardOf(prd, "R1").includes('<span class="chip pass">approved</span>'));
+  assert.ok(cardOf(cujs, "CUJ-1").includes('<span class="chip pass">approved</span>'));
+  assert.ok(!/<h3>R1<\/h3>[^]*?<\/div>/.exec(cardOf(prd, "R1"))[0].includes("approved"), "the requirement itself has no verifier chip");
+  // A reopen row reads "reopened".
+  const reopened = render(copy((d) => fs.appendFileSync(path.join(d, "VERIFY.md"), "| TC-3a | 0 | reopen | independent | 38f398cb4a7e8d60 | 2026-11-17 | The user allowed three more tries. |\n")));
+  assert.ok(cardOf(reopened["TESTCASES.html"], "TC-3a").includes("reopened") && cardOf(reopened["TESTCASES.html"], "TC-3a").includes("The user allowed three more tries."));
+  // QUALITY.html: approved tiles lead, with-a-case numbers are secondary text; Verifier section.
+  assert.ok(/1 of 6<\/b><small>controls have an approved case[^]*?4 of 6 have a case/.test(qual), "capabilities tile");
+  assert.ok(/1 of 4<\/b><small>requirements have an approved case[^]*?3 of 4 have a case/.test(qual));
+  assert.ok(qual.includes("requirements tested deep enough by approved cases") && qual.includes("failures have an approved case") && qual.includes("2 of 3 have a case"));
+  assert.ok(!qual.includes("<small>capabilities have a case") && !qual.includes("<small>failures have a case"), "no separate with-a-case tiles");
+  const ver = qual.slice(qual.indexOf('id="verifier"'));
+  assert.ok(ver.includes("approved") && ver.includes("independent agent") && ver.includes("same agent"));
+  assert.ok(ver.includes('href="TESTCASES.html#TC-1c"') && ver.includes("Expected only checks the screen title") && ver.includes("not judged yet"));
+  assert.ok(qual.includes("not a run"), "approval is of a design, not a run");
+  assert.ok(qual.includes("approved / with a case") && /<td>\d+% \/ \d+%<\/td>/.test(qual), "by-feature table carries approved beside with-a-case percentages");
+  // Escaping: a reason is shown as plain text, Markdown not formatted.
+  const ev = render(copy((d) => sub(d, "VERIFY.md", "R2: an app that opens an empty note passes; Expected only checks the screen title.", '<script>alert(1)</script> \\| "x" **bold**')));
+  for (const html of [ev["TESTCASES.html"], ev["QUALITY.html"]]) {
+    assert.ok(html.includes("&lt;script&gt;alert(1)&lt;/script&gt; | &quot;x&quot; **bold**") && !html.includes("<script") && !html.includes("<strong>bold"), html.slice(html.indexOf("&lt;script") - 80, html.indexOf("&lt;script") + 200));
+  }
+  // Stale: the case changed after it was judged: the card says so with the previous verdict and reason.
+  const st = render(copy((d) => sub(d, "TESTCASES.md", "Opening a note shows its text", "Opening a note shows its title")));
+  chipOf(st["TESTCASES.html"], "TC-1c", "", "stale");
+  assert.ok(/Changed since it was judged[^]*repair[^]*an app that opens an empty note passes/.test(cardOf(st["TESTCASES.html"], "TC-1c")));
+  // Invalid: an unreadable ledger row for the case.
+  const inv = render(copy((d) => fs.appendFileSync(path.join(d, "VERIFY.md"), "| TC-3b | 1 | maybe | same | x | y | z |\n")));
+  chipOf(inv["TESTCASES.html"], "TC-3b", "fail", "invalid");
+  assert.ok(cardOf(inv["TESTCASES.html"], "TC-3b").includes("VERIFY.md line"));
+  // Setup cases get no verifier chip.
+  assert.ok(!card.includes("unverified") && !card.includes("approved"), "setup: no verifier chip");
+  // New verdicts mark every page stale: VERIFY.md is one of the hashed sources.
+  const vdir = copy();
+  write(vdir, render(vdir));
+  assert.deepEqual(stalePages(vdir), []);
+  fs.writeFileSync(path.join(vdir, "v.jsonl"), JSON.stringify({ id: "TC-3b", verdict: "approved", by: "independent", reason: "R4: a no-match search that shows the list is rejected." }) + "\n");
+  assert.equal(recordVerdicts({ dir: vdir, file: path.join(vdir, "v.jsonl"), now: new Date(2026, 10, 20) }).code, 0);
+  assert.deepEqual(stalePages(vdir).sort(), ["CUJs.html", "PRD.html", "QUALITY.html", "TESTCASES.html", "reports/2026-01-02/REPORT.html"]);
   console.log("e2e-html ok");
 } finally {
   for (const d of tmps) fs.rmSync(d, { recursive: true, force: true });
