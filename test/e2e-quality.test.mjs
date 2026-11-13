@@ -139,6 +139,14 @@ try {
   const pre = withAdded(block("TC-10a", "F1", "R1", "phone") + block("TC-11b", "F1", "R1", "phone"));
   assert.deepEqual(pre.by_cuj[0].cases, ["TC-1a", "TC-1b", "TC-1c"]);
 
+  // a2. Ids are compared as numbers: zero-padded cases belong to their CUJ, TC-10a and TC-B1 do not.
+  const padded = withAdded(block("TC-01d", "F1", "R1", "phone") + block("TC-001e", "F1", "R1", "phone") + block("TC-10a", "F1", "R1", "phone") + block("TC-B1", "F1", "R1", "phone"));
+  assert.deepEqual(padded.by_cuj[0].cases, ["TC-1a", "TC-1b", "TC-1c", "TC-01d", "TC-001e"]);
+  assert.deepEqual(padded.by_cuj[1].cases, ["TC-2a"]);
+  // ...and a zero-padded CUJ id (CUJ-01, CUJ-03) matches TC-1a, TC-03b alike.
+  const paddedCuj = withAdded(block("TC-03c", "F2", "R4", "phone"), ["CUJs.md", "### CUJ-1 ·", "### CUJ-01 ·"], ["CUJs.md", "### CUJ-3 ·", "### CUJ-03 ·"]);
+  assert.deepEqual(paddedCuj.by_cuj.map((j) => [j.id, j.cases]), [["CUJ-01", ["TC-1a", "TC-1b", "TC-1c"]], ["CUJ-2", ["TC-2a"]], ["CUJ-03", ["TC-3a", "TC-3b", "TC-03c"]]]);
+
   // b. Manual plus a not-run runnable case on C2: with a case, not exercised, not passing, not untested.
   const mnr = withAdded(block("TC-4a", "F2", "R4 (C2)", "manual"),
     ["reports/2026-01-02/REPORT.md", "| TC-3a | pass |", "| TC-3a | not run |"],

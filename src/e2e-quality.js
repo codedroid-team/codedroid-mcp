@@ -87,10 +87,10 @@ export function quality(model) {
       };
     }),
     by_cuj: model.cujs.map((j) => {
-      const n = j.id.replace("CUJ-", "");
+      const n = Number(j.id.replace("CUJ-", ""));
       return {
         id: j.id, title: j.title, requirements: j.proves,
-        cases: model.cases.filter((c) => new RegExp(`^TC-${n}[a-z]`).test(c.id)).map((c) => c.id),
+        cases: model.cases.filter((c) => /^TC-(\d+)[A-Za-z]+$/.test(c.id) && Number(c.id.match(/^TC-(\d+)/)[1]) === n).map((c) => c.id),
         capabilities: counts(capsOf(j.proves.map((id) => reqs.get(id)).filter(Boolean))),
       };
     }),
