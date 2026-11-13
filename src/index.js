@@ -19,6 +19,7 @@
  *   codedroid-mcp stop             stop the running daemon
  *   codedroid-mcp call <tool> [json]  call one tool and print the result (scripts, CI)
  *   codedroid-mcp skill install|path  the agent skills, for clients without the plugin
+ *   codedroid-mcp e2e report [dir] [--check]  quality report and HTML pages for an app's e2e folder
  *
  * Options: --port=<n> (or CODEDROID_MCP_PORT), default 4826. --server=<url> for pair. --no-adb (or
  * CODEDROID_MCP_ADB=0) leaves out the host-side adb tool. CODEDROID_SERIAL picks its device.
@@ -92,6 +93,8 @@ Usage:
   codedroid-mcp skill install       Install the agent skills for Claude Code
                                     (--codex for Codex, --dir=<path> anywhere else)
   codedroid-mcp skill path          Print where the skill files are
+  codedroid-mcp e2e report [dir]    Write QUALITY.md, quality.json and HTML pages for an app's e2e
+                                    folder (default ./e2e); --check lists the stale pages instead
 
 Pair first: plug the phone in with USB debugging on and run setup, or on the phone, open CodeDroid >
 Settings > Computers > Pair a computer, and run the command it shows here; do the same on every
@@ -193,6 +196,20 @@ async function main() {
     if (args._[1] !== "install") fatal("Usage: codedroid-mcp skill install [--codex | --dir=<path>] | codedroid-mcp skill path");
     const written = installSkills({ dir: args.dir ?? defaultSkillsDir({ codex: !!args.codex }) });
     process.stdout.write(`Installed:\n${written.map((p) => `  ${p}`).join("\n")}\nNew sessions pick them up.\n`);
+    return;
+  }
+
+  if (command === "e2e") {
+    const usage = "Usage: codedroid-mcp e2e report [dir] [--check]";
+    if (args._[1] !== "report" || args._.length > 3) {
+      process.stderr.write(`${usage}\n`);
+      process.exitCode = 2;
+      return;
+    }
+    const { runE2eReport } = await import("./e2e-report.js");
+    const { code, lines } = runE2eReport({ dir: args._[2] ?? "e2e", check: !!args.check });
+    process.stdout.write(lines.join("\n") + "\n");
+    process.exitCode = code;
     return;
   }
 

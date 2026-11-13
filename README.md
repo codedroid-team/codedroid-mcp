@@ -117,7 +117,9 @@ Android platform-tools and a USB or wireless debugging connection. See [adb setu
   (`app-e2e-explore`, `-prd`, `-cujs`, `-testcases`, `-run`). Then `app-e2e-rerun` runs some
   of the cases (by id, journey or priority, last failures, the ones a change touches, a flaky
   check), `app-e2e-bug` turns a bug into a case that reproduces it, and `app-e2e-maintain` keeps
-  the cases current as the app changes.
+  the cases current as the app changes. After writing the documents, the agent runs
+  `npx -y @codedroid/mcp e2e report`, which writes a quality report and HTML pages into `e2e/`
+  and lists any broken references in them; it needs no phone ([details](docs/reference.md#quality-report-for-an-apps-e2e-folder)).
 - **`install_apk`** to install a build from your computer, with no cable or shared network.
 - **An `adb` tool** that runs adb commands on your computer, to read logs and run tests. You can [turn it off](docs/reference.md#adb-setup).
 

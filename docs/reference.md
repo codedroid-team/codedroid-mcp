@@ -138,6 +138,68 @@ no adb, `setup` says how to pair by hand. If the phone removed this computer, `s
 again. Pairing over USB needs a CodeDroid version that has it; older ones are told to update.
 `setup` exits with 1 when the phone isn't set up (signed out, declined outside a terminal, failed).
 
+### Quality report for an app's e2e folder
+
+```bash
+npx -y @codedroid/mcp e2e report [dir] [--check]
+```
+
+Run it in an app's repo after writing the `app-e2e` documents. It reads `dir` (default `./e2e`:
+`INVENTORY.md`, `PRD.md`, `CUJs.md`, `TESTCASES.md` and one report, below) and
+writes `QUALITY.md`, `quality.json` and the HTML pages (`PRD.html`, `CUJs.html`, `TESTCASES.html`,
+`QUALITY.html`, and a `REPORT.html` beside the report in use) into that folder, overwriting earlier
+copies and deleting nothing. It prints the counts, each problem it found in the documents as
+`file:line: message`, and the path of `QUALITY.html`. It needs no phone, daemon or network.
+
+The report in use is the newest folder named exactly `YYYY-MM-DD` (zero-padded, compared as dates)
+under `reports/`: the full run. The partial runs the skills write beside it (`<date>-bug-<case>`,
+`<date>-maintain`, `<date>-smoke`) are not used, so "exercised" and "passing" come from the full
+run. Only when no folder has that exact name does the last folder by name stand in. A folder shaped
+like a date but not zero-padded (`2026-11-9`) is a problem and is not used. `QUALITY.md` and
+`QUALITY.html` say which report their numbers come from.
+
+It never reads through a link: a source file, a `reports` folder, a report folder or a report that
+is a symbolic link, or leads outside the folder, is a problem and is not read. `quality.json` lists
+its sources as the name under the folder and a sha256, with no path, so the same folder gives the
+same file wherever it is run from.
+
+The four documents are written in that order. One that is missing while no later one exists is not
+written yet, not a problem: the command names it (`Not written yet: PRD.md, CUJs.md, TESTCASES.md.
+Next: PRD.md.`) and its page says so. One missing before a document that exists is a problem.
+
+With `--check` it writes nothing and prints `stale: <file>` for every page that is missing or was
+built from older documents (and for a missing `QUALITY.md` or `quality.json`).
+
+It also reads two lines the skills teach. In `PRD.md`, `- Non-goal: C40, C41 · reason` sets
+capabilities aside: they leave "not in any feature", the percentages count the capabilities in
+scope, and the quality pages list them with the reason. A requirement with no control in the
+inventory writes `Caps: none`; `Fails:` is either failure items (`- R<n>.f<m> · text`, each starting with its own
+requirement's id) below it or `none in source`; any other list item under `Fails:` is a problem. A
+`Gap:` or `Non-goal:` line starts at the beginning of the line, with `-` or `*`. A heading of any
+level ends a block, and a feature, journey, case or screen heading at the wrong level is a problem.
+
+In `TESTCASES.md`, `- Gap: <ref> · reason` acknowledges something no case covers. `<ref>` is a
+requirement (`R4`), a failure line (`R1.f2`), a feature with no deep case (`F1 deep`) or a
+requirement with a case but none deep enough for its Proof (`R3 depth`). A gap is never counted as
+covered; the quality pages list it under "Acknowledged gaps". A case with `Type: setup` needs only
+its `Run mode:` line and is counted apart. Every case has a `Feature:` line (`Feature: all` for a
+setup case). A line `Retired: <date> - <why>` in a case or journey retires it: it keeps its id, may
+point at what no longer exists, and counts for nothing (it appears on its page under "Retired", and
+quality gains `cases.retired` and `cujs.retired`). Only a runnable case (phone or task) counts as covering
+something or as a deep case.
+
+"Left open" is what has no runnable case that settles it and no Gap line: P0 features with no deep case, requirements
+with no runnable case, requirements too shallow for their Proof, and failure lines under a P0 or P1
+feature. When there are any, the command prints `N left open: see
+<dir>/QUALITY.md`; the full "Left open" and "Acknowledged gaps" lists are in that Markdown file
+(and in `QUALITY.html`), and so is the full problem list that the line `and M more: see
+<dir>/QUALITY.md` points to. Open items are not problems and do not change the exit code.
+
+Exit codes: 0 when all is well (`--check`: every page is current), 1 when the documents have
+problems (`--check`: a page is stale), 2 for a usage error, a folder that does not exist, or a file
+it cannot write. It refuses to write through a link that leads outside the folder, and writes nothing
+then. With more than 20 problems it prints a count per kind and the first 20; the pages list all.
+
 ### Standalone Claude Code server
 
 ```bash

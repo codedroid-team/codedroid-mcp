@@ -11,8 +11,21 @@ runs them with CodeDroid's tools.
 ## A case
 
 ```markdown
+### TC-10 · P1 · Save a skill: it appears under "My skills"
+Feature: F3 · Type: happy
+Covers: R7 (C14)
+Tier: core · Depth: screen
+Run mode: phone
+Steps:
+1. Tap "New skill", name it "e2e-timer", tap "Save".
+Expected: "e2e-timer" is listed under "My skills".
+Cleanup: delete e2e-timer.
+
 ### TC-12a · P0 · Use a skill with a blank: the prompt lands in the composer, not sent
 Feature: F3 · Type: happy
+Covers: R8 (C17, C18), R8.f1 (C18)
+Tier: core · Depth: elsewhere
+Run mode: phone
 Needs: TC-10 (makes e2e-timer)
 Start: Chat, a new empty session.
 Steps:
@@ -23,23 +36,67 @@ Expected:
 - The composer shows "Open Clock and set a timer for 1 minutes".
 - No "Working" row: nothing was sent.
 Cleanup: clear the composer.
+
+### TC-00 · P1 · Remove every e2e-... skill an earlier run left
+Feature: all · Type: setup
+Run mode: phone
+Steps:
+1. Open "My skills", search "e2e-", delete each result.
+
+## Gaps
+- Gap: R7.f2 · a server error cannot be staged from the phone
+- Gap: F3 deep · one screen, no long sequence to extend
+- Gap: R7 depth · the account cannot reopen the app signed in
 ```
 
-- Number by CUJ (TC-12a for CUJ-12). Mark a case `task` when it makes CodeDroid's own agent run
-  something.
+- Number by CUJ (TC-12a for CUJ-12); the number is compared as a number, so TC-01a is for CUJ-1
+  and zero-padded ids are fine. `Run mode:` is `phone`, `task` when the case makes CodeDroid's
+  own agent run something, or `manual` (the PRD's scale).
+- `Covers:` the requirement and failure ids it checks, each with the capabilities its Steps tap
+  or its Expected lines check, in brackets, taken from that requirement's `Caps:`.
+- `Tier:` the kind of scenario. `smoke`: the screen or control is there and opens. `core`: the
+  main action on the plain path. `deep`: an extended scenario of the main action: several items,
+  large or awkward data, a long sequence of steps, or state carried across leaving and reopening
+  the app. `edge`: failure, recovery, interruption (app killed, backgrounded, connection lost
+  midway), limits.
+- `Depth:` the deepest place its Expected lines check, in the same words as a requirement's
+  `Proof:`: `screen` (visible where the user acted), `elsewhere` (visible on another screen, a
+  notification, a file or the server), `kept` (still true after leaving and reopening the app). Tier
+  and Depth are independent: a core case can check `kept`, a deep case only `screen`. A requirement
+  whose cases all look shallower than its Proof is not tested deep enough: a `kept` one needs a case
+  that reopens the app (`adb` `shell am force-stop <package>` of the app under test, `open_app`) and
+  checks again.
+- Every Fails line of a P0 or P1 requirement is in some case's `Covers:`, usually an `edge` case
+  (cut the network, cancel, bad input, reach the limit), or has a Gap line.
+- Every P0 feature has at least one `deep` case, or a `Gap: F<n> deep` line.
+- A gap is a line `- Gap: <ref> · <reason>` under a `## Gaps` heading at the end of the file.
+  `<ref>` is a requirement id (`R4`), a failure id (`R1.f2`), or a feature id and the word deep
+  (`F1 deep`: that feature has no deep case, on purpose) or a requirement id and the word depth
+  (`R7 depth`: it has a case, but none checks as deep as its Proof). A ref a runnable case covers
+  needs no Gap line, and the command reports one that has both, and a depth Gap line for a
+  requirement that has no case or is already deep enough. A manual case is not a runnable case,
+  and does not count as a deep case. A Gap line never counts as covered: the
+  quality page lists it under "Acknowledged gaps". "Left open" is what has neither a case nor a
+  Gap line; it is what is left to write, so empty it before handing over. A requirement listed
+  as too shallow is fixed by a case whose Expected lines check at its Proof depth (for `kept`,
+  reopen the app and check again); give it a `depth` Gap line only when this phone or account
+  cannot do that.
 - `Feature:` is the PRD feature of its CUJ. `Type:` is `happy` (the journey works), `negative`
   (the app refuses or protects, and says so) or `setup` (a case that only prepares or cleans up,
-  with `Feature: all`).
+  with `Feature: all`). A setup case proves nothing: it needs only its `Run mode:` line, and
+  `Covers:`, `Tier:` and `Depth:` are left out.
 - Every Gate and Harm line in the PRD gets a negative case: the gate blocks with its words; the
   harmful control asks before acting, and Cancel leaves the test's own item there. Never confirm
   harm on data the cases did not make. A control that acts at once (no confirm, no undo) has
-  nothing to cancel: note it under gaps, and ask the user whether it should ask first.
+  nothing to cancel: give the failure line it belongs to a Gap line, and ask the user whether it
+  should ask first.
 - A harmful control that acts on everything at once (clear all, delete played, remove all) puts
   the user's data one mis-tap away. Its case reads the list first and, if anything there is not the
   test's own, stops as not run (environment). Tap the dialog's cancel by its label, never by
   position.
-- A Gate or Harm line with no case says why under the file's gaps (needs a drag, a second
-  account, a non-goal).
+- A Gate or Harm line with no case: the requirement or failure line it belongs to gets a Gap line
+  that says why (needs a drag, a second account); a capability the run will not test is a PRD
+  Non-goal line instead.
 - Expected lines are outcomes on the screen or in the app, exact words in quotes. Not how it got
   there, and nothing that changes with the screen or the clock.
 
@@ -75,6 +132,9 @@ Cleanup: clear the composer.
 
 ## Before handing to the user
 
-List the cases by feature, with priority, type and which run a CodeDroid task; the CUJs left
+Run `npx -y @codedroid/mcp e2e report e2e`; it must print no problems before you go on (fix each
+`file:line: message` and rerun).
+Give the user `e2e/TESTCASES.html` to review and `e2e/QUALITY.html` for what no runnable case
+covers; its "Left open" list should be empty, or each item explained to the user. List the cases by feature, with priority, type and which run a CodeDroid task; the CUJs left
 without a case and the Gate and Harm lines left without a negative case, and why. Ask for
 approval before running.
