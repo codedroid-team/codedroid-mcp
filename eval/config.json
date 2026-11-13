@@ -1,0 +1,25 @@
+{
+  "qaRepo": "https://github.com/owncloud/QA.git",
+  "qaSha": "720148de0180e2882377a671b42130cde9965b12",
+  "appRepo": "https://github.com/owncloud/android.git",
+  "appTag": "v4.8.4",
+  "areas": ["file browsing and file operations", "transfers (upload, download, available offline)", "settings, including security and auto uploads"],
+  "keyFiles": [
+    "Mobile/Android/Feature template/Transfers/Upload.md",
+    "Mobile/Android/Feature template/Transfers/Download.md",
+    "Mobile/Android/Feature template/Transfers/Available Offline.md",
+    "Mobile/Android/Feature template/Sync/Conflicts.md",
+    "Mobile/Android/Feature template/Sync/Copy.md",
+    "Mobile/Android/Feature template/Sync/Create Folder.md",
+    "Mobile/Android/Feature template/Sync/Discovery.md",
+    "Mobile/Android/Feature template/Sync/List of files.md",
+    "Mobile/Android/Feature template/Sync/Move.md",
+    "Mobile/Android/Feature template/Sync/New Document - FAB.md",
+    "Mobile/Android/Feature template/Sync/Remove.md",
+    "Mobile/Android/Feature template/Sync/Rename.md",
+    "Mobile/Android/Feature template/Sync/Shortcuts.md",
+    "Mobile/Android/Feature template/Settings/Settings.md",
+    "Mobile/Android/Feature template/Settings/Settings - Security.md",
+    "Mobile/Android/Feature template/Settings/Settings - Auto Uploads.md"
+  ]
+}
