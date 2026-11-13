@@ -1,0 +1,16 @@
+services:
+  owncloud:
+    image: owncloud/server:10.16.7
+    ports:
+      - "8080:8080"
+    volumes:
+      - owncloud-data:/mnt/data
+    environment:
+      OWNCLOUD_DOMAIN: ${OWNCLOUD_DOMAIN}
+      OWNCLOUD_TRUSTED_DOMAINS: ${OWNCLOUD_TRUSTED_DOMAINS}
+      ADMIN_USERNAME: ${ADMIN_USERNAME}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      HTTP_PORT: "8080"
+
+volumes:
+  owncloud-data:
