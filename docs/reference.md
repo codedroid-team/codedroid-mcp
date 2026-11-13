@@ -95,6 +95,23 @@ the client's MCP settings (or `--no-adb` to its arguments). To turn it off for e
 Use these options when you want the MCP server without a plugin or extension. Configure one
 installation method per client to avoid registering the tools twice.
 
+### Remote server (Claude.ai, Claude Desktop, Cowork, Claude Code)
+
+CodeDroid's server is also an MCP server, at `https://orchestrator.codedroid.com/mcp`
+(Streamable HTTP, OAuth). It is what Claude's directory lists, as the **CodeDroid** plugin
+(`claude-plugin/` in this repository: the skills and that URL) and as a connector. Any client
+that speaks Streamable HTTP with OAuth can add it by URL; in Claude Code:
+
+```bash
+claude mcp add --transport http codedroid https://orchestrator.codedroid.com/mcp
+```
+
+Signing in with the Google account you use in the CodeDroid app replaces pairing: the server
+reaches every phone on the account, and the phone asks you to **Allow** the client the first
+time. The phone tools and `codedroid_devices` are there; `adb`, `install_apk`, `codedroid_status`
+and `codedroid_setup_phone` run on your computer and are not. Revoke a client from
+**CodeDroid > Settings > Computers** on the phone.
+
 ### Setup command
 
 ```bash
@@ -336,10 +353,14 @@ the app's MCP server through a test relay.
 1. Set the new version in `package.json` (`npm version <x.y.z> --no-git-tag-version`),
    `src/version.js`, `.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`,
    `.antigravity-plugin/plugin.json`, `.mcp.json`, `mcp_config.json`, and both versions in `server.json`.
-2. Run `npm test` and `claude plugin validate .claude-plugin/plugin.json`.
+   Then `node scripts/sync-claude-plugin.mjs`, which sets it in `claude-plugin/` and copies the
+   skills there (do this after any change to `skills/` too).
+2. Run `npm test`, `claude plugin validate .claude-plugin/plugin.json` and
+   `claude plugin validate claude-plugin --profile directory --strict`.
 3. Run `npm publish --access public` **before** merging to `main`: the plugins launch
    `@codedroid/mcp@<version>`, so installs fail until that version is on npm.
-4. Merge to `main`, then create the GitHub release:
+4. Merge to `main`, then create the GitHub release. The Claude plugin directory follows `main`
+   for `claude-plugin/` and checks each new commit itself:
    `gh release create v<x.y.z> --target main --title "CodeDroid MCP <x.y.z>" --latest`.
 5. Run the **Publish to MCP Registry** workflow (`gh workflow run publish-mcp-registry.yml`) to
    update the [MCP Registry](https://registry.modelcontextprotocol.io). Publishing from a laptop

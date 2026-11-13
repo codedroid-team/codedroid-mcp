@@ -10,7 +10,14 @@ case beside it.
 
 ## Before the run
 
-1. `codedroid_status`, `device_info`: connected, unlocked, CodeDroid ready, signed in, no task
+Every `adb` below is the local bridge's tool. Without it (the remote connector, or adb turned
+off), run the same adb commands with your own shell tool when the phone is on this computer's
+adb; otherwise do without: read the build from `device_info` and `list_apps`, save screenshots
+from `take_screenshot` with your file tools, force-stop by Back and Recents, and say in the
+report which checks adb would have made.
+
+1. `codedroid_status` (local bridge) or `codedroid_devices` (remote connector), then
+   `device_info`: connected, unlocked, CodeDroid ready, signed in, no task
    running. Not ready: tell the user; pairing and sign-in are theirs. Locked behind a PIN, pattern or
    password: ask the user to unlock it, and never type it yourself.
 2. Read the installed build (`adb` `shell dumpsys package <package>`). Different from the one the
