@@ -4,7 +4,10 @@
  * Run: node test/eval-score.test.mjs
  */
 import assert from "node:assert/strict";
-import { caseIds, parseJudge, score, spread, verdict } from "../eval/score.mjs";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { LIMITS, caseIds, main, parseJudge, score, spread, verdict } from "../eval/score.mjs";
 
 const key = [1, 2, 3].map((n) => ({ id: `K-x-${n}`, file: "x.md", section: "s", title: `t${n}`, steps: "", expected: "" }));
 const md = [
@@ -62,5 +65,23 @@ assert.equal(verdict(0.3, 0.04, 0.2), "down");
 // judge parsing names the line
 assert.equal(parseJudge('{"key_id":"a"}\n\n{"key_id":"b"}\n').length, 2);
 assert.throws(() => parseJudge('{"key_id":"a"}\nnot json'), (e) => e.message.includes("line 2"));
+
+// end to end: the CLI's own function writes summary.json and SCORE.md
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), "eval-score-"));
+fs.mkdirSync(path.join(dir, "e2e"));
+fs.writeFileSync(path.join(dir, "e2e", "TESTCASES.md"), md);
+fs.writeFileSync(path.join(dir, "judge.jsonl"), good.map((r) => JSON.stringify(r)).join("\n") + "\n");
+main(dir, key);
+const summary = JSON.parse(fs.readFileSync(path.join(dir, "summary.json"), "utf8"));
+assert.equal(summary.total, 3);
+assert.equal(summary.covered_runnable, 1);
+assert.equal(summary.on_phone.total, 2);
+assert.deepEqual(summary.unmatched_cases, ["TC-3a", "TC-4a"]);
+const scoreMd = fs.readFileSync(path.join(dir, "SCORE.md"), "utf8");
+assert.ok(scoreMd.includes("On-phone score: 50.0% (1 of 2"));
+assert.ok(scoreMd.includes(LIMITS));
+assert.ok(scoreMd.includes("Limits: the judge is a model, so its verdicts are checked by hand on a sample; the authoring model may have seen this app's public test plans in training; one app is one data point."));
+assert.ok(scoreMd.includes("| x.md | 1 | 1 | 0 | 1 | 3 |"));
+fs.rmSync(dir, { recursive: true });
 
 console.log("eval-score ok");

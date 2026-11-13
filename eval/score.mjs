@@ -13,7 +13,7 @@ import { loadKey } from "./key.mjs";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const VERDICTS = ["covered", "partly", "missed"];
 const KINDS = ["happy", "failure", "recovery", "limit", "conflict"];
-const LIMITS =
+export const LIMITS =
   "Limits: the judge is a model, so its verdicts are checked by hand on a sample; the authoring model may have seen this app's public test plans in training; one app is one data point.";
 
 /** Case ids from `### TC-12a · P0 · title [· task|· manual]` headings, in document order. */
@@ -111,10 +111,10 @@ function scoreMd(s) {
   ].join("\n");
 }
 
-function main(runDir) {
+export function main(runDir, keyRows = loadKey(path.join(here, ".cache"))) {
   const cases = caseIds(fs.readFileSync(path.join(runDir, "e2e", "TESTCASES.md"), "utf8"));
   const judge = parseJudge(fs.readFileSync(path.join(runDir, "judge.jsonl"), "utf8"));
-  const s = score(loadKey(path.join(here, ".cache")), judge, cases);
+  const s = score(keyRows, judge, cases);
   fs.writeFileSync(path.join(runDir, "summary.json"), JSON.stringify(s, null, 2));
   fs.writeFileSync(path.join(runDir, "SCORE.md"), scoreMd(s));
   console.log(`score ${(s.score * 100).toFixed(1)}%  (${s.on_phone.covered_runnable}/${s.on_phone.total} on phone)`);
