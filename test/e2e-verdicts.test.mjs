@@ -74,6 +74,28 @@ try {
   assert.equal(r.lines[0], "TC-3a: approved (attempt 1 of 3)");
   assert.equal(status(dir, "TC-3a").status, "approved");
 
+  // Three attempts, then the text changes (stale): repair is still refused, reopen is allowed, approved starts a new cycle.
+  dir = copy();
+  fs.appendFileSync(path.join(dir, "TESTCASES.md"), "");
+  { const p = path.join(dir, "TESTCASES.md"); fs.writeFileSync(p, fs.readFileSync(p, "utf8").replace("### TC-3a · P1 · Search narrows the list", "### TC-3a · P1 · Search narrows the list now")); }
+  assert.equal(status(dir, "TC-3a").status, "stale");
+  r = rec(dir, [v("TC-3a", "repair")]);
+  assert.equal(r.code, 2);
+  assert.match(r.lines[0], /TC-3a has had three attempts/);
+  r = rec(dir, [v("TC-3a", "reopen", "the user allowed more")]);
+  assert.equal(r.code, 0, r.lines.join("\n"));
+  r = rec(dir, [v("TC-3a", "approved")]);
+  assert.equal(r.lines[0], "TC-3a: approved (attempt 1 of 3)");
+  assert.equal(status(dir, "TC-3a").status, "approved");
+  assert.equal(readE2e(dir).verify.rows.at(-1).text, caseHash(readE2e(dir), "TC-3a"));
+  // reopen on a case with two attempts is refused
+  dir = copy();
+  rec(dir, [v("TC-3b", "repair")]);
+  rec(dir, [v("TC-3b", "repair")]);
+  r = rec(dir, [v("TC-3b", "reopen")]);
+  assert.equal(r.code, 2);
+  assert.match(r.lines[0], /TC-3b is not unresolved: "reopen"/);
+
   // Refusals: each leaves VERIFY.md byte-identical and names the line.
   dir = copy();
   const bytes = verifyBytes(dir);

@@ -221,7 +221,7 @@ and a reminder to run `e2e report`, and exits 0. Otherwise it exits 2 with nothi
 `<file>:<line>: <message>` per fault: invalid JSON, a missing, extra or non-string field, an id that
 is not a current judged case, a verdict or `by` outside the lists, an empty reason, an id twice, a
 case with an unreadable row in `VERIFY.md`, a fourth verdict in a cycle (only `reopen`, on the
-user's word, allows more), or `reopen` for a case that is not unresolved. It also exits 2, with one
+user's word, allows more), or `reopen` for a case whose current cycle does not yet hold three attempts (`reopen` is allowed once it does, even if the case text has changed since, so the case shows as stale). It also exits 2, with one
 line, for a missing file or folder, a file with no verdicts, problems in `TESTCASES.md` or `PRD.md`,
 a `VERIFY.md` with no table, or a write failure. It needs no phone, daemon or network.
 
