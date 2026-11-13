@@ -1,6 +1,7 @@
 // Renders the e2e model and its quality counts as five self-contained HTML pages (no script, no remote asset).
 // renderPages returns { relativePath: html } and writes nothing; it only reads files under model.dir.
 // Everything that came from a file goes through esc() or the block formatter; agent-written links are shown as text.
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { readE2e } from "./e2e-model.js";
@@ -16,9 +17,27 @@ const table = (head, rows) => `<div class="scroll"><table><thead><tr>${head.map(
 const tr = (cells, attr = "") => `<tr${attr}>${cells.map((c) => `<td>${c}</td>`).join("")}</tr>`;
 const MIME = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg" };
 
-const sources = (model) => esc(Object.entries(model.files).sort(([a], [b]) => (a < b ? -1 : 1)).map(([n, f]) => `${n}:${f.sha256}`).join(" "));
+// `extra` is more [name, sha256] pairs for a page, such as the screenshots a report page embeds.
+const sources = (model, extra = []) => esc([...Object.entries(model.files).map(([n, f]) => [n, f.sha256]), ...extra].sort(([a], [b]) => (a < b ? -1 : 1)).map(([n, h]) => `${n}:${h}`).join(" "));
 // Only a path of the shape the model accepts becomes a page name (and so a key and an href).
 const reportPage = (model) => (/^reports\/[A-Za-z0-9._-]+\/REPORT\.md$/.test(model.results.report ?? "") ? model.results.report.replace(/\.md$/, ".html") : null);
+/** The screenshots beside the used report that belong to a case: { id, name, buf }, by file name. A link is never read. */
+function screenshots(model) {
+  const f = model.files[model.results.report];
+  if (!f) return [];
+  const dir = path.dirname(f.path);
+  const ids = model.cases.filter((c) => c.retired === null).map((c) => c.id).sort((a, b) => b.length - a.length);
+  const out = [];
+  for (const name of fs.readdirSync(dir).sort()) {
+    const ext = path.extname(name).toLowerCase();
+    const stem = name.slice(0, -ext.length);
+    const id = ids.find((x) => stem === x || stem.startsWith(`${x}-`) || stem.startsWith(`${x}_`));
+    if (!MIME[ext] || !id || !fs.lstatSync(path.join(dir, name)).isFile()) continue;
+    out.push({ id, name, buf: fs.readFileSync(path.join(dir, name)) });
+  }
+  return out;
+}
+const shotSources = (model, shots) => shots.map(({ name, buf }) => [`${path.dirname(model.results.report)}/${name}`, crypto.createHash("sha256").update(buf).digest("hex")]);
 const pagePaths = (model) => [PRD, CUJS, TCS, QUAL, ...(reportPage(model) ? [reportPage(model)] : [])];
 
 /** The lines under a heading (line is the heading's 1-based number) up to the next heading, labels set off. */
@@ -27,7 +46,7 @@ function section(model, name, line, drop) {
   if (!f) return "";
   const out = [];
   let fence = false;
-  for (const t of fs.readFileSync(f.path, "utf8").split(/\r?\n/).slice(line)) {
+  for (const t of f.text.split(/\r?\n/).slice(line)) {
     if (/^\s*```/.test(t)) fence = !fence;
     else if (!fence && /^#{1,3} /.test(t)) break;
     else if (!fence && drop.test(t)) continue;
@@ -42,7 +61,7 @@ function prdProse(model) {
   if (!f) return { title: "Product requirements", html: "" };
   const keep = [];
   let skip = false, fence = false, title = null;
-  for (const t of fs.readFileSync(f.path, "utf8").split(/\r?\n/)) {
+  for (const t of f.text.split(/\r?\n/)) {
     if (/^\s*```/.test(t)) fence = !fence;
     else if (!fence) {
       if (/^### F\d+ · /.test(t)) { skip = true; continue; }
@@ -71,7 +90,7 @@ export function renderPages(model, q) {
     ...model.features.map((f) => [f.id, PRD]),
     ...model.requirements.flatMap((r) => [[r.id, PRD], ...r.fails.map((f) => [f.id, PRD])]),
   ]);
-  const casesFor = (ref) => model.cases.filter((c) => c.covers.some((e) => e.ref === ref));
+  const casesFor = (ref) => model.cases.filter((c) => c.retired === null && c.covers.some((e) => e.ref === ref));
   const result = (id) => {
     const r = byCase[id] ?? (hasReport ? "not run" : null);
     return r ? chip(r, r === "pass" ? "pass" : r === "fail" ? "fail" : "warn") : "";
@@ -80,7 +99,7 @@ export function renderPages(model, q) {
   const pending = (name) => (model.pending.includes(name) ? `<p class="muted">${name} is not written yet.</p>` : "");
 
   // One page's chrome. `cur` is its file name, `root` the path back to the e2e folder.
-  const frame = (cur, root, title, body) => {
+  const frame = (cur, root, title, body, extra = []) => {
     const link = (id) => {
       const f = home.get(id);
       if (!f) return `<span>${esc(id)}</span>`;
@@ -96,7 +115,7 @@ export function renderPages(model, q) {
       html: `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark">
 <title>${esc(title)}</title>
-<meta name="e2e-sources" content="${sources(model)}">
+<meta name="e2e-sources" content="${sources(model, extra)}">
 <style>${CSS}</style></head>
 <body><header class="top"><nav aria-label="Pages">${nav.join("")}</nav></header>
 <main>${banner}${body(link)}</main>
@@ -105,7 +124,7 @@ export function renderPages(model, q) {
 `,
     };
   };
-  const page = (cur, root, title, body) => frame(cur, root, title, body).html;
+  const page = (cur, root, title, body, extra) => frame(cur, root, title, body, extra).html;
 
   const capLine = (link, c) => {
     const s = screens.get(c.screen);
@@ -158,10 +177,14 @@ ${loose.length ? featureCard(null, loose) : ""}`;
 <dt>Cases</dt><dd>${caseList(link, cs)}</dd></dl>
 ${section(model, "CUJs.md", j.line, /^Proves:/)}</article>`;
     };
-    const groups = [...model.features.map((f) => [f, model.cujs.filter((j) => j.feature === f.id)]), [null, model.cujs.filter((j) => !featureOf(j.feature))]];
+    const live = model.cujs.filter((j) => j.retired === null);
+    const gone = model.cujs.filter((j) => j.retired !== null);
+    const groups = [...model.features.map((f) => [f, live.filter((j) => j.feature === f.id)]), [null, live.filter((j) => !featureOf(j.feature))]];
+    const retiredCard = (j) => `<article class="card" id="${esc(j.id)}"><div class="head"><h3>${esc(j.id)} · ${esc(j.title)}</h3><span class="chips">${chip("retired")}</span></div><p class="muted">${esc(j.retired)}</p></article>`;
     return `<h1>Critical user journeys</h1>
-${pending("CUJs.md")}<p class="lede">${model.cujs.length} journeys, each tied to the requirements it proves and the cases that run it.</p>
-${groups.filter(([, js]) => js.length).map(([f, js]) => `<h2${f ? ` id="${esc(f.id)}"` : ""}>${f ? `${link(f.id)} · ${esc(f.name)}` : "Other journeys"}</h2>\n${js.map(card).join("\n")}`).join("\n")}`;
+${pending("CUJs.md")}<p class="lede">${live.length} journeys, each tied to the requirements it proves and the cases that run it.${gone.length ? ` ${gone.length} retired, not counted.` : ""}</p>
+${groups.filter(([, js]) => js.length).map(([f, js]) => `<h2${f ? ` id="${esc(f.id)}"` : ""}>${f ? `${link(f.id)} · ${esc(f.name)}` : "Other journeys"}</h2>\n${js.map(card).join("\n")}`).join("\n")}
+${gone.length ? `<h2>Retired</h2>\n${gone.map(retiredCard).join("\n")}` : ""}`;
   });
 
   const tcs = page(TCS, "", "Test cases", (link) => {
@@ -172,10 +195,14 @@ ${groups.filter(([, js]) => js.length).map(([f, js]) => `<h2${f ? ` id="${esc(f.
 <dl class="meta">${c.type === "setup" ? "" : `<dt>Covers</dt><dd>${covers.join(", ") || '<span class="muted">nothing</span>'}</dd>`}${j ? `<dt>Journey</dt><dd>${link(j.id)}</dd>` : ""}</dl>
 ${section(model, "TESTCASES.md", c.line, /^(Feature|Covers|Tier|Run mode):/)}</article>`;
     };
-    const groups = [...model.features.map((f) => [f, model.cases.filter((c) => c.feature === f.id)]), [null, model.cases.filter((c) => !featureOf(c.feature))]];
+    const live = model.cases.filter((c) => c.retired === null);
+    const gone = model.cases.filter((c) => c.retired !== null);
+    const retiredCard = (c) => `<article class="card" id="${esc(c.id)}"><div class="head"><h3>${esc(c.id)} · ${esc(c.title)}</h3><span class="chips">${chip("retired")}</span></div><p class="muted">${esc(c.retired)}</p></article>`;
+    const groups = [...model.features.map((f) => [f, live.filter((c) => c.feature === f.id)]), [null, live.filter((c) => !featureOf(c.feature))]];
     return `<h1>Test cases</h1>
-${pending("TESTCASES.md")}<p class="lede">${q.cases.total} cases: ${q.cases.by_mode.phone} phone, ${q.cases.by_mode.task} task, ${q.cases.by_mode.manual} manual${q.cases.setup ? `, ${q.cases.setup} setup` : ""}.${hasReport ? "" : " No report yet, so no results."}</p>
-${groups.filter(([, cs]) => cs.length).map(([f, cs]) => `<h2${f ? ` id="${esc(f.id)}"` : ""}>${f ? `${link(f.id)} · ${esc(f.name)}` : "Other cases"}</h2>\n${cs.map(card).join("\n")}`).join("\n")}`;
+${pending("TESTCASES.md")}<p class="lede">${q.cases.total} cases: ${q.cases.by_mode.phone} phone, ${q.cases.by_mode.task} task, ${q.cases.by_mode.manual} manual${q.cases.setup ? `, ${q.cases.setup} setup` : ""}.${gone.length ? ` ${gone.length} retired, not counted.` : ""}${hasReport ? "" : " No report yet, so no results."}</p>
+${groups.filter(([, cs]) => cs.length).map(([f, cs]) => `<h2${f ? ` id="${esc(f.id)}"` : ""}>${f ? `${link(f.id)} · ${esc(f.name)}` : "Other cases"}</h2>\n${cs.map(card).join("\n")}`).join("\n")}
+${gone.length ? `<h2>Retired</h2>\n${gone.map(retiredCard).join("\n")}` : ""}`;
   });
 
   const qual = page(QUAL, "", "Test quality", (link) => {
@@ -192,7 +219,7 @@ ${groups.filter(([, cs]) => cs.length).map(([f, cs]) => `<h2${f ? ` id="${esc(f.
       : "<p>Every capability has a case.</p>";
     const rest = (o) => inline(o.what.slice(o.what.startsWith(`${o.ref} · `) ? o.ref.length + 3 : o.ref.length));
     const open = `<h2 id="open">Left open</h2>\n${q.open.length
-      ? `<p class="muted">No case and no Gap line. Write a case or a Gap line for each.</p><ul class="plain">${q.open.map((o) => `<li>${link(o.ref)} ${chip(o.kind, "warn")} ${rest(o)}</li>`).join("")}</ul>`
+      ? `<p class="muted">Nothing below has a runnable case that settles it, or a Gap line. Write the case or the Gap line.</p><ul class="plain">${q.open.map((o) => `<li>${link(o.ref)} ${chip(o.kind, "warn")} ${rest(o)}</li>`).join("")}</ul>`
       : "<p>Nothing is left open.</p>"}`;
     const acknowledged = q.gaps.length
       ? `<h2>Acknowledged gaps</h2>\n<ul class="plain">${q.gaps.map((g) => `<li>${link(g.ref)}${g.kind === "deep" || g.kind === "depth" ? ` ${g.kind}` : ""} <span class="muted">&mdash;</span> ${esc(g.reason)}</li>`).join("")}</ul>`
@@ -210,7 +237,7 @@ ${groups.filter(([, cs]) => cs.length).map(([f, cs]) => `<h2${f ? ` id="${esc(f.
         return tr([idCell + mark, inline(x.control), inline(x.does), inline(x.source), inline(x.states), inline(x.seen)], inFeature.has(x.id) ? "" : ` id="${esc(x.id)}"`);
       }))}</section>`).join("\n");
     return `<h1>Test quality</h1>
-<p class="lede">${chip("not verified")} These are counts of the documents, not test results.</p>
+<p class="lede">${chip("not verified")} These are counts of the documents, not test results. ${q.report ? `Results come from ${esc(q.report)}.` : "There is no report yet, so no results."}</p>
 ${model.pending.length ? `<p class="muted">Not written yet: ${model.pending.join(", ")}.</p>` : ""}
 ${problems}
 ${c.set_aside ? `<p class="muted">Percentages count the ${scope} capabilities in scope; ${c.set_aside} set aside as non-goals.</p>` : ""}
@@ -221,11 +248,12 @@ ${tile("requirements have a case", q.requirements.with_case, q.requirements.tota
 ${tile("requirements tested deep enough", q.requirements.at_depth, q.requirements.total)}
 ${tile("failures have a case", q.failures.with_case, q.failures.total)}
 ${tile("requirements and failures acknowledged as gaps", 0, 0, `${q.requirements.acknowledged + q.failures.acknowledged}`)}
-${tile("left open (no case, no Gap line)", 0, 0, `${q.open.length}`)}
+${tile("left open", 0, 0, `${q.open.length}`)}
 ${tile("capabilities exercised in the last report", c.exercised, scope)}
 ${tile("capabilities passing in the last report", c.passing, scope)}
 ${tile("capabilities not seen on the phone", 0, 0, `${c.not_seen} of ${scope}`)}
 ${tile("cases", 0, 0, `${q.cases.total}`)}
+${q.cases.retired || q.cujs.retired ? tile("retired, not counted", 0, 0, `${q.cases.retired} cases, ${q.cujs.retired} journeys`) : ""}
 </div>
 ${open}
 ${acknowledged}
@@ -247,16 +275,9 @@ ${inventory}`;
   if (rp) {
     const f = model.files[model.results.report];
     const date = path.basename(path.dirname(model.results.report));
-    const dir = path.dirname(f.path);
-    const ids = model.cases.map((c) => c.id).sort((a, b) => b.length - a.length);
+    const found = screenshots(model);
     const shots = new Map();
-    for (const name of fs.readdirSync(dir).sort()) {
-      const ext = path.extname(name).toLowerCase();
-      const stem = name.slice(0, -ext.length);
-      const id = ids.find((x) => stem === x || stem.startsWith(`${x}-`) || stem.startsWith(`${x}_`));
-      if (!MIME[ext] || !id || !fs.lstatSync(path.join(dir, name)).isFile()) continue;
-      shots.set(id, [...(shots.get(id) ?? []), { name, uri: `data:${MIME[ext]};base64,${fs.readFileSync(path.join(dir, name)).toString("base64")}` }]);
-    }
+    for (const { id, name, buf } of found) shots.set(id, [...(shots.get(id) ?? []), { name, uri: `data:${MIME[path.extname(name).toLowerCase()]};base64,${buf.toString("base64")}` }]);
     pages[rp] = page(rp, "../../", `Test report ${date}`, (link) => {
       const n = (r) => Object.values(byCase).filter((x) => x === r).length;
       const failed = model.cases.filter((c) => byCase[c.id] === "fail");
@@ -266,10 +287,10 @@ ${inventory}`;
       return `<h1>Test report ${esc(date)}</h1>
 <p class="lede"><span class="chips">${chip(`${n("pass")} pass`, "pass")}${chip(`${n("fail")} fail`, n("fail") ? "fail" : "")}${chip(`${n("not run")} not run`, n("not run") ? "warn" : "")}${notVerified}</span></p>
 ${failed.length ? `<section class="card problems"><h2>Failed cases</h2><ul class="plain">${failed.map((c) => `<li>${link(c.id)} ${esc(c.title)} ${result(c.id)}</li>`).join("")}</ul></section>` : ""}
-<section class="prose">${md(fs.readFileSync(f.path, "utf8"), { base: 1 })}</section>
+<section class="prose">${md(f.text, { base: 1 })}</section>
 <h2>Screenshots</h2>
 ${figs ? `<p class="muted">Click a screenshot to show it full size, click again to shrink it.</p><div class="gallery">${figs}</div>` : '<p class="muted">No screenshots beside REPORT.md.</p>'}`;
-    });
+    }, shotSources(model, found));
   }
   return pages;
 }
@@ -277,8 +298,9 @@ ${figs ? `<p class="muted">Click a screenshot to show it full size, click again 
 /** Pages that are missing or were built from different source files than the ones on disk now. */
 export function stalePages(dir) {
   const model = readE2e(dir);
-  const want = `<meta name="e2e-sources" content="${sources(model)}">`;
+  const rp = reportPage(model);
+  const wants = (rel) => `<meta name="e2e-sources" content="${sources(model, rel === rp ? shotSources(model, screenshots(model)) : [])}">`;
   return pagePaths(model).filter((rel) => {
-    try { return !fs.readFileSync(path.join(dir, rel), "utf8").includes(want); } catch { return true; }
+    try { return !fs.readFileSync(path.join(dir, rel), "utf8").includes(wants(rel)); } catch { return true; }
   });
 }

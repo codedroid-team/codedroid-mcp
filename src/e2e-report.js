@@ -64,7 +64,7 @@ export function runE2eReport({ dir, check = false }) {
     lines.push(...ps.slice(0, MAX).map((p) => `${p.file}:${p.line}: ${p.message}`));
     if (ps.length > MAX) lines.push(`and ${ps.length - MAX} more: see ${md}`);
   }
-  if (q.open.length) lines.push(`${q.open.length} left open (no case and no Gap line): see ${md}`);
+  if (q.open.length) lines.push(`${q.open.length} left open: see ${md}`);
   lines.push(`Open ${path.resolve(dir, "QUALITY.html")}`);
   return { code: q.problems.length ? 1 : 0, lines };
 }

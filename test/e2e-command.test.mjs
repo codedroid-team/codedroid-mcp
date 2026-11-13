@@ -59,7 +59,7 @@ assert.deepEqual(fs.readdirSync(home), [], "HOME untouched: no daemon state");
 
 // Open items (no case, no Gap line) are not problems: exit 0, one line before the path.
 assert.equal(q.open.length, 3);
-assert.equal(lines.at(-2), `3 left open (no case and no Gap line): see ${dir}/QUALITY.md`);
+assert.equal(lines.at(-2), `3 left open: see ${dir}/QUALITY.md`);
 const acked = copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n## Gaps\n- Gap: R3 · needs a wipe\n- Gap: R2.f1 · cannot be staged\n- Gap: R4 depth · one screen\n"));
 r = run("report", acked);
 assert.equal(r.status, 0, r.stdout + r.stderr);
@@ -70,7 +70,7 @@ r = run("report", copy((d) => fs.appendFileSync(path.join(d, "PRD.md"), "\n- Non
 assert.equal(r.stdout.split("\n")[0], "5 capabilities in scope (1 set aside), 4 with a case; 4 requirements, 3 with a case, 2 tested deep enough; 3 failures, 2 with a case; 6 cases.");
 const oneOpen = copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n## Gaps\n- Gap: R3 · needs a wipe\n- Gap: R4 depth · one screen\n"));
 r = run("report", oneOpen);
-assert.equal(r.stdout.split("\n").at(-3), `1 left open (no case and no Gap line): see ${oneOpen}/QUALITY.md`);
+assert.equal(r.stdout.split("\n").at(-3), `1 left open: see ${oneOpen}/QUALITY.md`);
 assert.ok(fs.readFileSync(path.join(oneOpen, "QUALITY.md"), "utf8").includes("## Left open"), "the named file has the list");
 r = run("report", oneOpen + "/");
 assert.ok(r.stdout.includes(`see ${oneOpen}/QUALITY.md`), "no double slash");
@@ -168,10 +168,11 @@ const linkedDir = copy((d) => {
 });
 const outBefore = listing(outDir);
 r = run("report", linkedDir);
-assert.equal(r.status, 2, r.stdout);
-assert.ok(r.stdout.startsWith("Refusing to write reports/2026-01-02/REPORT.html"), r.stdout);
-assert.deepEqual(listing(outDir), outBefore);
-assert.ok(!fs.existsSync(path.join(linkedDir, "QUALITY.md")), "nothing written after a refusal");
+// A report folder that is a link is not read at all (it is a problem, exit 1), so no page is written into it.
+assert.equal(r.status, 1, r.stdout);
+assert.ok(r.stdout.includes("reports/2026-01-02/REPORT.md:0: reports/2026-01-02/REPORT.md is a link or leads outside the folder: not read"), r.stdout);
+assert.deepEqual(listing(outDir), outBefore, "nothing written through the link");
+assert.ok(!fs.existsSync(path.join(outDir, "REPORT.html")));
 const real = copy();
 const viaLink = path.join(root, "link-to-e2e");
 fs.symlinkSync(real, viaLink);

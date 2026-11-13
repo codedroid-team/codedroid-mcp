@@ -18,11 +18,15 @@ function capCounts(ids, inFeature, withCase, exercised, passing, seenYes) {
 }
 
 export function quality(model) {
+  // Retired cases and journeys keep their ids but count for nothing.
+  const retired = model.cases.filter((c) => c.retired !== null);
+  const cases = model.cases.filter((c) => c.retired === null);
+  const journeys = model.cujs.filter((j) => j.retired === null);
   const caps = new Map(model.capabilities.map((c) => [c.id, c]));
   const reqs = new Map(model.requirements.map((r) => [r.id, r]));
   const failIds = new Set(model.requirements.flatMap((r) => r.fails.map((f) => f.id)));
   const result = (c) => model.results.byCase[c.id];
-  const real = model.cases.filter((c) => c.type !== "setup"); // a setup case proves nothing: counted on its own
+  const real = cases.filter((c) => c.type !== "setup"); // a setup case proves nothing: counted on its own
   const runnable = real.filter((c) => RUNNABLE.includes(c.mode));
 
   // What each case reaches. Covers entries the model reported as undefined are dropped here.
@@ -86,10 +90,12 @@ export function quality(model) {
     capabilities: { ...counts([...caps.keys()].filter((id) => !reasons.has(id))), total: caps.size, set_aside: reasons.size },
     requirements: reqCounts(model.requirements),
     failures: failCounts(model.requirements),
+    report: model.results.report,
     cases: {
-      total: model.cases.length,
-      setup: model.cases.length - real.length,
-      by_mode: tally(model.cases, "mode", ["phone", "task", "manual"]),
+      total: cases.length,
+      setup: cases.length - real.length,
+      retired: retired.length,
+      by_mode: tally(cases, "mode", ["phone", "task", "manual"]),
       by_tier: tally(real, "tier", ["smoke", "core", "deep", "edge"]),
     },
     by_feature: model.features.map((f) => {
@@ -104,11 +110,12 @@ export function quality(model) {
         deep_gap: deepGap(f),
       };
     }),
-    by_cuj: model.cujs.map((j) => {
+    cujs: { total: journeys.length, retired: model.cujs.length - journeys.length },
+    by_cuj: journeys.map((j) => {
       const n = Number(j.id.replace("CUJ-", ""));
       return {
         id: j.id, title: j.title, requirements: j.proves,
-        cases: real.filter((c) => /^TC-(\d+)[A-Za-z]+$/.test(c.id) && Number(c.id.match(/^TC-(\d+)/)[1]) === n).map((c) => c.id),
+        cases: real.filter((c) => /^TC-(\d+)[A-Za-z]*$/.test(c.id) && Number(c.id.match(/^TC-(\d+)/)[1]) === n).map((c) => c.id),
         capabilities: counts(capsOf(j.proves.map((id) => reqs.get(id)).filter(Boolean))),
       };
     }),
@@ -142,6 +149,7 @@ const frac = (n, d) => `${n} of ${d} (${pct(n, d)})`;
 export function qualityMd(q, model) {
   const out = ["# Test quality", ""];
   out.push("These are counts of the documents, not test results. Nothing has been verified by the verifier yet.", "");
+  out.push(q.report ? `Results come from ${q.report}.` : "There is no report yet, so no results.", "");
   if (q.problems.length) {
     out.push("## Problems", "");
     for (const p of q.problems) out.push(`- ${p.file}:${p.line}: ${p.message}`);
@@ -165,7 +173,9 @@ export function qualityMd(q, model) {
   out.push(`| Failures acknowledged as gaps | ${q.failures.acknowledged} of ${q.failures.total} |`);
   out.push(`| Left open | ${q.open.length} |`);
   const m = q.cases.by_mode;
-  out.push(`| Cases | ${q.cases.total} (${m.phone} phone, ${m.task} task, ${m.manual} manual) |`, "");
+  out.push(`| Cases | ${q.cases.total} (${m.phone} phone, ${m.task} task, ${m.manual} manual) |`);
+  if (q.cases.retired || q.cujs.retired) out.push(`| Retired, not counted | ${q.cases.retired} cases, ${q.cujs.retired} journeys |`);
+  out.push("");
 
   out.push("## By feature", "");
   out.push("| Feature | Priority | Capabilities with a case | Exercised | Passing | Requirements with a case | Deep enough | Failures with a case | Cases (smoke/core/deep/edge) |");
@@ -183,6 +193,7 @@ export function qualityMd(q, model) {
   }
   out.push("", "## Left open", "");
   if (!q.open.length) out.push("Nothing is left open.", "");
+  else out.push("Nothing below has a runnable case that settles it, or a Gap line. Write the case or the Gap line.", "");
   for (const o of q.open) out.push(`- ${o.what}`);
   if (q.gaps.length) {
     out.push("", "## Acknowledged gaps", "");
@@ -212,5 +223,5 @@ export function qualityMd(q, model) {
 }
 
 export function qualityJson(q, model, now = new Date()) {
-  return JSON.stringify({ ...q, generated: now.toISOString(), sources: model.files }, null, 2) + "\n";
+  return JSON.stringify({ ...q, generated: now.toISOString(), sources: Object.fromEntries(Object.entries(model.files).map(([name, f]) => [name, f.sha256])) }, null, 2) + "\n";
 }

@@ -59,13 +59,31 @@ function linesOf(text) {
   return out;
 }
 
+const lexists = (p) => { try { fs.lstatSync(p); return true; } catch { return false; } };
+const LINKED = (rel) => `${rel} is a link or leads outside the folder: not read`;
+
+/** True when rel (a "/" path under root, the folder's real path) or any folder on the way is a link, or it resolves outside root. */
+export function leavesFolder(root, rel) {
+  let cur = root;
+  for (const part of rel.split("/")) {
+    cur = path.join(cur, part);
+    try { if (fs.lstatSync(cur).isSymbolicLink()) return true; } catch { return false; } // not there: nothing to read
+  }
+  const real = fs.realpathSync(cur);
+  return real !== root && !real.startsWith(root + path.sep);
+}
+
+/** The heading's level and text, or null. */
+const heading = (t) => { const h = t.match(/^(#{1,6}) (.*)$/); return h ? { level: h[1].length, text: h[2] } : null; };
+
 export function readE2e(dir) {
   if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) throw new Error(`e2e folder not found: ${dir}`);
+  const root = fs.realpathSync(dir);
   const m = {
     dir, screens: [], capabilities: [], features: [], requirements: [], nonGoals: [], gaps: [], cujs: [], cases: [],
     results: { report: null, byCase: {} }, problems: [], pending: [], files: {},
   };
-  const exists = SOURCES.map((n) => fs.existsSync(path.join(dir, n)));
+  const exists = SOURCES.map((n) => lexists(path.join(root, n)));
   const problem = (file, line, message) => m.problems.push({ file, line, message });
   const seen = new Map(); // id -> true, for duplicate detection (ids share one namespace per file kind)
   const defined = (file, line, id) => {
@@ -74,16 +92,19 @@ export function readE2e(dir) {
     seen.set(key, true);
   };
   const read = (name) => {
-    const p = path.join(dir, name);
-    if (!fs.existsSync(p)) {
+    const p = path.join(root, name);
+    if (!lexists(p)) {
       const i = SOURCES.indexOf(name);
       if (i >= 0 && !exists.slice(i + 1).some(Boolean)) m.pending.push(name);
       else problem(name, 0, `${name} is missing`);
       return null;
     }
+    if (leavesFolder(root, name)) { problem(name, 0, LINKED(name)); return null; }
     const buf = fs.readFileSync(p);
+    const text = buf.toString("utf8").replace(/^\uFEFF/, "");
     m.files[name] = { path: p, sha256: crypto.createHash("sha256").update(buf).digest("hex") };
-    const lines = linesOf(buf.toString("utf8"));
+    Object.defineProperty(m.files[name], "text", { value: text }); // for the pages; never written out
+    const lines = linesOf(text);
     if (lines.open) problem(name, lines.open, "code fence opened here is never closed");
     return lines;
   };
@@ -95,12 +116,13 @@ export function readE2e(dir) {
     let screen = null;
     for (const { n, t } of inv) {
       let h;
-      if ((h = t.match(/^## (S\d+) · (.+?) · "(.*)"\s*$/))) {
+      const hd = heading(t);
+      if (hd && (h = t.match(/^## (S\d+) · (.+?) · "(.*)"\s*$/))) {
         defined("INVENTORY.md", n, h[1]);
         screen = { id: h[1], source: h[2], title: h[3], line: n };
         m.screens.push(screen);
-      } else if (/^#{1,2} /.test(t)) {
-        if (/^## S\d/.test(t)) problem("INVENTORY.md", n, UNREADABLE.screen);
+      } else if (hd) {
+        if (hd.level === 2 ? /^S\d/.test(hd.text) : /^S\d+ ·/.test(hd.text)) problem("INVENTORY.md", n, UNREADABLE.screen);
         screen = null;
       }
       else if (screen && t.trim().startsWith("|")) {
@@ -130,17 +152,20 @@ export function readE2e(dir) {
     };
     for (const { n, t } of prd) {
       let h;
-      if ((h = t.match(/^### (F\d+) · (.+?) · (P\d+)\s*$/))) {
+      const hd = heading(t);
+      if (hd && (h = t.match(/^### (F\d+) · (.+?) · (P\d+)\s*$/))) {
         finish();
         defined("PRD.md", n, h[1]);
         if (!oneOf(h[3], PRIORITIES)) problem("PRD.md", n, `${h[1]} priority must be ${words(PRIORITIES)}`);
         feature = h[1];
         m.features.push({ id: h[1], name: h[2], priority: h[3], line: n });
-      } else if (/^#{1,3} /.test(t)) {
+      } else if (hd) {
         finish();
-        if (/^### F\d/.test(t)) problem("PRD.md", n, UNREADABLE.feature);
+        if (hd.level === 3 ? /^F\d/.test(hd.text) : /^F\d+(?:\s|$)/.test(hd.text)) problem("PRD.md", n, UNREADABLE.feature);
         feature = null;
-      } else if ((h = t.match(/^- Non-goal:\s*(.*)$/))) {
+      } else if (/^\s+[-*] Non-goal:/.test(t)) {
+        problem("PRD.md", n, "Non-goal line must start at the beginning of the line");
+      } else if ((h = t.match(/^[-*] Non-goal:\s*(.*)$/))) {
         finish();
         const cut = h[1].indexOf("·");
         const caps = list(cut < 0 ? h[1] : h[1].slice(0, cut));
@@ -177,9 +202,13 @@ export function readE2e(dir) {
           req.has.failsLine = n;
           if (!text) req.has.failsEmpty = true; // items must follow
           else if (text.toLowerCase() !== "none in source") problem("PRD.md", n, FAILS_FORM(req.id));
-        } else if (inFails && (k = t.match(/^\s+- (R\d+\.f\d+) · (.*)$/))) {
-          defined("PRD.md", n, k[1]);
-          req.fails.push({ id: k[1], text: k[2].trim() });
+        } else if (inFails && /^\s+(?:[-*+]|\d+[.)])(?:\s|$)/.test(t)) {
+          if (!(k = t.match(/^\s+- (R\d+\.f\d+) · (.*)$/))) problem("PRD.md", n, 'failure line is not readable: use "- R<n>.f<m> · <text>"');
+          else if (!k[1].startsWith(`${req.id}.f`)) problem("PRD.md", n, `${k[1]} is under ${req.id}: a failure id starts with its requirement's id`);
+          else {
+            defined("PRD.md", n, k[1]);
+            req.fails.push({ id: k[1], text: k[2].trim() });
+          }
         }
       }
     }
@@ -192,26 +221,31 @@ export function readE2e(dir) {
     let cuj = null;
     for (const { n, t } of cujs) {
       let h;
-      if ((h = t.match(/^### (CUJ-\d+) · (.+) · (P\d+) · (\S+)\s*$/))) {
+      const hd = heading(t);
+      if (hd && (h = t.match(/^### (CUJ-\d+) · (.+) · (P\d+) · (\S+)\s*$/))) {
         defined("CUJs.md", n, h[1]);
         if (!oneOf(h[3], PRIORITIES)) problem("CUJs.md", n, `${h[1]} priority must be ${words(PRIORITIES)}`);
         if (!oneOf(h[4], MODES)) problem("CUJs.md", n, `${h[1]} mode must be ${words(MODES)}`);
-        cuj = { id: h[1], title: h[2], priority: h[3], mode: h[4], feature: group, proves: [], line: n, has: false };
+        cuj = { id: h[1], title: h[2], priority: h[3], mode: h[4], feature: group, proves: [], retired: null, line: n, has: false };
         m.cujs.push(cuj);
-      } else if ((h = t.match(/^## (F\d+)\b/))) { group = h[1]; cuj = null; }
-      else if (/^#{1,3} /.test(t)) {
-        if (/^### CUJ-/.test(t)) problem("CUJs.md", n, UNREADABLE.cuj);
-        if (/^#{1,2} /.test(t)) group = null;
+      } else if (hd && hd.level === 2 && (h = hd.text.match(/^(F\d+)\b/))) { group = h[1]; cuj = null; }
+      else if (hd) {
+        if (/^CUJ-/.test(hd.text)) problem("CUJs.md", n, UNREADABLE.cuj);
+        if (hd.level <= 2) group = null;
         cuj = null;
+      }
+      else if (cuj && (h = t.match(/^Retired:\s*(.*)$/))) {
+        cuj.retired = h[1].trim();
+        if (!cuj.retired) problem("CUJs.md", n, `${cuj.id} Retired: has no reason`);
       }
       else if (cuj && (h = t.match(/^Proves:\s*(.*)$/))) {
         cuj.has = true;
         cuj.proves = list(h[1]);
-        if (!cuj.proves.length) problem("CUJs.md", n, `${cuj.id} Proves: names nothing`);
-        for (const r of cuj.proves) refs.push(["CUJs.md", n, r, "req"]);
+        if (!cuj.proves.length && cuj.retired === null) problem("CUJs.md", n, `${cuj.id} Proves: names nothing`);
+        for (const r of cuj.proves) refs.push(["CUJs.md", n, r, "req", cuj]);
       }
     }
-    for (const c of m.cujs) { if (!c.has) problem("CUJs.md", c.line, `${c.id} has no Proves: line`); delete c.has; }
+    for (const c of m.cujs) { if (!c.has && c.retired === null) problem("CUJs.md", c.line, `${c.id} has no Proves: line`); delete c.has; }
   }
 
   const tcs = read("TESTCASES.md");
@@ -219,16 +253,18 @@ export function readE2e(dir) {
     let tc = null;
     for (const { n, t } of tcs) {
       let h;
-      if ((h = t.match(/^### (TC-[A-Za-z0-9]+) · (P\d+) · (.+?)\s*$/))) {
+      const hd = heading(t);
+      if (hd && (h = t.match(/^### (TC-[A-Za-z0-9]+) · (P\d+) · (.+?)\s*$/))) {
         defined("TESTCASES.md", n, h[1]);
         if (!oneOf(h[2], PRIORITIES)) problem("TESTCASES.md", n, `${h[1]} priority must be ${words(PRIORITIES)}`);
-        tc = { id: h[1], priority: h[2], title: h[3], feature: null, type: null, covers: [], tier: null, depth: null, mode: null, needs: [], line: n, has: {} };
+        tc = { id: h[1], priority: h[2], title: h[3], feature: null, type: null, covers: [], tier: null, depth: null, mode: null, needs: [], retired: null, line: n, has: {} };
         m.cases.push(tc);
-      } else if (/^#{1,3} /.test(t)) {
-        if (/^### TC-/.test(t)) problem("TESTCASES.md", n, UNREADABLE.case);
+      } else if (hd) {
+        if (/^TC-/.test(hd.text)) problem("TESTCASES.md", n, UNREADABLE.case);
         tc = null;
       }
-      else if ((h = t.match(/^- Gap:\s*(.*)$/))) {
+      else if (/^\s+[-*] Gap:/.test(t)) problem("TESTCASES.md", n, "Gap line must start at the beginning of the line");
+      else if ((h = t.match(/^[-*] Gap:\s*(.*)$/))) {
         const cut = h[1].indexOf("·");
         const ref = (cut < 0 ? h[1] : h[1].slice(0, cut)).trim();
         const reason = cut < 0 ? "" : h[1].slice(cut + 1).trim();
@@ -243,12 +279,16 @@ export function readE2e(dir) {
         refs.push(["TESTCASES.md", n, id, kind === "deep" ? "feature" : kind === "failure" ? "fail" : "req"]);
       }
       else if (tc) {
-        if ((h = t.match(/^Feature:\s*(\S+)(?:\s*·\s*Type:\s*(\S+))?/))) {
+        if ((h = t.match(/^Retired:\s*(.*)$/))) {
+          tc.retired = h[1].trim();
+          if (!tc.retired) problem("TESTCASES.md", n, `${tc.id} Retired: has no reason`);
+        } else if ((h = t.match(/^Feature:\s*(\S+)(?:\s*·\s*Type:\s*(\S+))?/))) {
+          tc.has.feature = true;
           tc.feature = h[1];
           tc.type = h[2] ?? null;
           if (tc.type && !oneOf(tc.type, TYPES)) problem("TESTCASES.md", n, `Type must be ${words(TYPES)}`);
           if (tc.type === "setup" && tc.feature === "all") continue;
-          refs.push(["TESTCASES.md", n, tc.feature, "feature"]);
+          refs.push(["TESTCASES.md", n, tc.feature, "feature", tc]);
         } else if ((h = t.match(/^Covers:\s*(.*)$/))) {
           tc.has.covers = true;
           let depth = 0;
@@ -265,8 +305,8 @@ export function readE2e(dir) {
             if (!x) { problem("TESTCASES.md", n, `Covers entry "${e}" is not a requirement id`); continue; }
             const caps = list(x[2] ?? "");
             tc.covers.push({ ref: x[1], caps });
-            refs.push(["TESTCASES.md", n, x[1], "reqOrFail"]);
-            for (const c of caps) { refs.push(["TESTCASES.md", n, c, "cap"]); bracketed.push([n, x[1], c]); }
+            refs.push(["TESTCASES.md", n, x[1], "reqOrFail", tc]);
+            for (const c of caps) { refs.push(["TESTCASES.md", n, c, "cap", tc]); bracketed.push([n, x[1], c, tc]); }
           }
         } else if ((h = t.match(/^Tier:\s*(.*)$/))) {
           tc.has.tier = true;
@@ -281,7 +321,7 @@ export function readE2e(dir) {
           if (!oneOf(tc.depth, PROOF)) problem("TESTCASES.md", n, `Depth must be ${words(PROOF)}`);
         } else if ((h = t.match(/^Needs:\s*(.*)$/))) {
           tc.needs = h[1].match(/\bTC-[A-Za-z0-9]+/g) ?? [];
-          for (const id of tc.needs) refs.push(["TESTCASES.md", n, id, "case"]);
+          for (const id of tc.needs) refs.push(["TESTCASES.md", n, id, "case", tc]);
         } else if ((h = t.match(/^Run mode:\s*(.*)$/))) {
           tc.has.mode = true;
           tc.mode = h[1].trim();
@@ -290,6 +330,8 @@ export function readE2e(dir) {
       }
     }
     for (const c of m.cases) {
+      if (c.retired !== null) { delete c.has; continue; } // retired: no missing line is a problem
+      if (!c.has.feature) problem("TESTCASES.md", c.line, `${c.id} has no Feature: line`);
       for (const [k, label] of [["covers", "Covers: line"], ["tier", `Tier: line (${words(TIERS)})`], ["depth", `Depth: line (${words(PROOF)})`], ["mode", `Run mode: line (${words(MODES)})`]]) {
         if (c.type === "setup" && k !== "mode") continue; // a setup case proves nothing: only its Run mode matters
         if (!c.has[k]) problem("TESTCASES.md", c.line, `${c.id} has no ${label}`);
@@ -298,17 +340,29 @@ export function readE2e(dir) {
     }
   }
 
-  // The newest report: the reports/<name>/REPORT.md whose folder name sorts last.
-  const rdir = path.join(dir, "reports");
-  const withReport = fs.existsSync(rdir) ? fs.readdirSync(rdir).filter((f) => fs.existsSync(path.join(rdir, f, "REPORT.md"))).sort() : [];
-  const folders = withReport.filter((f) => /^[A-Za-z0-9._-]+$/.test(f));
-  for (const f of withReport) {
-    if (!folders.includes(f)) problem("reports", 0, `report folder "${f}" is skipped: use only letters, digits, dot, dash and underscore`);
+  // The report used: the newest reports/YYYY-MM-DD/REPORT.md (zero-padded date, compared as dates). Partial runs
+  // (<date>-bug-<case>, <date>-maintain, <date>-smoke) sit beside it and are not used; with no dated folder, the last by name.
+  const rdir = path.join(root, "reports");
+  let names = [];
+  if (lexists(rdir)) {
+    if (leavesFolder(root, "reports")) problem("reports", 0, LINKED("reports"));
+    else names = fs.readdirSync(rdir).sort();
   }
-  if (folders.length) {
-    const name = `reports/${folders.at(-1)}/REPORT.md`;
+  const withReport = names.filter((f) => lexists(path.join(rdir, f, "REPORT.md")));
+  const folders = [];
+  for (const f of withReport) {
+    const rel = `reports/${f}/REPORT.md`;
+    if (!/^[A-Za-z0-9._-]+$/.test(f)) problem("reports", 0, `report folder "${f}" is skipped: use only letters, digits, dot, dash and underscore`);
+    else if (leavesFolder(root, rel)) problem(rel, 0, LINKED(rel));
+    else if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(f) && !/^\d{4}-\d{2}-\d{2}$/.test(f)) problem("reports", 0, `report folder "${f}" must be named YYYY-MM-DD`);
+    else folders.push(f);
+  }
+  const dated = folders.filter((f) => /^\d{4}-\d{2}-\d{2}$/.test(f));
+  const used = (dated.length ? dated : folders).at(-1);
+  if (used) {
+    const name = `reports/${used}/REPORT.md`;
     m.results.report = name;
-    const rep = read(name);
+    const rep = read(name) ?? [];
     let at = -1;
     for (let i = 0; i < rep.length && at < 0; i++) {
       if (!rep[i].t.trim().startsWith("|")) continue;
@@ -321,6 +375,7 @@ export function readE2e(dir) {
         const [id, res] = splitCells(rep[i].t);
         if (!id) continue;
         const known = !tcs || m.cases.some((c) => c.id === id);
+        if (m.cases.some((c) => c.id === id && c.retired !== null)) continue; // a retired case's row counts for nothing
         if (id in m.results.byCase) { problem(name, rep[i].n, `${id} is defined twice`); continue; }
         if (!known) { problem(name, rep[i].n, `${id} is referenced but not defined`); continue; }
         const r = (res ?? "").replace(/\*\*/g, "").trim().toLowerCase();
@@ -340,11 +395,12 @@ export function readE2e(dir) {
     feature: prd && new Set(m.features.map((f) => f.id)),
     case: tcs && new Set(m.cases.map((c) => c.id)),
   };
-  for (const [file, line, id, kind] of refs) {
+  for (const [file, line, id, kind, owner] of refs) {
+    if (owner && owner.retired !== null) continue; // a retired item may point at what no longer exists
     if (ids[kind] && !ids[kind].has(id)) problem(file, line, `${id} is referenced but not defined`);
   }
   for (const g of m.gaps) {
-    const run = m.cases.filter((c) => c.type !== "setup" && RUNNABLE.includes(c.mode));
+    const run = m.cases.filter((c) => c.retired === null && c.type !== "setup" && RUNNABLE.includes(c.mode));
     const covering = run.filter((c) => c.covers.some((e) => e.ref === g.ref));
     if (g.kind === "deep") {
       if (run.some((c) => c.feature === g.ref && c.tier === "deep")) problem("TESTCASES.md", g.line, `${g.ref} has a Gap line and a deep case`);
@@ -362,7 +418,8 @@ export function readE2e(dir) {
       for (const r of m.requirements) if (r.caps.includes(cap)) problem("PRD.md", g.line, `${cap} is in a Non-goal line and in ${r.id}'s Caps`);
     }
   }
-  for (const [line, ref, cap] of bracketed) {
+  for (const [line, ref, cap, owner] of bracketed) {
+    if (owner.retired !== null) continue;
     const r = m.requirements.find((q) => q.id === ref.replace(/\.f\d+$/, ""));
     if (r && !r.caps.includes(cap) && (!ids.cap || ids.cap.has(cap))) problem("TESTCASES.md", line, `${cap} is not in ${r.id}'s Caps`);
   }

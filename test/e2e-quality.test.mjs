@@ -45,7 +45,7 @@ try {
   // Failures R1.f1, R1.f2 (TC-1b), R2.f1 (no case).
   assert.deepEqual(q.failures, { total: 3, with_case: 2, acknowledged: 0 });
   assert.deepEqual(q.cases, {
-    total: 6, setup: 0, by_mode: { phone: 4, task: 1, manual: 1 }, by_tier: { smoke: 1, core: 2, deep: 1, edge: 2 },
+    total: 6, setup: 0, retired: 0, by_mode: { phone: 4, task: 1, manual: 1 }, by_tier: { smoke: 1, core: 2, deep: 1, edge: 2 },
   });
 
   assert.deepEqual(q.by_feature, [
@@ -111,7 +111,7 @@ try {
   assert.ok(raw.startsWith('{\n  "'), "two-space indented");
   const j = JSON.parse(raw);
   assert.equal(j.generated, "2026-01-03T04:05:06.000Z");
-  assert.deepEqual(j.sources, model.files);
+  assert.deepEqual(j.sources, Object.fromEntries(Object.entries(model.files).map(([n, f]) => [n, f.sha256])), "sources: name relative to the folder, sha256 only");
   assert.deepEqual(j.capabilities, q.capabilities);
   assert.ok(Object.keys(j.sources).includes("TESTCASES.md"));
 
@@ -154,7 +154,7 @@ try {
   const setupOnly = "\n### TC-00 · P1 · Remove leftovers\nFeature: all · Type: setup\nRun mode: phone\n";
   const su = withAdded(setupOnly);
   assert.equal(su.ok, true);
-  assert.deepEqual(su.cases, { total: 7, setup: 1, by_mode: { phone: 5, task: 1, manual: 1 }, by_tier: q.cases.by_tier });
+  assert.deepEqual(su.cases, { total: 7, setup: 1, retired: 0, by_mode: { phone: 5, task: 1, manual: 1 }, by_tier: q.cases.by_tier });
   assert.deepEqual(su.by_cuj.map((j) => j.cases), q.by_cuj.map((j) => j.cases));
   const faked = withAdded("\n### TC-00 · P1 · Remove leftovers\nFeature: all · Type: setup\nCovers: R3 (C5), R2.f1\nTier: core · Depth: kept\nRun mode: phone\n");
   assert.deepEqual([faked.capabilities, faked.requirements, faked.failures, faked.cases.by_tier], [q.capabilities, q.requirements, q.failures, q.cases.by_tier]);
@@ -206,7 +206,7 @@ try {
   assert.match(gmd, /## Acknowledged gaps\n\n- R2\.f1: cannot be staged\n- R3: needs a wipe\n- F2 deep: one screen\n- R4 depth: no second screen/);
   assert.match(gmd, /\| Requirements acknowledged as gaps \| 1 of 4 \|/);
   const omd = qualityMd(q, model);
-  assert.match(omd, /## Left open\n\n- R3 · Deleting a note asks first and removes it from the list\.: no runnable case\n- R4 must be checked at elsewhere; the deepest case checks screen\n- R2\.f1 · /);
+  assert.match(omd, /## Left open\n\nNothing below has a runnable case that settles it, or a Gap line. Write the case or the Gap line.\n\n- R3 · Deleting a note asks first and removes it from the list\.: no runnable case\n- R4 must be checked at elsewhere; the deepest case checks screen\n- R2\.f1 · /);
   assert.doesNotMatch(omd, /## Acknowledged gaps/);
   assert.match(omd, /\| Left open \| 3 \|/);
   // A P0 feature with no deep case is open, and comes first; a deep gap closes it.

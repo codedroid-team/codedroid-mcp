@@ -63,7 +63,7 @@ try {
   assert.deepEqual(m.cases.map((c) => c.mode), ["phone", "phone", "task", "manual", "phone", "phone"]);
   assert.deepEqual(m.cases[1], {
     id: "TC-1b", priority: "P1", title: "Saving with no connection keeps the text", feature: "F1", type: "negative",
-    covers: [{ ref: "R1.f1", caps: ["C4"] }, { ref: "R1.f2", caps: [] }], tier: "core", depth: "screen", mode: "phone", needs: [], line: 14,
+    covers: [{ ref: "R1.f1", caps: ["C4"] }, { ref: "R1.f2", caps: [] }], tier: "core", depth: "screen", mode: "phone", needs: [], retired: null, line: 14,
   });
   assert.equal(m.results.report, "reports/2026-01-02/REPORT.md");
   const r = Object.values(m.results.byCase);
