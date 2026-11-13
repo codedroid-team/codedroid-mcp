@@ -25,7 +25,7 @@ Keep short notes on the phone.
 ### F2 · Search · P1
 - R4 · Typing in search narrows the list to matching titles.
   Caps: C2
-  Proof: screen
+  Proof: elsewhere
   Fails: none in source
 
 ## Non-goals
