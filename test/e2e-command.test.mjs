@@ -57,6 +57,17 @@ assert.ok(!r.stdout.includes("problems:"));
 assert.deepEqual(listing(parent).filter((f) => !f.startsWith("e2e")), parentBefore.filter((f) => !f.startsWith("e2e")), "nothing outside the folder");
 assert.deepEqual(fs.readdirSync(home), [], "HOME untouched: no daemon state");
 
+// Open items (no case, no Gap line) are not problems: exit 0, one line before the path.
+assert.equal(q.open.length, 2);
+assert.equal(lines.at(-2), "2 left open (no case and no Gap line): see QUALITY.html");
+const acked = copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n## Gaps\n- Gap: R3 · needs a wipe\n- Gap: R2.f1 · cannot be staged\n"));
+r = run("report", acked);
+assert.equal(r.status, 0, r.stdout + r.stderr);
+assert.ok(!r.stdout.includes("left open"), r.stdout);
+assert.ok(r.stdout.split("\n")[0].includes("2 acknowledged") || r.stdout.split("\n")[0].includes("1 acknowledged"), r.stdout);
+r = run("report", copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n## Gaps\n- Gap: R3 · needs a wipe\n")));
+assert.equal(r.stdout.split("\n").at(-3), "1 left open (no case and no Gap line): see QUALITY.html");
+
 // Written in stages: a clean INVENTORY.md alone exits 0 and names what comes next; counts take the singular.
 const early = copy((d) => {
   for (const f of ["PRD.md", "CUJs.md", "TESTCASES.md", "reports"]) fs.rmSync(path.join(d, f), { recursive: true });

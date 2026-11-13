@@ -178,6 +178,16 @@ try {
   assert.ok(aq.includes("4 of 5") && aq.includes("1 set aside as non-goals"), "in-scope denominator and the set-aside count");
   assert.ok(!aq.includes("not in any feature"), "C6 is no longer listed as in no feature");
   assert.ok(!render(fixture)["QUALITY.html"].includes("Set aside as non-goals"), "no section when nothing is set aside");
+  // Left open and acknowledged gaps on QUALITY.html.
+  assert.ok(qual.includes("Left open") && qual.includes("R3") && qual.includes("no runnable case"), "open list");
+  assert.ok(!qual.includes("Acknowledged gaps"), "no acknowledged section without gaps");
+  assert.ok(qual.indexOf("Left open") < qual.indexOf("Not covered by a runnable case"));
+  const gapPages = render(copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n## Gaps\n- Gap: R2.f1 · <i>cannot</i> be staged\n- Gap: F2 deep · one screen\n")));
+  const gq2 = gapPages["QUALITY.html"];
+  assert.ok(gq2.includes("Acknowledged gaps") && gq2.includes("&lt;i&gt;cannot&lt;/i&gt; be staged") && gq2.includes("one screen"), "acknowledged section, escaped");
+  assert.ok(gq2.includes('href="PRD.html#R2.f1"'), "gap ref links to the PRD");
+  assert.ok(!gq2.includes("R2.f1</a> · a note deleted"), "an acknowledged failure is not in the open list");
+  assert.ok(!gapPages["TESTCASES.html"].includes("Gap:"), "gap lines are not shown as case text");
   console.log("e2e-html ok");
 } finally {
   for (const d of tmps) fs.rmSync(d, { recursive: true, force: true });

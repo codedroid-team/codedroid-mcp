@@ -41,9 +41,9 @@ try {
   assert.deepEqual(q.set_aside, []);
   // Requirements R1-R4: R3 only has the manual case. Proof: R1 kept (TC-1a kept), R2 screen (TC-1c screen),
   // R4 elsewhere (TC-3a, TC-3b only screen), so at_depth is below with_case.
-  assert.deepEqual(q.requirements, { total: 4, with_case: 3, at_depth: 2 });
+  assert.deepEqual(q.requirements, { total: 4, with_case: 3, at_depth: 2, acknowledged: 0 });
   // Failures R1.f1, R1.f2 (TC-1b), R2.f1 (no case).
-  assert.deepEqual(q.failures, { total: 3, with_case: 2 });
+  assert.deepEqual(q.failures, { total: 3, with_case: 2, acknowledged: 0 });
   assert.deepEqual(q.cases, {
     total: 6, setup: 0, by_mode: { phone: 4, task: 1, manual: 1 }, by_tier: { smoke: 1, core: 2, deep: 1, edge: 2 },
   });
@@ -53,16 +53,18 @@ try {
       id: "F1", name: "Notes", priority: "P0",
       // R1 C4, R2 C1+C3, R3 C5; C5 has only the manual case and is not seen.
       capabilities: { total: 4, in_feature: 4, with_case: 3, exercised: 3, passing: 3, not_seen: 1 },
-      requirements: { total: 3, with_case: 2, at_depth: 2 },
-      failures: { total: 3, with_case: 2 },
+      requirements: { total: 3, with_case: 2, at_depth: 2, acknowledged: 0 },
+      failures: { total: 3, with_case: 2, acknowledged: 0 },
       tiers: { smoke: 0, core: 2, deep: 1, edge: 1 }, // TC-1a deep, TC-1b + TC-1c core, TC-2a edge
+      deep_cases: 1, deep_gap: null,
     },
     {
       id: "F2", name: "Search", priority: "P1",
       capabilities: { total: 1, in_feature: 1, with_case: 1, exercised: 1, passing: 1, not_seen: 0 }, // C2
-      requirements: { total: 1, with_case: 1, at_depth: 0 },
-      failures: { total: 0, with_case: 0 },
+      requirements: { total: 1, with_case: 1, at_depth: 0, acknowledged: 0 },
+      failures: { total: 0, with_case: 0, acknowledged: 0 },
       tiers: { smoke: 1, core: 0, deep: 0, edge: 1 }, // TC-3a smoke, TC-3b edge
+      deep_cases: 0, deep_gap: null,
     },
   ]);
 
@@ -178,6 +180,45 @@ try {
   assert.equal(both.capabilities.set_aside, 1);
   assert.ok(!both.untested.some((u) => u.id === "C5"));
 
+  // a5. Gaps: acknowledged, never covered. Open = neither covered nor acknowledged, most important first.
+  assert.deepEqual(q.open, [
+    { ref: "R3", kind: "requirement", what: "R3 · Deleting a note asks first and removes it from the list.: no runnable case" },
+    { ref: "R2.f1", kind: "failure", what: 'R2.f1 · a note deleted elsewhere shows "Note not found": no runnable case' },
+  ]);
+  assert.deepEqual(q.gaps, []);
+  const gapText = "\n## Gaps\n- Gap: R2.f1 · cannot be staged\n- Gap: R3 · needs a wipe\n- Gap: F2 deep · one screen\n";
+  const gapModel = readE2e(copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), gapText)));
+  const gq = quality(gapModel);
+  assert.equal(gq.ok, true);
+  assert.deepEqual(gq.open, []);
+  assert.deepEqual(gq.requirements, { total: 4, with_case: 3, at_depth: 2, acknowledged: 1 });
+  assert.deepEqual(gq.failures, { total: 3, with_case: 2, acknowledged: 1 });
+  assert.deepEqual(gq.by_feature.map((f) => [f.id, f.deep_cases, f.deep_gap, f.requirements.acknowledged, f.failures.acknowledged]), [["F1", 1, null, 1, 1], ["F2", 0, "one screen", 0, 0]]);
+  assert.deepEqual(gq.gaps, [
+    { ref: "R2.f1", kind: "failure", reason: "cannot be staged" },
+    { ref: "R3", kind: "requirement", reason: "needs a wipe" },
+    { ref: "F2", kind: "deep", reason: "one screen" },
+  ]);
+  const gmd = qualityMd(gq, gapModel);
+  assert.match(gmd, /## Left open\n\nNothing is left open\./);
+  assert.match(gmd, /## Acknowledged gaps\n\n- R2\.f1: cannot be staged\n- R3: needs a wipe\n- F2 deep: one screen/);
+  assert.match(gmd, /\| Requirements acknowledged as gaps \| 1 of 4 \|/);
+  const omd = qualityMd(q, model);
+  assert.match(omd, /## Left open\n\n- R3 · Deleting a note asks first and removes it from the list\.: no runnable case\n- R2\.f1 · /);
+  assert.doesNotMatch(omd, /## Acknowledged gaps/);
+  assert.match(omd, /\| Left open \| 2 \|/);
+  // A P0 feature with no deep case is open, and comes first; a deep gap closes it.
+  const noDeep = quality(readE2e(copy((d) => sub(d, "TESTCASES.md", "Tier: deep · Depth: kept", "Tier: core · Depth: kept"))));
+  assert.deepEqual(noDeep.open[0], { ref: "F1", kind: "deep", what: "F1 · Notes is P0 and has no deep case" });
+  assert.equal(noDeep.open.length, 3);
+  assert.deepEqual(quality(readE2e(copy((d) => { sub(d, "TESTCASES.md", "Tier: deep · Depth: kept", "Tier: core · Depth: kept"); fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n## Gaps\n- Gap: F1 deep · reason\n"); }))).open.map((o) => o.ref), ["R3", "R2.f1"]);
+  // A manual deep case is a deep case; a setup case is not a case at all. A manual case leaves a requirement open.
+  assert.equal(withAdded("\n### TC-1z · P1 · Added\nFeature: F1 · Type: happy\nCovers: R3\nTier: deep · Depth: screen\nRun mode: manual\n").open.length, 2);
+  // A gap that also has a case is a problem and does not count as acknowledged.
+  const both2 = quality(readE2e(copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n## Gaps\n- Gap: R4 · x\n"))));
+  assert.equal(both2.ok, false);
+  assert.equal(both2.requirements.acknowledged, 0);
+
   // b. Manual plus a not-run runnable case on C2: with a case, not exercised, not passing, not untested.
   const mnr = withAdded(block("TC-4a", "F2", "R4 (C2)", "manual"),
     ["reports/2026-01-02/REPORT.md", "| TC-3a | pass |", "| TC-3a | not run |"],
@@ -186,9 +227,9 @@ try {
   assert.deepEqual(mnr.untested.map((u) => u.id), ["C5", "C6"]);
 
   // c. R2.f1 covered only by a manual case: failures with_case stays 2 (R1.f1, R1.f2).
-  assert.deepEqual(withAdded(block("TC-1d", "F1", "R2.f1", "manual")).failures, { total: 3, with_case: 2 });
+  assert.deepEqual(withAdded(block("TC-1d", "F1", "R2.f1", "manual")).failures, { total: 3, with_case: 2, acknowledged: 0 });
   // ...and a runnable case does count it.
-  assert.deepEqual(withAdded(block("TC-1d", "F1", "R2.f1", "phone")).failures, { total: 3, with_case: 3 });
+  assert.deepEqual(withAdded(block("TC-1d", "F1", "R2.f1", "phone")).failures, { total: 3, with_case: 3, acknowledged: 0 });
 
   // d. Any one case suffices. R4 is elsewhere: TC-3a is screen, TC-3b made elsewhere -> at_depth (3 of 4).
   assert.equal(edited(["TESTCASES.md", "Covers: R4\nTier: edge · Depth: screen", "Covers: R4\nTier: edge · Depth: elsewhere"]).requirements.at_depth, 3);

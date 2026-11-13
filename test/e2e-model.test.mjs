@@ -283,6 +283,31 @@ try {
   }
   assert.deepEqual(ng("- Non-goal: · why").problems.map((x) => x.message), ["Non-goal line names no capability"]);
 
+  // Gap lines: a reason for a requirement, a failure line or a feature's missing deep case that has no case.
+  const tcLines = fs.readFileSync(path.join(fixture, "TESTCASES.md"), "utf8").split("\n").length - 1;
+  const gp = (...lines) => readE2e(copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), `\n## Gaps\n${lines.join("\n")}\n`)));
+  const first = tcLines + 3; // the blank line, the heading, then the first Gap line
+  let g = gp("- Gap: R2.f1 · the note cannot be deleted elsewhere", "- Gap: R3 · needs a wipe", "- Gap: F2 deep · search has one screen");
+  assert.deepEqual(g.problems, []);
+  assert.deepEqual(g.gaps, [
+    { ref: "R2.f1", kind: "failure", reason: "the note cannot be deleted elsewhere", line: first },
+    { ref: "R3", kind: "requirement", reason: "needs a wipe", line: first + 1 },
+    { ref: "F2", kind: "deep", reason: "search has one screen", line: first + 2 },
+  ]);
+  assert.equal(g.cases.length, 6, "the Gaps heading ends the last case");
+  assert.deepEqual(readE2e(fixture).gaps, []);
+  const msgs = (...lines) => gp(...lines).problems.map((x) => x.message);
+  assert.deepEqual(msgs("- Gap: R9 · x", "- Gap: R1.f9 · x", "- Gap: F9 deep · x"), ["R9 is referenced but not defined", "R1.f9 is referenced but not defined", "F9 is referenced but not defined"]);
+  assert.deepEqual(msgs("- Gap: R3", "- Gap: R2.f1 ·  "), ["Gap R3 has no reason", "Gap R2.f1 has no reason"]);
+  assert.deepEqual(msgs("- Gap: banana · x", "- Gap: F2 · x"), ['Gap "banana" is not R<n>, R<n>.f<m> or F<n> deep', 'Gap "F2" is not R<n>, R<n>.f<m> or F<n> deep']);
+  // A gap for something a runnable case covers is a problem; a manual case does not cover (R3), a deep case ends F1's gap.
+  assert.deepEqual(msgs("- Gap: R1.f2 · x", "- Gap: R4 · x"), ["R1.f2 has a Gap line and a case", "R4 has a Gap line and a case"]);
+  assert.deepEqual(msgs("- Gap: F1 deep · x"), ["F1 has a Gap line and a deep case"]);
+  assert.deepEqual(gp("- Gap: R1.f2 · x").problems[0], { file: "TESTCASES.md", line: first, message: "R1.f2 has a Gap line and a case" });
+  // A setup case's Covers never counts as a case.
+  g = readE2e(copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n### TC-00 · P1 · Setup\nFeature: all · Type: setup\nCovers: R2.f1\nRun mode: phone\n\n## Gaps\n- Gap: R2.f1 · x\n")));
+  assert.deepEqual(g.problems, []);
+
   assert.throws(() => readE2e(path.join(fixture, "nope")));
   console.log("ok e2e-model");
 } finally {

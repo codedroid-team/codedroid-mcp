@@ -54,15 +54,21 @@ export function quality(model) {
   for (const g of model.nonGoals) for (const id of g.caps) if (caps.has(id) && !reasons.has(id)) reasons.set(id, g.reason);
 
   const coverRefs = new Set(runnable.flatMap((c) => c.covers.map((e) => e.ref)));
+  // A Gap line acknowledges a requirement or failure line no runnable case covers; it never counts as covered.
+  const gapped = new Set(model.gaps.filter((g) => g.kind !== "deep").map((g) => g.ref));
+  const acked = (id) => gapped.has(id) && !coverRefs.has(id);
+  const deepCases = (f) => real.filter((c) => c.feature === f.id && c.tier === "deep").length;
+  const deepGap = (f) => model.gaps.find((g) => g.kind === "deep" && g.ref === f.id)?.reason ?? null;
   const reqCounts = (list) => ({
     total: list.length,
     with_case: list.filter((r) => coverRefs.has(r.id)).length,
+    acknowledged: list.filter((r) => acked(r.id)).length,
     at_depth: list.filter((r) => runnable.some((c) => c.covers.some((e) => e.ref === r.id)
       && DEPTH.indexOf(c.depth) >= DEPTH.indexOf(r.proof))).length,
   });
   const failCounts = (list) => {
     const f = list.flatMap((r) => r.fails);
-    return { total: f.length, with_case: f.filter((x) => coverRefs.has(x.id)).length };
+    return { total: f.length, with_case: f.filter((x) => coverRefs.has(x.id)).length, acknowledged: f.filter((x) => acked(x.id)).length };
   };
   const tally = (list, key, values) => Object.fromEntries(values.map((v) => [v, list.filter((c) => c[key] === v).length]));
 
@@ -90,6 +96,8 @@ export function quality(model) {
         requirements: reqCounts(rs),
         failures: failCounts(rs),
         tiers: tally(real.filter((c) => c.feature === f.id), "tier", ["smoke", "core", "deep", "edge"]),
+        deep_cases: deepCases(f),
+        deep_gap: deepGap(f),
       };
     }),
     by_cuj: model.cujs.map((j) => {
@@ -100,6 +108,16 @@ export function quality(model) {
         capabilities: counts(capsOf(j.proves.map((id) => reqs.get(id)).filter(Boolean))),
       };
     }),
+    open: [
+      ...model.features.filter((f) => f.priority === "P0" && !deepCases(f) && deepGap(f) === null)
+        .map((f) => ({ ref: f.id, kind: "deep", what: `${f.id} · ${f.name} is P0 and has no deep case` })),
+      ...model.requirements.filter((r) => !coverRefs.has(r.id) && !acked(r.id))
+        .map((r) => ({ ref: r.id, kind: "requirement", what: `${r.id} · ${r.text}: no runnable case` })),
+      ...model.requirements.flatMap((r) => r.fails).filter((x) => !coverRefs.has(x.id) && !acked(x.id))
+        .map((x) => ({ ref: x.id, kind: "failure", what: `${x.id} · ${x.text}: no runnable case` })),
+    ],
+    gaps: model.gaps.filter((g) => (g.kind === "deep" ? model.features.some((f) => f.id === g.ref && !deepCases(f)) : (g.kind === "failure" ? failIds.has(g.ref) : reqs.has(g.ref)) && acked(g.ref)))
+      .map((g) => ({ ref: g.ref, kind: g.kind, reason: g.reason })),
     set_aside: model.capabilities.filter((c) => reasons.has(c.id)).map((c) => ({ id: c.id, screen: screenOf(c), control: c.control, reason: reasons.get(c.id) })),
     untested: model.capabilities.filter((c) => !withCase.has(c.id) && !reasons.has(c.id)).map((c) => {
       return {
@@ -136,6 +154,9 @@ export function qualityMd(q, model) {
   out.push(`| Requirements with a case | ${frac(q.requirements.with_case, q.requirements.total)} |`);
   out.push(`| Requirements tested deep enough | ${frac(q.requirements.at_depth, q.requirements.total)} |`);
   out.push(`| Failures with a case | ${frac(q.failures.with_case, q.failures.total)} |`);
+  out.push(`| Requirements acknowledged as gaps | ${q.requirements.acknowledged} of ${q.requirements.total} |`);
+  out.push(`| Failures acknowledged as gaps | ${q.failures.acknowledged} of ${q.failures.total} |`);
+  out.push(`| Left open | ${q.open.length} |`);
   const m = q.cases.by_mode;
   out.push(`| Cases | ${q.cases.total} (${m.phone} phone, ${m.task} task, ${m.manual} manual) |`, "");
 
@@ -152,6 +173,13 @@ export function qualityMd(q, model) {
   for (const j of q.by_cuj) {
     const k = j.capabilities;
     out.push(`| ${j.id} | ${j.title} | ${j.requirements.join(", ")} | ${j.cases.length} | ${pct(k.with_case, k.total)} | ${pct(k.exercised, k.total)} | ${pct(k.passing, k.total)} |`);
+  }
+  out.push("", "## Left open", "");
+  if (!q.open.length) out.push("Nothing is left open.", "");
+  for (const o of q.open) out.push(`- ${o.what}`);
+  if (q.gaps.length) {
+    out.push("", "## Acknowledged gaps", "");
+    for (const g of q.gaps) out.push(`- ${g.kind === "deep" ? `${g.ref} deep` : g.ref}: ${g.reason}`);
   }
   out.push("", "## Not covered by a runnable case", "");
   if (!q.untested.length) out.push("Every capability has a case.");

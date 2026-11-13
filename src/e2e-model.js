@@ -9,6 +9,7 @@ import path from "node:path";
 const PROOF = ["screen", "elsewhere", "kept"];
 const TIERS = ["smoke", "core", "deep", "edge"];
 const MODES = ["phone", "task", "manual"];
+const RUNNABLE = ["phone", "task"];
 const TYPES = ["happy", "negative", "setup"];
 const RESULTS = ["pass", "fail", "not run"];
 const PRIORITIES = ["P0", "P1", "P2"];
@@ -220,6 +221,18 @@ export function readE2e(dir) {
         if (/^### TC-/.test(t)) problem("TESTCASES.md", n, UNREADABLE.case);
         tc = null;
       }
+      else if ((h = t.match(/^- Gap:\s*(.*)$/))) {
+        const cut = h[1].indexOf("·");
+        const ref = (cut < 0 ? h[1] : h[1].slice(0, cut)).trim();
+        const reason = cut < 0 ? "" : h[1].slice(cut + 1).trim();
+        let x;
+        const kind = /^R\d+$/.test(ref) ? "requirement" : /^R\d+\.f\d+$/.test(ref) ? "failure" : (x = ref.match(/^(F\d+)\s+deep$/)) ? "deep" : null;
+        if (!kind) { problem("TESTCASES.md", n, `Gap "${ref}" is not R<n>, R<n>.f<m> or F<n> deep`); continue; }
+        const id = kind === "deep" ? x[1] : ref;
+        m.gaps.push({ ref: id, kind, reason, line: n });
+        if (!reason) problem("TESTCASES.md", n, `Gap ${ref} has no reason`);
+        refs.push(["TESTCASES.md", n, id, kind === "deep" ? "feature" : kind === "failure" ? "fail" : "req"]);
+      }
       else if (tc) {
         if ((h = t.match(/^Feature:\s*(\S+)(?:\s*·\s*Type:\s*(\S+))?/))) {
           tc.feature = h[1];
@@ -313,12 +326,20 @@ export function readE2e(dir) {
   const ids = {
     cap: inv && new Set(m.capabilities.map((c) => c.id)),
     req: prd && new Set(m.requirements.map((r) => r.id)),
+    fail: prd && new Set(m.requirements.flatMap((r) => r.fails.map((f) => f.id))),
     reqOrFail: prd && new Set(m.requirements.flatMap((r) => [r.id, ...r.fails.map((f) => f.id)])),
     feature: prd && new Set(m.features.map((f) => f.id)),
     case: tcs && new Set(m.cases.map((c) => c.id)),
   };
   for (const [file, line, id, kind] of refs) {
     if (ids[kind] && !ids[kind].has(id)) problem(file, line, `${id} is referenced but not defined`);
+  }
+  for (const g of m.gaps) {
+    const real = m.cases.filter((c) => c.type !== "setup");
+    if (g.kind === "deep" ? real.some((c) => c.feature === g.ref && c.tier === "deep")
+      : real.some((c) => RUNNABLE.includes(c.mode) && c.covers.some((e) => e.ref === g.ref))) {
+      problem("TESTCASES.md", g.line, `${g.ref} has a Gap line and a ${g.kind === "deep" ? "deep " : ""}case`);
+    }
   }
   for (const g of m.nonGoals) {
     for (const cap of g.caps) {

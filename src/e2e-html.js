@@ -190,6 +190,13 @@ ${groups.filter(([, cs]) => cs.length).map(([f, cs]) => `<h2${f ? ` id="${esc(f.
     const gaps = q.untested.length
       ? [...rows].map(([sid, us]) => { const s = screens.get(sid); return `<h3><a href="#${esc(sid)}">${esc(sid)}</a> · ${s ? `${esc(s.title)} <span class="muted">${esc(s.source)}</span>` : ""}</h3>${table(["Id", "Control", "Why"], us.map((u) => tr([link(u.id), inline(u.control), esc(u.why)])))}`; }).join("\n")
       : "<p>Every capability has a case.</p>";
+    const rest = (o) => inline(o.what.slice(o.ref.length + 3));
+    const open = `<h2 id="open">Left open</h2>\n${q.open.length
+      ? `<p class="muted">No case and no Gap line. Write a case or a Gap line for each.</p><ul class="plain">${q.open.map((o) => `<li>${link(o.ref)} ${chip(o.kind, "warn")} ${rest(o)}</li>`).join("")}</ul>`
+      : "<p>Nothing is left open.</p>"}`;
+    const acknowledged = q.gaps.length
+      ? `<h2>Acknowledged gaps</h2>\n<ul class="plain">${q.gaps.map((g) => `<li>${link(g.ref)}${g.kind === "deep" ? " deep" : ""} <span class="muted">&mdash;</span> ${esc(g.reason)}</li>`).join("")}</ul>`
+      : "";
     const asideRows = new Map();
     for (const u of q.set_aside) asideRows.set(caps.get(u.id).screen, [...(asideRows.get(caps.get(u.id).screen) ?? []), u]);
     const aside = q.set_aside.length
@@ -213,11 +220,15 @@ ${tile("capabilities are in a feature", c.in_feature, scope)}
 ${tile("requirements have a case", q.requirements.with_case, q.requirements.total)}
 ${tile("requirements tested deep enough", q.requirements.at_depth, q.requirements.total)}
 ${tile("failures have a case", q.failures.with_case, q.failures.total)}
+${tile("requirements and failures acknowledged as gaps", 0, 0, `${q.requirements.acknowledged + q.failures.acknowledged}`)}
+${tile("left open (no case, no Gap line)", 0, 0, `${q.open.length}`)}
 ${tile("capabilities exercised in the last report", c.exercised, scope)}
 ${tile("capabilities passing in the last report", c.passing, scope)}
 ${tile("capabilities not seen on the phone", 0, 0, `${c.not_seen} of ${scope}`)}
 ${tile("cases", 0, 0, `${q.cases.total}`)}
 </div>
+${open}
+${acknowledged}
 <h2>Not covered by a runnable case</h2>
 ${gaps}
 ${aside}

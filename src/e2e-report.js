@@ -43,8 +43,10 @@ export function runE2eReport({ dir, check = false }) {
   }
 
   const c = q.capabilities, r = q.requirements, f = q.failures;
+  const scope = c.set_aside ? `${c.total - c.set_aside} ${c.total - c.set_aside === 1 ? "capability" : "capabilities"} in scope (${c.set_aside} set aside)` : count(c.total, "capability", "capabilities");
+  const ack = (n) => (n ? `, ${n} acknowledged` : "");
   const lines = [
-    `${count(c.total, "capability", "capabilities")}, ${c.with_case} with a case; ${count(r.total, "requirement", "requirements")}, ${r.with_case} with a case, ${r.at_depth} tested deep enough; ${count(f.total, "failure", "failures")}, ${f.with_case} with a case; ${count(q.cases.total, "case", "cases")}.`,
+    `${scope}, ${c.with_case} with a case; ${count(r.total, "requirement", "requirements")}, ${r.with_case} with a case${ack(r.acknowledged)}, ${r.at_depth} tested deep enough; ${count(f.total, "failure", "failures")}, ${f.with_case} with a case${ack(f.acknowledged)}; ${count(q.cases.total, "case", "cases")}.`,
   ];
   if (model.pending.length) lines.push(`Not written yet: ${model.pending.join(", ")}. Next: ${model.pending[0]}.`);
   const ps = q.problems, MAX = 20;
@@ -61,6 +63,7 @@ export function runE2eReport({ dir, check = false }) {
     lines.push(...ps.slice(0, MAX).map((p) => `${p.file}:${p.line}: ${p.message}`));
     if (ps.length > MAX) lines.push(`and ${ps.length - MAX} more: see QUALITY.html`);
   }
+  if (q.open.length) lines.push(`${q.open.length} left open (no case and no Gap line): see QUALITY.html`);
   lines.push(`Open ${path.resolve(dir, "QUALITY.html")}`);
   return { code: q.problems.length ? 1 : 0, lines };
 }
