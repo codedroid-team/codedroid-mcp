@@ -14,6 +14,10 @@ import { VERSION } from "../src/version.js";
 const root = new URL("../", import.meta.url);
 const plugin = new URL("../claude-plugin/", import.meta.url);
 const read = (url) => fs.readFileSync(url, "utf8");
+// Gitignored files the OS leaves in folders; never committed, so never listed.
+const OS_JUNK = new Set([".DS_Store", "Thumbs.db", "desktop.ini"]);
+const files = (dir) =>
+  fs.readdirSync(dir, { recursive: true }).filter((f) => !OS_JUNK.has(path.basename(f)) && !fs.statSync(new URL(f, dir)).isDirectory());
 
 const manifest = JSON.parse(read(new URL(".claude-plugin/plugin.json", plugin)));
 assert.equal(manifest.name, "codedroid");
@@ -35,13 +39,12 @@ assert.ok(!("headers" in server), "no credential travels in headers: the server'
 // The same skills, byte for byte.
 for (const name of SKILLS) {
   const dir = new URL(`skills/${name}/`, root);
-  for (const file of fs.readdirSync(dir, { recursive: true })) {
+  for (const file of files(dir)) {
     const source = new URL(file, dir);
-    if (fs.statSync(source).isDirectory()) continue;
     assert.equal(read(new URL(`skills/${name}/${file}`, plugin)), read(source), `claude-plugin/skills/${name}/${file} differs: run scripts/sync-claude-plugin.mjs`);
   }
 }
-const shipped = fs.readdirSync(new URL("skills/", plugin));
+const shipped = fs.readdirSync(new URL("skills/", plugin)).filter((f) => !OS_JUNK.has(f));
 assert.deepEqual([...shipped].sort(), [...SKILLS].sort(), "claude-plugin/skills/ and SKILLS differ");
 assert.equal(read(new URL("LICENSE", plugin)), read(new URL("LICENSE", root)));
 assert.ok(fs.readFileSync(new URL("assets/icon.png", plugin)).equals(fs.readFileSync(new URL("assets/icon.png", root))));
@@ -50,8 +53,7 @@ assert.ok(fs.readFileSync(new URL("assets/icon.png", plugin)).equals(fs.readFile
 assert.ok(read(new URL("README.md", plugin)).split(/\s+/).length >= 40);
 const allowed = /\.(md|json|yaml|yml|txt|svg|png|jpe?g|gif|webp|woff2?|ttf|otf)$|^LICENSE$/i;
 const refused = new Set(["package.json", "package-lock.json", "pnpm-workspace.yaml", ".npmrc"]);
-for (const file of fs.readdirSync(plugin, { recursive: true })) {
-  if (fs.statSync(new URL(file, plugin)).isDirectory()) continue;
+for (const file of files(plugin)) {
   const base = path.basename(file);
   assert.ok(allowed.test(base), `claude-plugin/${file}: not a file type the directory accepts`);
   assert.ok(!refused.has(base), `claude-plugin/${file}: a dependency install, accepted only from Verified organizations`);

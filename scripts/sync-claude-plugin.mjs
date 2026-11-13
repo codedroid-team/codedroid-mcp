@@ -15,12 +15,17 @@ import { fileURLToPath } from "node:url";
 import { SKILLS } from "../src/skill.js";
 import { VERSION } from "../src/version.js";
 
+// Gitignored files the OS leaves in folders; never committed, so never listed.
+const OS_JUNK = new Set([".DS_Store", "Thumbs.db", "desktop.ini"]);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const plugin = path.join(root, "claude-plugin");
 
 fs.rmSync(path.join(plugin, "skills"), { recursive: true, force: true });
 for (const name of SKILLS) {
-  fs.cpSync(path.join(root, "skills", name), path.join(plugin, "skills", name), { recursive: true });
+  fs.cpSync(path.join(root, "skills", name), path.join(plugin, "skills", name), {
+    recursive: true,
+    filter: (src) => !OS_JUNK.has(path.basename(src)),
+  });
 }
 fs.copyFileSync(path.join(root, "LICENSE"), path.join(plugin, "LICENSE"));
 fs.mkdirSync(path.join(plugin, "assets"), { recursive: true });
