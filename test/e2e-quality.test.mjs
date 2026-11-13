@@ -170,8 +170,8 @@ try {
   assert.deepEqual(as.set_aside, [{ id: "C6", screen: `"Edit note" (NoteEditorFragment)`, control: 'description "Share"', reason: "sharing needs a second phone" }]);
   const asModel = readE2e(copy((d) => fs.appendFileSync(path.join(d, "PRD.md"), "\n- Non-goal: C6 · sharing needs a second phone\n")));
   const asMd = qualityMd(as, asModel);
-  assert.match(asMd, /\| Capabilities in scope \| 5 \(1 set aside as non-goals\) \|/);
-  assert.match(asMd, /\| Capabilities with a case \| 4 of 5 \(80%\) \|/);
+  assert.match(asMd, /\| Controls in scope \| 5 \(1 set aside as non-goals\) \|/);
+  assert.match(asMd, /\| Controls with a case \| 4 of 5 \(80%\) \|/);
   assert.match(asMd, /## Set aside as non-goals\n\n### "Edit note" \(NoteEditorFragment\)\n\n- C6 · description "Share": sharing needs a second phone/);
   assert.doesNotMatch(asMd, /C6.*not in any feature/);
   assert.doesNotMatch(qualityMd(q, model), /set aside|in scope/i, "nothing about set aside when nothing is");
@@ -322,15 +322,15 @@ try {
     { id: "TC-1c", status: "repair", reason: "R2: an app that opens an empty note passes; Expected only checks the screen title." },
     { id: "TC-2a", status: "question", reason: "Is a confirmation dialog on delete required, or is undo enough? Only the user can say." },
     { id: "TC-3a", status: "unresolved", reason: "R4: Expected names no title that must be absent, so an unfiltered list passes." },
-    { id: "TC-3b", status: "unverified", reason: "not judged yet" },
+    { id: "TC-3b", status: "unverified", reason: "Not judged yet" },
   ]);
   // Approved counters: only TC-1a (R1, C4, kept) and TC-1b (R1.f1 (C4), R1.f2) are approved and runnable.
   assert.deepEqual([q.capabilities.approved, q.requirements.approved, q.requirements.at_depth_approved, q.failures.approved], [1, 1, 1, 2]);
   assert.ok(q.capabilities.approved < q.capabilities.with_case && q.requirements.at_depth_approved < q.requirements.at_depth);
-  assert.match(md, /\| Capabilities with an approved case \| 1 of 6 \(17%\) \|\n\| Capabilities with a case \| 4 of 6 \(67%\) \|/);
+  assert.match(md, /\| Controls with an approved case \| 1 of 6 \(17%\) \|\n\| Controls with a case \| 4 of 6 \(67%\) \|/);
   assert.match(md, /\| Requirements with an approved case \| 1 of 4 \(25%\) \|/);
   assert.match(md, /\| Failures with an approved case \| 2 of 3 \(67%\) \|/);
-  assert.match(md, /## Verifier\n\n- TC-1c · repair · R2: an app that opens an empty note passes; Expected only checks the screen title\.\n- TC-2a · question · Is a confirmation dialog[^\n]*\n- TC-3a · unresolved · R4: Expected names[^\n]*\n- TC-3b · unverified · not judged yet\n\nJudged by an independent agent: 4\. By the same agent: 1\.\n\n## Left open/);
+  assert.match(md, /## Verifier\n\n- TC-1c · repair · R2: an app that opens an empty note passes; Expected only checks the screen title\.\n- TC-2a · question · Is a confirmation dialog[^\n]*\n- TC-3a · unresolved · R4: Expected names[^\n]*\n- TC-3b · unverified · Not judged yet\n\nJudged by an independent agent: 4\. By the same agent: 1\.\n\n## Left open/);
   assert.deepEqual([j.verify, j.not_approved], [q.verify, q.not_approved]);
 
   // v2. No VERIFY.md: nothing approved, every judged case unverified, and the page says nobody judged yet.

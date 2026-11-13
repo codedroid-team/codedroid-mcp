@@ -50,7 +50,7 @@ assert.equal(r.status, 0, r.stdout + r.stderr);
 const written = listing(dir).filter((f) => !before.includes(f)).sort();
 assert.deepEqual(written, ["PRD.html", "CUJs.html", "QUALITY.html", "QUALITY.md", "TESTCASES.html", "quality.json", "reports/2026-01-02/REPORT.html"].sort());
 const lines = r.stdout.trimEnd().split("\n");
-assert.ok(lines[0].includes(`${q.capabilities.total} capabilities`), lines[0]);
+assert.ok(lines[0].includes(`${q.capabilities.total} controls`), lines[0]);
 assert.ok(lines[0].includes(`${q.cases.total} cases`), lines[0]);
 assert.equal(lines.at(-1), `Open ${path.resolve(dir, "QUALITY.html")}`);
 assert.ok(!r.stdout.includes("problems:"));
@@ -58,7 +58,7 @@ assert.deepEqual(listing(parent).filter((f) => !f.startsWith("e2e")), parentBefo
 assert.deepEqual(fs.readdirSync(home), [], "HOME untouched: no daemon state");
 
 // Verifier line: after the headline, before the left-open line; the exit code does not change.
-assert.equal(lines[1], `4 of 6 cases not approved by the verifier: see ${dir}/QUALITY.md`);
+assert.equal(lines[1], `4 of 6 cases not approved by the verifier (1 not judged yet): see ${dir}/QUALITY.md`);
 assert.ok(lines.indexOf(`3 left open: see ${dir}/QUALITY.md`) > 1);
 const allApproved = copy((d) => {
   const v = fs.readFileSync(path.join(d, "VERIFY.md"), "utf8").split("\n").filter((l) => !/^\| TC-(1c|2a|3a)/.test(l)).join("\n");
@@ -68,6 +68,9 @@ const allApproved = copy((d) => {
 r = run("report", allApproved);
 assert.equal(r.status, 0, r.stdout + r.stderr);
 assert.ok(!r.stdout.includes("not approved") && !r.stdout.includes("not been judged"), r.stdout);
+const onlyJudged = copy((d) => fs.appendFileSync(path.join(d, "VERIFY.md"), `| TC-3b | 1 | repair | same | ${readE2e(d).cases.find((c) => c.id === "TC-3b").verify.hash} | 2026-11-14 | R4: weak. |\n`));
+r = run("report", onlyJudged);
+assert.equal(r.stdout.split("\n")[1], `4 of 6 cases not approved by the verifier: see ${onlyJudged}/QUALITY.md`, "no bracket when none is unjudged");
 const noVerdicts = copy((d) => fs.rmSync(path.join(d, "VERIFY.md")));
 r = run("report", noVerdicts);
 assert.equal(r.status, 0, r.stdout + r.stderr);
@@ -81,10 +84,10 @@ const acked = copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n## 
 r = run("report", acked);
 assert.equal(r.status, 0, r.stdout + r.stderr);
 assert.ok(!r.stdout.includes("left open"), r.stdout);
-assert.equal(r.stdout.split("\n")[0], "6 capabilities, 4 with a case, 1 approved; 4 requirements, 3 with a case, 1 acknowledged, 2 tested deep enough; 3 failures, 2 with a case, 1 acknowledged; 6 cases.");
+assert.equal(r.stdout.split("\n")[0], "6 controls, 4 with a case, 1 approved; 4 requirements, 3 with a case, 1 acknowledged, 2 tested deep enough; 3 failures, 2 with a case, 1 acknowledged; 6 cases.");
 // Set-aside capabilities: the headline names the scope exactly.
 r = run("report", copy((d) => fs.appendFileSync(path.join(d, "PRD.md"), "\n- Non-goal: C6 · sharing needs a second phone\n")));
-assert.equal(r.stdout.split("\n")[0], "5 capabilities in scope (1 set aside), 4 with a case, 1 approved; 4 requirements, 3 with a case, 2 tested deep enough; 3 failures, 2 with a case; 6 cases.");
+assert.equal(r.stdout.split("\n")[0], "5 controls in scope (1 set aside), 4 with a case, 1 approved; 4 requirements, 3 with a case, 2 tested deep enough; 3 failures, 2 with a case; 6 cases.");
 const oneOpen = copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n## Gaps\n- Gap: R3 · needs a wipe\n- Gap: R4 depth · one screen\n"));
 r = run("report", oneOpen);
 assert.equal(r.stdout.split("\n").at(-3), `1 left open: see ${oneOpen}/QUALITY.md`);
@@ -100,7 +103,7 @@ const early = copy((d) => {
 r = run("report", early);
 assert.equal(r.status, 0, r.stdout + r.stderr);
 assert.deepEqual(r.stdout.split("\n").slice(0, 2), [
-  "1 capability, 0 with a case, 0 approved; 0 requirements, 0 with a case, 0 tested deep enough; 0 failures, 0 with a case; 0 cases.",
+  "1 control, 0 with a case, 0 approved; 0 requirements, 0 with a case, 0 tested deep enough; 0 failures, 0 with a case; 0 cases.",
   "Not written yet: PRD.md, CUJs.md, TESTCASES.md. Next: PRD.md.",
 ]);
 const one = copy((d) => {

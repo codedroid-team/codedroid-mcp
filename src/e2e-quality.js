@@ -92,7 +92,7 @@ export function quality(model) {
   const judged = real;
   const status = (c) => c.verify.status;
   const approvedRow = (c) => c.verify.history.filter((h) => h.verdict !== "reopen").at(-1);
-  const FIXED = { unverified: "not judged yet", stale: "changed since it was judged" };
+  const FIXED = { unverified: "Not judged yet", stale: "changed since it was judged" };
   const verify = {
     judged: judged.length,
     approved: judged.filter((c) => status(c) === "approved").length,
@@ -188,13 +188,13 @@ export function qualityMd(q, model) {
   if (!q.ok) out.push("The counts below may be wrong until the problems above are fixed.", "");
   const scope = c.total - c.set_aside;
   out.push("| What | Count |", "| --- | --- |");
-  if (c.set_aside) out.push(`| Capabilities in scope | ${scope} (${c.set_aside} set aside as non-goals) |`);
-  out.push(`| Capabilities in features | ${frac(c.in_feature, scope)} |`);
-  out.push(`| Capabilities with an approved case | ${frac(c.approved, scope)} |`);
-  out.push(`| Capabilities with a case | ${frac(c.with_case, scope)} |`);
-  out.push(`| Capabilities exercised in the last report | ${frac(c.exercised, scope)} |`);
-  out.push(`| Capabilities passing in the last report | ${frac(c.passing, scope)} |`);
-  out.push(`| Capabilities not seen on the phone | ${c.not_seen} of ${scope} |`);
+  if (c.set_aside) out.push(`| Controls in scope | ${scope} (${c.set_aside} set aside as non-goals) |`);
+  out.push(`| Controls in features | ${frac(c.in_feature, scope)} |`);
+  out.push(`| Controls with an approved case | ${frac(c.approved, scope)} |`);
+  out.push(`| Controls with a case | ${frac(c.with_case, scope)} |`);
+  out.push(`| Controls exercised in the last report | ${frac(c.exercised, scope)} |`);
+  out.push(`| Controls passing in the last report | ${frac(c.passing, scope)} |`);
+  out.push(`| Controls not seen on the phone | ${c.not_seen} of ${scope} |`);
   out.push(`| Requirements with an approved case | ${frac(q.requirements.approved, q.requirements.total)} |`);
   out.push(`| Requirements with a case | ${frac(q.requirements.with_case, q.requirements.total)} |`);
   out.push(`| Requirements tested deep enough by approved cases | ${frac(q.requirements.at_depth_approved, q.requirements.total)} |`);
@@ -210,14 +210,14 @@ export function qualityMd(q, model) {
   out.push("");
 
   out.push("## By feature", "");
-  out.push("| Feature | Priority | Capabilities with a case | Exercised | Passing | Requirements with a case | Deep enough | Failures with a case | Cases (smoke/core/deep/edge) |");
+  out.push("| Feature | Priority | Controls with a case | Exercised | Passing | Requirements with a case | Deep enough | Failures with a case | Cases (smoke/core/deep/edge) |");
   out.push("| --- | --- | --- | --- | --- | --- | --- | --- | --- |");
   for (const f of q.by_feature) {
     const k = f.capabilities, r = f.requirements, t = f.tiers;
     out.push(`| ${f.id} · ${f.name} | ${f.priority} | ${pct(k.with_case, k.total)} | ${pct(k.exercised, k.total)} | ${pct(k.passing, k.total)} | ${pct(r.with_case, r.total)} | ${pct(r.at_depth, r.total)} | ${pct(f.failures.with_case, f.failures.total)} | ${t.smoke}/${t.core}/${t.deep}/${t.edge} |`);
   }
   out.push("", "## By journey", "");
-  out.push("| CUJ | Title | Requirements | Cases | Capabilities with a case | Exercised | Passing |");
+  out.push("| CUJ | Title | Requirements | Cases | Controls with a case | Exercised | Passing |");
   out.push("| --- | --- | --- | --- | --- | --- | --- |");
   for (const j of q.by_cuj) {
     const k = j.capabilities;
@@ -237,7 +237,7 @@ export function qualityMd(q, model) {
     for (const g of q.gaps) out.push(`- ${g.kind === "deep" || g.kind === "depth" ? `${g.ref} ${g.kind}` : g.ref}: ${g.reason}`);
   }
   out.push("", "## Not covered by a runnable case", "");
-  if (!q.untested.length) out.push("Every capability has a case.");
+  if (!q.untested.length) out.push("Every control has a case.");
   const byScreen = (list) => {
     const g = new Map();
     for (const u of list) g.set(u.screen, [...(g.get(u.screen) ?? []), u]);

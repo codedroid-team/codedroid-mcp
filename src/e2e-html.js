@@ -230,7 +230,7 @@ ${gone.length ? `<h2>Retired</h2>\n${gone.map(retiredCard).join("\n")}` : ""}`;
     const scope = c.total - c.set_aside;
     const tile = (label, n, d, text, sub) => `<div class="tile"><b>${text ?? `${n} of ${d}`}</b><small>${esc(label)}${text ? "" : ` (${pct(n, d)})`}</small>${text ? "" : bar(n, d)}${sub ? `<small class="sub">${esc(sub)}</small>` : ""}</div>`;
     // An approved tile leads; the number with any case (approved or not) is its secondary text.
-    const atile = (label, a, w, d) => tile(label, a, d, undefined, `${w} of ${d} have a case`);
+    const atile = (label, a, w, d, what = "have a case") => tile(label, a, d, undefined, `${w} of ${d} ${what}`);
     const v = q.verify;
     const status = (k) => v[k] ? `<li>${chip(k, TONE[k] ?? "")} ${v[k]}</li>` : "";
     const verifier = `<h2 id="verifier">Verifier</h2>
@@ -245,7 +245,7 @@ ${q.not_approved.length ? `<ul class="plain">${q.not_approved.map((n) => `<li>${
     for (const u of q.untested) rows.set(caps.get(u.id).screen, [...(rows.get(caps.get(u.id).screen) ?? []), u]);
     const gaps = q.untested.length
       ? [...rows].map(([sid, us]) => { const s = screens.get(sid); return `<h3><a href="#${esc(sid)}">${esc(sid)}</a> · ${s ? `${esc(s.title)} <span class="muted">${esc(s.source)}</span>` : ""}</h3>${table(["Id", "Control", "Why"], us.map((u) => tr([link(u.id), inline(u.control), esc(u.why)])))}`; }).join("\n")
-      : "<p>Every capability has a case.</p>";
+      : "<p>Every control has a case.</p>";
     const rest = (o) => inline(o.what.slice(o.what.startsWith(`${o.ref} · `) ? o.ref.length + 3 : o.ref.length));
     const open = `<h2 id="open">Left open</h2>\n${q.open.length
       ? `<p class="muted">Nothing below has a runnable case that settles it, or a Gap line. Write the case or the Gap line.</p><ul class="plain">${q.open.map((o) => `<li>${link(o.ref)} ${chip(o.kind, "warn")} ${rest(o)}</li>`).join("")}</ul>`
@@ -269,18 +269,18 @@ ${q.not_approved.length ? `<ul class="plain">${q.not_approved.map((n) => `<li>${
 <p class="lede">These are counts of the documents, not test results. ${v.judged - v.unverified ? `The verifier approved ${v.approved} of ${v.judged} test cases; approval is of a test's design, not a run.` : "No test case has been judged by the verifier yet."} ${q.report ? `Results come from ${esc(q.report)}.` : "There is no report yet, so no results."}</p>
 ${model.pending.length ? `<p class="muted">Not written yet: ${model.pending.join(", ")}.</p>` : ""}
 ${problems}
-${c.set_aside ? `<p class="muted">Percentages count the ${scope} capabilities in scope; ${c.set_aside} set aside as non-goals.</p>` : ""}
+${c.set_aside ? `<p class="muted">Percentages count the ${scope} controls in scope; ${c.set_aside} set aside as non-goals.</p>` : ""}
 <div class="tiles">
 ${atile("controls have an approved case", c.approved, c.with_case, scope)}
 ${atile("requirements have an approved case", q.requirements.approved, q.requirements.with_case, q.requirements.total)}
-${atile("requirements tested deep enough by approved cases", q.requirements.at_depth_approved, q.requirements.at_depth, q.requirements.total)}
+${atile("requirements tested deep enough by approved cases", q.requirements.at_depth_approved, q.requirements.at_depth, q.requirements.total, "tested deep enough by any case")}
 ${atile("failures have an approved case", q.failures.approved, q.failures.with_case, q.failures.total)}
-${tile("capabilities are in a feature", c.in_feature, scope)}
+${tile("controls are in a feature", c.in_feature, scope)}
 ${tile("requirements and failures acknowledged as gaps", 0, 0, `${q.requirements.acknowledged + q.failures.acknowledged}`)}
 ${tile("left open", 0, 0, `${q.open.length}`)}
-${tile("capabilities exercised in the last report", c.exercised, scope)}
-${tile("capabilities passing in the last report", c.passing, scope)}
-${tile("capabilities not seen on the phone", 0, 0, `${c.not_seen} of ${scope}`)}
+${tile("controls exercised in the last report", c.exercised, scope)}
+${tile("controls passing in the last report", c.passing, scope)}
+${tile("controls not seen on the phone", 0, 0, `${c.not_seen} of ${scope}`)}
 ${tile("cases", 0, 0, `${q.cases.total}`)}
 ${q.cases.retired || q.cujs.retired ? tile("retired, not counted", 0, 0, `${q.cases.retired} cases, ${q.cujs.retired} journeys`) : ""}
 </div>
@@ -291,9 +291,10 @@ ${acknowledged}
 ${gaps}
 ${aside}
 <h2>By feature</h2>
-<p class="muted">Each cell reads approved / with a case.</p>
-${table(["Feature", "Controls", "Requirements", "Tested deep enough", "Failures"],
-      q.by_feature.map((f) => { const k = f.capabilities, r = f.requirements, x = f.failures; return tr([`${link(f.id)} · ${esc(f.name)} ${chip(f.priority)}`, `${pct(k.approved, k.total)} / ${pct(k.with_case, k.total)}`, `${pct(r.approved, r.total)} / ${pct(r.with_case, r.total)}`, `${pct(r.at_depth_approved, r.total)} / ${pct(r.at_depth, r.total)}`, `${pct(x.approved, x.total)} / ${pct(x.with_case, x.total)}`]); }))}
+${table(["Feature", "Controls: approved / with a case", "Requirements: approved / with a case"],
+      q.by_feature.map((f) => { const k = f.capabilities, r = f.requirements; return tr([`${link(f.id)} · ${esc(f.name)} ${chip(f.priority)}`, `${pct(k.approved, k.total)} / ${pct(k.with_case, k.total)}`, `${pct(r.approved, r.total)} / ${pct(r.with_case, r.total)}`]); }))}
+${table(["Feature", "Tested deep enough: approved / any case", "Failures: approved / with a case"],
+      q.by_feature.map((f) => { const r = f.requirements, x = f.failures; return tr([`${link(f.id)} · ${esc(f.name)}`, `${pct(r.at_depth_approved, r.total)} / ${pct(r.at_depth, r.total)}`, `${pct(x.approved, x.total)} / ${pct(x.with_case, x.total)}`]); }))}
 ${table(["Feature", "Exercised in report", "Passing in report", "Cases smoke / core / deep / edge"],
       q.by_feature.map((f) => { const k = f.capabilities, t = f.tiers; return tr([`${link(f.id)} · ${esc(f.name)}`, pct(k.exercised, k.total), pct(k.passing, k.total), `${t.smoke}/${t.core}/${t.deep}/${t.edge}`]); }))}
 <h2>By journey</h2>

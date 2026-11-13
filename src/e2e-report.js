@@ -40,7 +40,7 @@ export function runE2eReport({ dir, check = false }) {
   }
 
   const c = q.capabilities, r = q.requirements, f = q.failures;
-  const scope = c.set_aside ? `${c.total - c.set_aside} ${c.total - c.set_aside === 1 ? "capability" : "capabilities"} in scope (${c.set_aside} set aside)` : count(c.total, "capability", "capabilities");
+  const scope = c.set_aside ? `${c.total - c.set_aside} ${c.total - c.set_aside === 1 ? "control" : "controls"} in scope (${c.set_aside} set aside)` : count(c.total, "control", "controls");
   const ack = (n) => (n ? `, ${n} acknowledged` : "");
   const lines = [
     `${scope}, ${c.with_case} with a case, ${c.approved} approved; ${count(r.total, "requirement", "requirements")}, ${r.with_case} with a case${ack(r.acknowledged)}, ${r.at_depth} tested deep enough; ${count(f.total, "failure", "failures")}, ${f.with_case} with a case${ack(f.acknowledged)}; ${count(q.cases.total, "case", "cases")}.`,
@@ -48,7 +48,7 @@ export function runE2eReport({ dir, check = false }) {
   const md = `${dir.replace(/\/+$/, "") || "/"}/QUALITY.md`;
   const v = q.verify;
   if (v.judged && v.unverified === v.judged) lines.push("No case has been judged by the verifier yet.");
-  else if (q.not_approved.length) lines.push(`${q.not_approved.length} of ${v.judged} ${v.judged === 1 ? "case" : "cases"} not approved by the verifier: see ${md}`);
+  else if (q.not_approved.length) lines.push(`${q.not_approved.length} of ${v.judged} ${v.judged === 1 ? "case" : "cases"} not approved by the verifier${v.unverified ? ` (${v.unverified} not judged yet)` : ""}: see ${md}`);
   if (model.pending.length) lines.push(`Not written yet: ${model.pending.join(", ")}. Next: ${model.pending[0]}.`);
   const ps = q.problems, MAX = 20;
   if (ps.length) {

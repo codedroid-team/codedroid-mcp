@@ -236,7 +236,7 @@ try {
   assert.ok(!qual.includes("<small>capabilities have a case") && !qual.includes("<small>failures have a case"), "no separate with-a-case tiles");
   const ver = qual.slice(qual.indexOf('id="verifier"'));
   assert.ok(ver.includes("approved") && ver.includes("independent agent") && ver.includes("same agent"));
-  assert.ok(ver.includes('href="TESTCASES.html#TC-1c"') && ver.includes("Expected only checks the screen title") && ver.includes("not judged yet"));
+  assert.ok(ver.includes('href="TESTCASES.html#TC-1c"') && ver.includes("Expected only checks the screen title") && ver.includes("Not judged yet"));
   assert.ok(qual.includes("not a run"), "approval is of a design, not a run");
   assert.ok(qual.includes("approved / with a case") && /<td>\d+% \/ \d+%<\/td>/.test(qual), "by-feature table carries approved beside with-a-case percentages");
   // Escaping: a reason is shown as plain text, Markdown not formatted.
@@ -261,6 +261,23 @@ try {
   fs.writeFileSync(path.join(vdir, "v.jsonl"), JSON.stringify({ id: "TC-3b", verdict: "approved", by: "independent", reason: "R4: a no-match search that shows the list is rejected." }) + "\n");
   assert.equal(recordVerdicts({ dir: vdir, file: path.join(vdir, "v.jsonl"), now: new Date(2026, 10, 20) }).code, 0);
   assert.deepEqual(stalePages(vdir).sort(), ["CUJs.html", "PRD.html", "QUALITY.html", "TESTCASES.html", "reports/2026-01-02/REPORT.html"]);
+
+  // The visible verdict block (outside the history) shows the LATEST row, never an earlier one.
+  const block = (html, id) => (/<p class="verdict[^"]*">[^]*?<\/p>/.exec(cardOf(html, id)) ?? [""])[0];
+  assert.ok(block(tcs, "TC-3a").includes("Expected names no title that must be absent"), block(tcs, "TC-3a"));
+  assert.ok(!block(tcs, "TC-3a").includes("Steps never type a query") && !block(tcs, "TC-3a").includes("the query is typed now"), "not an earlier attempt's reason");
+  assert.ok(cardOf(tcs, "TC-3a").includes("Steps never type a query"), "earlier reasons stay in the history");
+  // Stale on a case with two verdict rows (repair, then approved): "Before that" names the LAST verdict and reason.
+  const stb = render(copy((d) => sub(d, "TESTCASES.md", "Saving with no connection keeps the text", "Saving with no connection keeps the text safe")));
+  const sb = block(stb["TESTCASES.html"], "TC-1b");
+  assert.ok(sb.includes("Changed since it was judged") && sb.includes("approved") && sb.includes("the new Expected checks the error and the kept text"), sb);
+  assert.ok(!sb.includes("repair") && !sb.includes("an app that shows no error and discards"), "not the first row: " + sb);
+  // No verdict at all: the opening text says so and claims no approval.
+  const noVerdictQ = render(copy((d) => fs.rmSync(path.join(d, "VERIFY.md"))))["QUALITY.html"];
+  assert.ok(noVerdictQ.includes("No test case has been judged by the verifier yet.") && !noVerdictQ.includes("The verifier approved"), "no-verdict opening");
+  assert.ok(qual.includes("The verifier approved 2 of 6 test cases;"), "opening with verdicts");
+  assert.ok(qual.includes("2 of 4 tested deep enough by any case") && qual.includes("<th>Controls: approved / with a case</th>"), "tile secondary text and table headers");
+  assert.ok(!/capabilit/i.test(qual.replace(/<style>[^]*?<\/style>/, "").replace(/<[^>]*>/g, " ")), "people-facing text says controls");
   console.log("e2e-html ok");
 } finally {
   for (const d of tmps) fs.rmSync(d, { recursive: true, force: true });

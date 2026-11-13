@@ -195,6 +195,11 @@ feature. When there are any, the command prints `N left open: see
 (and in `QUALITY.html`), and so is the full problem list that the line `and M more: see
 <dir>/QUALITY.md` points to. Open items are not problems and do not change the exit code.
 
+After the headline the command prints `N of M cases not approved by the verifier (K not judged yet): see
+<dir>/QUALITY.md` when any judged case is not approved (N counts every case that is not approved, K those the
+verifier has not judged; the bracket is left out when K is 0), or `No case has been judged by the verifier yet.`
+when no case has any verdict. These lines do not change the exit code.
+
 Exit codes: 0 when all is well (`--check`: every page is current), 1 when the documents have
 problems (`--check`: a page is stale), 2 for a usage error, a folder that does not exist, or a file
 it cannot write. It refuses to write through a link that leads outside the folder, and writes nothing
