@@ -144,6 +144,14 @@ try {
   assert.ok(h.includes("<td><code>x | y</code></td><td>z</td>"));
   assert.ok(h.includes("&lt;b&gt;raw&lt;/b&gt;") && h.includes("&gt; quote &lt;i&gt;"));
   assert.ok(md("```\nopen").includes("<pre>"), "unclosed fence still renders");
+  // A source not written yet: its page still renders and says so, and QUALITY.html lists what is pending.
+  const early = render(copy((d) => { for (const f of ["PRD.md", "CUJs.md", "TESTCASES.md", "reports"]) fs.rmSync(path.join(d, f), { recursive: true }); }));
+  assert.ok(early["PRD.html"].includes("PRD.md is not written yet."));
+  assert.ok(early["CUJs.html"].includes("CUJs.md is not written yet."));
+  assert.ok(early["TESTCASES.html"].includes("TESTCASES.md is not written yet."));
+  assert.ok(early["QUALITY.html"].includes("Not written yet: PRD.md, CUJs.md, TESTCASES.md."));
+  for (const p of Object.values(early)) assert.ok(!p.includes('class="banner"'), "no problem banner for a pending document");
+  assert.ok(!render(fixture)["PRD.html"].includes("not written yet"));
   console.log("e2e-html ok");
 } finally {
   for (const d of tmps) fs.rmSync(d, { recursive: true, force: true });

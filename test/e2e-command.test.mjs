@@ -57,6 +57,27 @@ assert.ok(!r.stdout.includes("problems:"));
 assert.deepEqual(listing(parent).filter((f) => !f.startsWith("e2e")), parentBefore.filter((f) => !f.startsWith("e2e")), "nothing outside the folder");
 assert.deepEqual(fs.readdirSync(home), [], "HOME untouched: no daemon state");
 
+// Written in stages: a clean INVENTORY.md alone exits 0 and names what comes next; counts take the singular.
+const early = copy((d) => {
+  for (const f of ["PRD.md", "CUJs.md", "TESTCASES.md", "reports"]) fs.rmSync(path.join(d, f), { recursive: true });
+  fs.writeFileSync(path.join(d, "INVENTORY.md"), '## S1 · ListFragment · "Notes"\n| Id | Control | Does | Source | States | Seen |\n| --- | --- | --- | --- | --- | --- |\n| C1 | text "New" | opens the editor | a.kt:1 | | yes |\n');
+});
+r = run("report", early);
+assert.equal(r.status, 0, r.stdout + r.stderr);
+assert.deepEqual(r.stdout.split("\n").slice(0, 2), [
+  "1 capability, 0 with a case; 0 requirements, 0 with a case, 0 tested deep enough; 0 failures, 0 with a case; 0 cases.",
+  "Not written yet: PRD.md, CUJs.md, TESTCASES.md. Next: PRD.md.",
+]);
+const one = copy((d) => {
+  fs.rmSync(path.join(d, "reports"), { recursive: true });
+  const t = fs.readFileSync(path.join(d, "TESTCASES.md"), "utf8");
+  fs.writeFileSync(path.join(d, "TESTCASES.md"), t.slice(0, t.indexOf("### TC-1b")));
+  subst(d, "PRD.md", "Proof: kept", "Proof: deep");
+});
+r = run("report", one);
+assert.equal(r.status, 1);
+assert.match(r.stdout, /; 1 case\.\n1 problem:\n/);
+
 // --check: current, then stale after an edit, and missing generated files named.
 r = run("report", dir, "--check");
 assert.equal(r.status, 0, r.stdout);

@@ -13,7 +13,9 @@ the app-e2e-run skill's for running one first.
 
 From the report (the user, an issue, a crash log), write down: the build, the start state, the
 steps, what happened and what should have. Ask for what is missing rather than guessing. If there
-is no `e2e/` yet, create it with just `TESTCASES.md`.
+is no `e2e/` yet, create it with the documents the case stands on, for the bug's screens only: an
+`INVENTORY.md`, a `PRD.md` with the requirement the bug breaks, a `CUJs.md` with its journey (as the
+app-e2e-explore, app-e2e-prd and app-e2e-cujs skills write them), then `TESTCASES.md`.
 
 ## 2. Reproduce it by hand
 
@@ -29,11 +31,11 @@ that should hold, not the bug ("Delete a skill from search leaves the list corre
 line `Bug: <link or one line>`. The Expected lines state the correct behavior, so the case fails
 now and passes once fixed. Everything it creates is named `e2e-...` and removed in its cleanup.
 `Covers:`, `Tier:` with `Depth:`, and `Run mode:` as app-e2e-testcases says. `Covers:` names the
-requirement or failure the bug breaks; a failure the PRD lacks gets its `R<n>.f<m>` line there
-first. With no `PRD.md`, leave `Covers:` empty.
+requirement or failure the bug breaks. If none fits, add one to `PRD.md` first (with its Caps,
+Proof and Fails; a failure gets its `R<n>.f<m>` line) and cover that.
 
-Run `npx -y @codedroid/mcp e2e report e2e` and fix every problem it prints as `file:line: message`
-(with only `TESTCASES.md`, the other files are reported missing; that is expected).
+Run `npx -y @codedroid/mcp e2e report e2e`; it must print no problems before you go on (fix each
+`file:line: message` and rerun).
 
 ## 4. Prove it red
 

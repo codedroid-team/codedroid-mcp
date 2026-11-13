@@ -77,6 +77,7 @@ export function renderPages(model, q) {
     return r ? chip(r, r === "pass" ? "pass" : r === "fail" ? "fail" : "warn") : "";
   };
   const notVerified = chip("not verified");
+  const pending = (name) => (model.pending.includes(name) ? `<p class="muted">${name} is not written yet.</p>` : "");
 
   // One page's chrome. `cur` is its file name, `root` the path back to the e2e folder.
   const frame = (cur, root, title, body) => {
@@ -142,7 +143,7 @@ ${rs.map((r) => reqCard(r)).join("\n")}</section>`;
     };
     const loose = model.requirements.filter((r) => !featureOf(r.feature));
     return `<h1>${esc(title)}</h1>
-<p class="lede">${model.features.length} features, ${model.requirements.length} requirements, ${q.failures.total} ways they can fail.</p>
+${pending("PRD.md")}<p class="lede">${model.features.length} features, ${model.requirements.length} requirements, ${q.failures.total} ways they can fail.</p>
 ${html ? `<section class="prose">${html}</section>` : ""}
 ${model.features.map((f) => featureCard(f, model.requirements.filter((r) => r.feature === f.id))).join("\n")}
 ${loose.length ? featureCard(null, loose) : ""}`;
@@ -159,7 +160,7 @@ ${section(model, "CUJs.md", j.line, /^Proves:/)}</article>`;
     };
     const groups = [...model.features.map((f) => [f, model.cujs.filter((j) => j.feature === f.id)]), [null, model.cujs.filter((j) => !featureOf(j.feature))]];
     return `<h1>Critical user journeys</h1>
-<p class="lede">${model.cujs.length} journeys, each tied to the requirements it proves and the cases that run it.</p>
+${pending("CUJs.md")}<p class="lede">${model.cujs.length} journeys, each tied to the requirements it proves and the cases that run it.</p>
 ${groups.filter(([, js]) => js.length).map(([f, js]) => `<h2${f ? ` id="${esc(f.id)}"` : ""}>${f ? `${link(f.id)} · ${esc(f.name)}` : "Other journeys"}</h2>\n${js.map(card).join("\n")}`).join("\n")}`;
   });
 
@@ -173,7 +174,7 @@ ${section(model, "TESTCASES.md", c.line, /^(Feature|Covers|Tier|Run mode):/)}</a
     };
     const groups = [...model.features.map((f) => [f, model.cases.filter((c) => c.feature === f.id)]), [null, model.cases.filter((c) => !featureOf(c.feature))]];
     return `<h1>Test cases</h1>
-<p class="lede">${q.cases.total} cases: ${q.cases.by_mode.phone} phone, ${q.cases.by_mode.task} task, ${q.cases.by_mode.manual} manual.${hasReport ? "" : " No report yet, so no results."}</p>
+${pending("TESTCASES.md")}<p class="lede">${q.cases.total} cases: ${q.cases.by_mode.phone} phone, ${q.cases.by_mode.task} task, ${q.cases.by_mode.manual} manual.${hasReport ? "" : " No report yet, so no results."}</p>
 ${groups.filter(([, cs]) => cs.length).map(([f, cs]) => `<h2${f ? ` id="${esc(f.id)}"` : ""}>${f ? `${link(f.id)} · ${esc(f.name)}` : "Other cases"}</h2>\n${cs.map(card).join("\n")}`).join("\n")}`;
   });
 
@@ -196,6 +197,7 @@ ${groups.filter(([, cs]) => cs.length).map(([f, cs]) => `<h2${f ? ` id="${esc(f.
       }))}</section>`).join("\n");
     return `<h1>Test quality</h1>
 <p class="lede">${chip("not verified")} These are counts of the documents, not test results.</p>
+${model.pending.length ? `<p class="muted">Not written yet: ${model.pending.join(", ")}.</p>` : ""}
 ${problems}
 <div class="tiles">
 ${tile("capabilities have a case", c.with_case, c.total)}

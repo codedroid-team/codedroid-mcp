@@ -43,7 +43,9 @@ try {
     fs.writeFileSync(path.join(dir, file), stitched[kind].join("\n"));
   }
   const m = readE2e(dir);
-  assert.deepEqual(m.problems.map((p) => `${p.file}:${p.line}: ${p.message}`), []);
+  // The only allowed problem: TC-12a's `Needs: TC-10` names the case that makes its skill, which the
+  // single-case example leaves out on purpose.
+  assert.deepEqual(m.problems.map((p) => `${p.file}:${p.line}: ${p.message}`), ["TESTCASES.md:6: TC-10 is referenced but not defined"]);
   // The examples join: the case in the report is the testcases example's, and it covers the PRD's requirement.
   assert.ok(m.cases.length && m.cases.every((c) => c.id in m.results.byCase), "the report example names the case example");
   assert.ok(m.cujs.every((j) => j.proves.length) && m.cases.every((c) => c.covers.length), "Proves and Covers name something");

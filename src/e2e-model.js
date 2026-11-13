@@ -1,5 +1,7 @@
 // Reads an app's e2e/ folder (INVENTORY.md, PRD.md, CUJs.md, TESTCASES.md and the newest report) into one
 // model. Content problems are listed in `problems`, never thrown; only a missing folder throws.
+// The four sources are written in this order; one that is missing while no later one exists is
+// `pending` (not written yet), not a problem.
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -10,6 +12,7 @@ const MODES = ["phone", "task", "manual"];
 const TYPES = ["happy", "negative", "setup"];
 const RESULTS = ["pass", "fail", "not run"];
 const PRIORITIES = ["P0", "P1", "P2"];
+const SOURCES = ["INVENTORY.md", "PRD.md", "CUJs.md", "TESTCASES.md"];
 
 /** The cells of a Markdown table row: split on `|` outside backticks, trimmed, edge pipes make no cell. */
 export function splitCells(row) {
@@ -51,8 +54,9 @@ export function readE2e(dir) {
   if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) throw new Error(`e2e folder not found: ${dir}`);
   const m = {
     dir, screens: [], capabilities: [], features: [], requirements: [], cujs: [], cases: [],
-    results: { report: null, byCase: {} }, problems: [], files: {},
+    results: { report: null, byCase: {} }, problems: [], pending: [], files: {},
   };
+  const exists = SOURCES.map((n) => fs.existsSync(path.join(dir, n)));
   const problem = (file, line, message) => m.problems.push({ file, line, message });
   const seen = new Map(); // id -> true, for duplicate detection (ids share one namespace per file kind)
   const defined = (file, line, id) => {
@@ -62,7 +66,12 @@ export function readE2e(dir) {
   };
   const read = (name) => {
     const p = path.join(dir, name);
-    if (!fs.existsSync(p)) { problem(name, 0, `${name} is missing`); return null; }
+    if (!fs.existsSync(p)) {
+      const i = SOURCES.indexOf(name);
+      if (i >= 0 && !exists.slice(i + 1).some(Boolean)) m.pending.push(name);
+      else problem(name, 0, `${name} is missing`);
+      return null;
+    }
     const buf = fs.readFileSync(p);
     m.files[name] = { path: p, sha256: crypto.createHash("sha256").update(buf).digest("hex") };
     const lines = linesOf(buf.toString("utf8"));
@@ -126,6 +135,7 @@ export function readE2e(dir) {
         if ((k = t.match(/^\s+Caps:\s*(.*)$/))) {
           req.has.caps = true; inFails = false;
           req.caps = list(k[1]);
+          if (!req.caps.length) problem("PRD.md", n, `${req.id} Caps: names nothing`);
           for (const c of req.caps) refs.push(["PRD.md", n, c, "cap"]);
         } else if ((k = t.match(/^\s+Proof:\s*(.*)$/))) {
           req.has.proof = true; inFails = false;
@@ -159,6 +169,7 @@ export function readE2e(dir) {
       else if (cuj && (h = t.match(/^Proves:\s*(.*)$/))) {
         cuj.has = true;
         cuj.proves = list(h[1]);
+        if (!cuj.proves.length) problem("CUJs.md", n, `${cuj.id} Proves: names nothing`);
         for (const r of cuj.proves) refs.push(["CUJs.md", n, r, "req"]);
       }
     }
@@ -173,7 +184,7 @@ export function readE2e(dir) {
       if ((h = t.match(/^### (TC-\d+[a-z]*) · (P\d+) · (.+?)\s*$/))) {
         defined("TESTCASES.md", n, h[1]);
         if (!oneOf(h[2], PRIORITIES)) problem("TESTCASES.md", n, `${h[1]} priority must be ${words(PRIORITIES)}`);
-        tc = { id: h[1], priority: h[2], title: h[3], feature: null, type: null, covers: [], tier: null, depth: null, mode: null, line: n, has: {} };
+        tc = { id: h[1], priority: h[2], title: h[3], feature: null, type: null, covers: [], tier: null, depth: null, mode: null, needs: [], line: n, has: {} };
         m.cases.push(tc);
       } else if (/^#{1,3} /.test(t)) tc = null;
       else if (tc) {
@@ -193,6 +204,7 @@ export function readE2e(dir) {
             if (ch === ")") depth--;
             if (ch === "," && depth <= 0) { entries.push(cur.trim()); cur = ""; } else cur += ch;
           }
+          if (!entries.some(Boolean)) problem("TESTCASES.md", n, `${tc.id} Covers: names nothing`);
           for (const e of entries.filter(Boolean)) {
             const x = e.match(/^(R\d+(?:\.f\d+)?)\s*(?:\(([^)]*)\))?$/);
             if (!x) { problem("TESTCASES.md", n, `Covers entry "${e}" is not a requirement id`); continue; }
@@ -208,6 +220,9 @@ export function readE2e(dir) {
           if (parts.Depth !== undefined) { tc.has.depth = true; tc.depth = parts.Depth; }
           if (!oneOf(tc.tier, TIERS)) problem("TESTCASES.md", n, `Tier must be ${words(TIERS)}`);
           if (tc.has.depth && !oneOf(tc.depth, PROOF)) problem("TESTCASES.md", n, `Depth must be ${words(PROOF)}`);
+        } else if ((h = t.match(/^Needs:\s*(.*)$/))) {
+          tc.needs = h[1].match(/\bTC-[A-Za-z0-9]+/g) ?? [];
+          for (const id of tc.needs) refs.push(["TESTCASES.md", n, id, "case"]);
         } else if ((h = t.match(/^Run mode:\s*(.*)$/))) {
           tc.has.mode = true;
           tc.mode = h[1].trim();

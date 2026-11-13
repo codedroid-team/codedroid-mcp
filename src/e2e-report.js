@@ -8,6 +8,8 @@ import { readE2e } from "./e2e-model.js";
 import { quality, qualityJson, qualityMd } from "./e2e-quality.js";
 import { renderPages, stalePages } from "./e2e-html.js";
 
+const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
 export function runE2eReport({ dir, check = false }) {
   if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) return { code: 2, lines: [`No such folder: ${dir}`] };
   const root = fs.realpathSync(dir);
@@ -42,11 +44,12 @@ export function runE2eReport({ dir, check = false }) {
 
   const c = q.capabilities, r = q.requirements, f = q.failures;
   const lines = [
-    `${c.total} capabilities, ${c.with_case} with a case; ${r.total} requirements, ${r.with_case} with a case, ${r.at_depth} tested deep enough; ${f.total} failures, ${f.with_case} with a case; ${q.cases.total} cases.`,
+    `${count(c.total, "capability", "capabilities")}, ${c.with_case} with a case; ${count(r.total, "requirement", "requirements")}, ${r.with_case} with a case, ${r.at_depth} tested deep enough; ${count(f.total, "failure", "failures")}, ${f.with_case} with a case; ${count(q.cases.total, "case", "cases")}.`,
   ];
+  if (model.pending.length) lines.push(`Not written yet: ${model.pending.join(", ")}. Next: ${model.pending[0]}.`);
   const ps = q.problems, MAX = 20;
   if (ps.length) {
-    lines.push(`${ps.length} problems:`);
+    lines.push(`${count(ps.length, "problem", "problems")}:`);
     if (ps.length > MAX) {
       const kinds = new Map();
       for (const p of ps) {

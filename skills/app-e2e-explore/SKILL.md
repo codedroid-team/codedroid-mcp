@@ -80,8 +80,8 @@ user can act on, including those only some states show (an error, an empty list,
 - Seen: `yes` once the walk shows it, `no: <why>` when it cannot (needs data, an account, a state),
   `?` until then.
 
-Then run `npx -y @codedroid/mcp e2e report e2e` and fix every problem it prints as
-`file:line: message`, except `<file> is missing` for the files later steps write.
+Then run `npx -y @codedroid/mcp e2e report e2e`; it must print no problems before you go on. Fix
+each one it prints as `file:line: message`, and rerun.
 
 ## Rules
 

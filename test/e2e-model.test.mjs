@@ -63,7 +63,7 @@ try {
   assert.deepEqual(m.cases.map((c) => c.mode), ["phone", "phone", "task", "manual", "phone", "phone"]);
   assert.deepEqual(m.cases[1], {
     id: "TC-1b", priority: "P1", title: "Saving with no connection keeps the text", feature: "F1", type: "negative",
-    covers: [{ ref: "R1.f1", caps: ["C4"] }, { ref: "R1.f2", caps: [] }], tier: "core", depth: "screen", mode: "phone", line: 14,
+    covers: [{ ref: "R1.f1", caps: ["C4"] }, { ref: "R1.f2", caps: [] }], tier: "core", depth: "screen", mode: "phone", needs: [], line: 14,
   });
   assert.equal(m.results.report, "reports/2026-01-02/REPORT.md");
   const r = Object.values(m.results.byCase);
@@ -171,6 +171,34 @@ try {
   }));
   assert.equal(unsafe.results.report, "reports/2026-01-02/REPORT.md");
   assert.deepEqual(unsafe.problems, [{ file: "reports", line: 0, message: `report folder "${odd}" is skipped: use only letters, digits, dot, dash and underscore` }]);
+
+  // Documents are written in stages: a missing source is pending, not a problem, until a later one exists.
+  const SRC = ["INVENTORY.md", "PRD.md", "CUJs.md", "TESTCASES.md"];
+  const stage = (keep) => readE2e(copy((d) => {
+    for (const n of [...SRC, "reports"]) if (!keep.includes(n)) fs.rmSync(path.join(d, n), { recursive: true });
+  }));
+  for (const k of [0, 1, 2, 3, 4]) {
+    const st = stage(SRC.slice(0, k));
+    assert.deepEqual(st.problems, [], `stage ${k}`);
+    assert.deepEqual(st.pending, SRC.slice(k), `stage ${k}`);
+  }
+  assert.deepEqual(m.pending, []);
+  const gap = stage(["INVENTORY.md", "PRD.md", "TESTCASES.md"]);
+  assert.deepEqual(gap.problems, [{ file: "CUJs.md", line: 0, message: "CUJs.md is missing" }]);
+  assert.deepEqual(gap.pending, []);
+
+  // A Covers, Proves or Caps line that names nothing is a problem.
+  p = readE2e(copy((d) => sub(d, "TESTCASES.md", "Covers: R4 (C2)", "Covers:"))).problems;
+  assert.deepEqual(p, [{ file: "TESTCASES.md", line: 34, message: "TC-3a Covers: names nothing" }]);
+  p = readE2e(copy((d) => sub(d, "CUJs.md", "Proves: R4", "Proves: "))).problems.map((x) => x.message);
+  assert.deepEqual(p, ["CUJ-3 Proves: names nothing"]);
+  p = readE2e(copy((d) => sub(d, "PRD.md", "  Caps: C2\n", "  Caps:\n"))).problems.map((x) => x.message);
+  assert.deepEqual(p, ["R4 Caps: names nothing", "C2 is not in R4's Caps"]);
+
+  // Needs: names cases, each of which must exist.
+  const needs = readE2e(copy((d) => sub(d, "TESTCASES.md", "Run mode: phone\nStart:", "Run mode: phone\nNeeds: TC-1b (makes e2e-x), TC-9z\nStart:")));
+  assert.deepEqual(needs.cases[0].needs, ["TC-1b", "TC-9z"]);
+  assert.deepEqual(needs.problems, [{ file: "TESTCASES.md", line: 8, message: "TC-9z is referenced but not defined" }]);
 
   assert.throws(() => readE2e(path.join(fixture, "nope")));
   console.log("ok e2e-model");

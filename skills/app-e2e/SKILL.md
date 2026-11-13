@@ -18,9 +18,8 @@ The run is five steps, each its own skill. Run them in order and stop at the two
 Load each step's skill when you reach it; this table is not the step.
 
 After each step's document is written, run `npx -y @codedroid/mcp e2e report e2e` from the repo
-root. Exit 1 means the documents have problems, printed as `file:line: message`: fix every one
-before going on, and rerun until it prints none (`<file> is missing` for a later step's file is
-expected until that step). It writes `QUALITY.md`, `quality.json` and HTML pages into `e2e/`
+root. It must print no problems before you go on: exit 1 means it found some, printed as
+`file:line: message`; fix every one and rerun. It writes `QUALITY.md`, `quality.json` and HTML pages into `e2e/`
 (`PRD.html`, `CUJs.html`, `TESTCASES.html`, `QUALITY.html`, `REPORT.html` beside the newest report).
 The Markdown stays the source: never edit a generated file, and commit them with the Markdown. At
 both gates give the user the page, not the Markdown, and `e2e/QUALITY.html` for what is not

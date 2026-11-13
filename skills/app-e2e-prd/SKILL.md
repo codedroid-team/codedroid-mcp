@@ -77,8 +77,8 @@ Each requirement carries three lines, read from the handlers in the source, not 
 - A feature with no requirement is out of scope: say so under Non-goals.
 - Every capability in `INVENTORY.md` is in some requirement's `Caps:`, or named under Non-goals
   with why. The quality page lists the rest as "not in any feature".
-- Then run `npx -y @codedroid/mcp e2e report e2e` and fix every problem it prints as
-  `file:line: message`, except `CUJs.md is missing` and `TESTCASES.md is missing`.
+- Then run `npx -y @codedroid/mcp e2e report e2e`; it must print no problems before you go on.
+  Fix each one it prints as `file:line: message`, and rerun.
 
 ## For a release
 

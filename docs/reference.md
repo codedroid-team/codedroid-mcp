@@ -151,6 +151,10 @@ writes `QUALITY.md`, `quality.json` and the HTML pages (`PRD.html`, `CUJs.html`,
 copies and deleting nothing. It prints the counts, each problem it found in the documents as
 `file:line: message`, and the path of `QUALITY.html`. It needs no phone, daemon or network.
 
+The four documents are written in that order. One that is missing while no later one exists is not
+written yet, not a problem: the command names it (`Not written yet: PRD.md, CUJs.md, TESTCASES.md.
+Next: PRD.md.`) and its page says so. One missing before a document that exists is a problem.
+
 With `--check` it writes nothing and prints `stale: <file>` for every page that is missing or was
 built from older documents (and for a missing `QUALITY.md` or `quality.json`).
 

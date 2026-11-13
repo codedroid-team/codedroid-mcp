@@ -14,7 +14,7 @@ runs them with CodeDroid's tools.
 ### TC-12a · P0 · Use a skill with a blank: the prompt lands in the composer, not sent
 Feature: F3 · Type: happy
 Covers: R8 (C17, C18), R8.f1 (C18)
-Tier: deep · Depth: elsewhere
+Tier: core · Depth: elsewhere
 Run mode: phone
 Needs: TC-10 (makes e2e-timer)
 Start: Chat, a new empty session.
@@ -32,15 +32,19 @@ Cleanup: clear the composer.
   own agent run something, or `manual` (the PRD's scale).
 - `Covers:` the requirement and failure ids it checks, each with the capabilities it taps in
   brackets, taken from that requirement's `Caps:`.
-- `Tier:` how deep the case checks. `smoke`: the screen opens. `core`: the main action works on
-  its screen. `deep`: its effect is checked beyond the screen or after reopening the app, with
-  real data sizes (a long list, a long text). `edge`: failure, recovery, interruption, limits.
-- `Depth:` the deepest place its Expected lines look, on the PRD's Proof scale. A requirement whose
+- `Tier:` the kind of scenario. `smoke`: the screen or control is there and opens. `core`: the
+  main action on the plain path. `deep`: an extended scenario of the main action: several items,
+  large or awkward data, a long sequence of steps, or state carried across leaving and reopening
+  the app. `edge`: failure, recovery, interruption (app killed, backgrounded, connection lost
+  midway), limits.
+- `Depth:` the deepest place its Expected lines check, on the PRD's Proof scale. The two are
+  independent: a core case can check `kept`, a deep case only `screen`. A requirement whose
   cases all look shallower than its Proof is not tested deep enough: a `kept` one needs a case
   that reopens the app (`adb` `shell am force-stop <package>` of the app under test, `open_app`)
   and checks again.
 - Every Fails line of a P0 or P1 requirement is in some case's `Covers:`, usually an `edge` case
   (cut the network, cancel, bad input, reach the limit), or has a reason under the file's gaps.
+- Every P0 feature has at least one `deep` case, or a reason under the file's gaps.
 - `Feature:` is the PRD feature of its CUJ. `Type:` is `happy` (the journey works), `negative`
   (the app refuses or protects, and says so) or `setup` (a case that only prepares or cleans up,
   with `Feature: all`).
@@ -89,7 +93,8 @@ Cleanup: clear the composer.
 
 ## Before handing to the user
 
-Run `npx -y @codedroid/mcp e2e report e2e` and fix every problem it prints as `file:line: message`.
+Run `npx -y @codedroid/mcp e2e report e2e`; it must print no problems before you go on (fix each
+`file:line: message` and rerun).
 Give the user `e2e/TESTCASES.html` to review and `e2e/QUALITY.html` for what no runnable case
 covers. List the cases by feature, with priority, type and which run a CodeDroid task; the CUJs left
 without a case and the Gate and Harm lines left without a negative case, and why. Ask for

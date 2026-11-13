@@ -40,8 +40,8 @@ User action: tap own skill → fill "Fill In" → "Use Skill".
 
 ## Handing to the user
 
-Run `npx -y @codedroid/mcp e2e report e2e` and fix every problem it prints as `file:line: message`,
-except `TESTCASES.md is missing`. Give the user `e2e/CUJs.html` to review and `e2e/QUALITY.html`
+Run `npx -y @codedroid/mcp e2e report e2e`; it must print no problems before you go on (fix each
+`file:line: message` and rerun). Give the user `e2e/CUJs.html` to review and `e2e/QUALITY.html`
 for what nothing covers yet, with the counts by feature, priority and run mode, the gaps, and the
 open questions. Ask for approval. Do not write test cases in the same turn.
 
