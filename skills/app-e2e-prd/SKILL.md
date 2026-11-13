@@ -59,7 +59,8 @@ Harm: "Delete skill" on the skill sheet's menu.
 ```
 
 Each requirement carries three lines, read from the handlers in the source, not from the labels:
-- `Caps:` the `INVENTORY.md` capabilities it uses.
+- `Caps:` the `INVENTORY.md` capabilities it uses; `Caps: none` for a requirement with no control
+  in the inventory (install, upgrade, a system-level check). Never leave it empty.
 - `Proof:` how far its effect reaches: `screen` (only this screen changes), `elsewhere` (it shows
   somewhere else: another screen, a notification, a file, the server) or `kept` (stored, and must
   survive reopening the app). Code that writes to storage or the network is never `screen`.

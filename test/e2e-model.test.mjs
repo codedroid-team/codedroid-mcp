@@ -308,6 +308,14 @@ try {
   g = readE2e(copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n### TC-00 · P1 · Setup\nFeature: all · Type: setup\nCovers: R2.f1\nRun mode: phone\n\n## Gaps\n- Gap: R2.f1 · x\n")));
   assert.deepEqual(g.problems, []);
 
+  // Caps: none is a requirement with no control; an empty Caps: and Covers: none / Proves: none stay problems.
+  const cn = readE2e(copy((d) => { sub(d, "PRD.md", "  Caps: C2\n", "  Caps: none\n"); sub(d, "TESTCASES.md", "Covers: R4 (C2)", "Covers: R4"); }));
+  assert.deepEqual(cn.problems, []);
+  assert.deepEqual(cn.requirements[3].caps, []);
+  assert.deepEqual(readE2e(copy((d) => sub(d, "TESTCASES.md", "Covers: R4 (C2)", "Covers: R4 (C2)"))).problems, []);
+  assert.deepEqual(readE2e(copy((d) => sub(d, "TESTCASES.md", "Covers: R4 (C2)", "Covers: none"))).problems.map((x) => x.message), ['Covers entry "none" is not a requirement id']);
+  assert.deepEqual(readE2e(copy((d) => sub(d, "CUJs.md", "Proves: R4", "Proves: none"))).problems.map((x) => x.message), ["none is referenced but not defined"]);
+
   assert.throws(() => readE2e(path.join(fixture, "nope")));
   console.log("ok e2e-model");
 } finally {

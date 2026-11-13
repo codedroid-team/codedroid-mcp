@@ -219,6 +219,19 @@ try {
   assert.equal(both2.ok, false);
   assert.equal(both2.requirements.acknowledged, 0);
 
+  // a6. Failure lines are open only under a P0 or P1 feature; P2 ones still count in failures.
+  const p2 = quality(readE2e(copy((d) => sub(d, "PRD.md", "### F1 · Notes · P0", "### F1 · Notes · P2"))));
+  assert.deepEqual(p2.open.map((o) => o.ref), ["R3"], "R2.f1 is in a P2 feature: not open");
+  assert.deepEqual(p2.failures, { total: 3, with_case: 2, acknowledged: 0 });
+  assert.deepEqual(q.open.map((o) => o.ref), ["R3", "R2.f1"], "a P0 feature's failure is open");
+  assert.ok(quality(readE2e(copy((d) => sub(d, "PRD.md", "### F1 · Notes · P0", "### F1 · Notes · P1")))).open.some((o) => o.ref === "R2.f1"), "P1 too");
+  // a7. Caps: none: no capability, still a requirement.
+  const none = quality(readE2e(copy((d) => { sub(d, "PRD.md", "  Caps: C2\n", "  Caps: none\n"); sub(d, "TESTCASES.md", "Covers: R4 (C2)", "Covers: R4"); })));
+  assert.equal(none.ok, true);
+  assert.equal(none.requirements.total, 4);
+  assert.equal(none.capabilities.in_feature, 4);
+  assert.equal(none.requirements.with_case, 3, "a Caps: none requirement is covered as usual");
+
   // b. Manual plus a not-run runnable case on C2: with a case, not exercised, not passing, not untested.
   const mnr = withAdded(block("TC-4a", "F2", "R4 (C2)", "manual"),
     ["reports/2026-01-02/REPORT.md", "| TC-3a | pass |", "| TC-3a | not run |"],

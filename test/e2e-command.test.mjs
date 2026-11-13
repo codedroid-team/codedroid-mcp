@@ -59,14 +59,18 @@ assert.deepEqual(fs.readdirSync(home), [], "HOME untouched: no daemon state");
 
 // Open items (no case, no Gap line) are not problems: exit 0, one line before the path.
 assert.equal(q.open.length, 2);
-assert.equal(lines.at(-2), "2 left open (no case and no Gap line): see QUALITY.html");
+assert.equal(lines.at(-2), `2 left open (no case and no Gap line): see ${dir}/QUALITY.md`);
 const acked = copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n## Gaps\n- Gap: R3 · needs a wipe\n- Gap: R2.f1 · cannot be staged\n"));
 r = run("report", acked);
 assert.equal(r.status, 0, r.stdout + r.stderr);
 assert.ok(!r.stdout.includes("left open"), r.stdout);
 assert.ok(r.stdout.split("\n")[0].includes("2 acknowledged") || r.stdout.split("\n")[0].includes("1 acknowledged"), r.stdout);
-r = run("report", copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n## Gaps\n- Gap: R3 · needs a wipe\n")));
-assert.equal(r.stdout.split("\n").at(-3), "1 left open (no case and no Gap line): see QUALITY.html");
+const oneOpen = copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n## Gaps\n- Gap: R3 · needs a wipe\n"));
+r = run("report", oneOpen);
+assert.equal(r.stdout.split("\n").at(-3), `1 left open (no case and no Gap line): see ${oneOpen}/QUALITY.md`);
+assert.ok(fs.readFileSync(path.join(oneOpen, "QUALITY.md"), "utf8").includes("## Left open"), "the named file has the list");
+r = run("report", oneOpen + "/");
+assert.ok(r.stdout.includes(`see ${oneOpen}/QUALITY.md`), "no double slash");
 
 // Written in stages: a clean INVENTORY.md alone exits 0 and names what comes next; counts take the singular.
 const early = copy((d) => {
@@ -201,7 +205,7 @@ const out = r.stdout.split("\n");
 assert.equal(out.find((l) => l.endsWith("problems:")), `${total} problems:`);
 assert.ok(out.includes("  25 × <id> has no Covers: line"), r.stdout);
 assert.equal(out.filter((l) => /^\S+:\d+: /.test(l)).length, 20);
-assert.ok(out.includes(`and ${total - 20} more: see QUALITY.html`), r.stdout);
+assert.ok(out.includes(`and ${total - 20} more: see ${many}/QUALITY.md`), r.stdout);
 
 assert.deepEqual(fs.readdirSync(home), [], "HOME still empty");
 fs.rmSync(root, { recursive: true, force: true });

@@ -49,6 +49,7 @@ export function runE2eReport({ dir, check = false }) {
     `${scope}, ${c.with_case} with a case; ${count(r.total, "requirement", "requirements")}, ${r.with_case} with a case${ack(r.acknowledged)}, ${r.at_depth} tested deep enough; ${count(f.total, "failure", "failures")}, ${f.with_case} with a case${ack(f.acknowledged)}; ${count(q.cases.total, "case", "cases")}.`,
   ];
   if (model.pending.length) lines.push(`Not written yet: ${model.pending.join(", ")}. Next: ${model.pending[0]}.`);
+  const md = `${dir.replace(/\/+$/, "") || "/"}/QUALITY.md`;
   const ps = q.problems, MAX = 20;
   if (ps.length) {
     lines.push(`${count(ps.length, "problem", "problems")}:`);
@@ -61,9 +62,9 @@ export function runE2eReport({ dir, check = false }) {
       lines.push(...[...kinds].sort((x, y) => y[1] - x[1]).map(([k, n]) => `  ${n} \u00d7 ${k}`));
     }
     lines.push(...ps.slice(0, MAX).map((p) => `${p.file}:${p.line}: ${p.message}`));
-    if (ps.length > MAX) lines.push(`and ${ps.length - MAX} more: see QUALITY.html`);
+    if (ps.length > MAX) lines.push(`and ${ps.length - MAX} more: see ${md}`);
   }
-  if (q.open.length) lines.push(`${q.open.length} left open (no case and no Gap line): see QUALITY.html`);
+  if (q.open.length) lines.push(`${q.open.length} left open (no case and no Gap line): see ${md}`);
   lines.push(`Open ${path.resolve(dir, "QUALITY.html")}`);
   return { code: q.problems.length ? 1 : 0, lines };
 }

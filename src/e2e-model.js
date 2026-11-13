@@ -161,8 +161,8 @@ export function readE2e(dir) {
         let k;
         if ((k = t.match(/^\s+Caps:\s*(.*)$/))) {
           req.has.caps = true; inFails = false;
-          req.caps = list(k[1]);
-          if (!req.caps.length) problem("PRD.md", n, `${req.id} Caps: names nothing`);
+          req.caps = k[1].trim() === "none" ? [] : list(k[1]); // `Caps: none`: no control in the inventory
+          if (!req.caps.length && k[1].trim() !== "none") problem("PRD.md", n, `${req.id} Caps: names nothing`);
           for (const c of req.caps) refs.push(["PRD.md", n, c, "cap"]);
         } else if ((k = t.match(/^\s+Proof:\s*(.*)$/))) {
           req.has.proof = true; inFails = false;

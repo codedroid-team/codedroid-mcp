@@ -165,7 +165,9 @@ acknowledges something with no case; `<ref>` is a requirement (`R4`), a failure 
 with no deep case (`F1 deep`). A gap is never counted as covered. A case with `Type: setup` needs
 only its `Run mode:` line and is counted apart. Requirements and failure lines with no runnable case
 and no Gap line, and P0 features with no deep case and no Gap line, are listed under "Left open";
-when there are any, the command prints `N left open (no case and no Gap line): see QUALITY.html`.
+when there are any, the command prints `N left open (no case and no Gap line): see <dir>/QUALITY.md` (the Markdown has the full lists; so
+does the overflow line `and M more: see <dir>/QUALITY.md`). A requirement with no control in the
+inventory writes `Caps: none`. Failure lines count as open only under a P0 or P1 feature.
 They are not problems and do not change the exit code.
 
 Exit codes: 0 when all is well (`--check`: every page is current), 1 when the documents have

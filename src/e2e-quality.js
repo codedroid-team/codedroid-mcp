@@ -113,7 +113,8 @@ export function quality(model) {
         .map((f) => ({ ref: f.id, kind: "deep", what: `${f.id} · ${f.name} is P0 and has no deep case` })),
       ...model.requirements.filter((r) => !coverRefs.has(r.id) && !acked(r.id))
         .map((r) => ({ ref: r.id, kind: "requirement", what: `${r.id} · ${r.text}: no runnable case` })),
-      ...model.requirements.flatMap((r) => r.fails).filter((x) => !coverRefs.has(x.id) && !acked(x.id))
+      ...model.requirements.filter((r) => ["P0", "P1"].includes(model.features.find((f) => f.id === r.feature)?.priority))
+        .flatMap((r) => r.fails).filter((x) => !coverRefs.has(x.id) && !acked(x.id))
         .map((x) => ({ ref: x.id, kind: "failure", what: `${x.id} · ${x.text}: no runnable case` })),
     ],
     gaps: model.gaps.filter((g) => (g.kind === "deep" ? model.features.some((f) => f.id === g.ref && !deepCases(f)) : (g.kind === "failure" ? failIds.has(g.ref) : reqs.has(g.ref)) && acked(g.ref)))
