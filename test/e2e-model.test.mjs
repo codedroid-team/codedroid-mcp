@@ -124,6 +124,38 @@ try {
   for (const msg of ["INVENTORY.md is missing", "CUJs.md is missing", "TC-1a has no Covers: line", "TC-1b has no Covers: line", "R1 has no Caps: line"]) assert.ok(om.includes(msg), `${msg} in ${om}`);
   assert.deepEqual(Object.keys(old.files).sort(), ["PRD.md", "TESTCASES.md"]);
 
+  // Result cells are read leniently; anything else is a problem and is not stored.
+  const rep = "reports/2026-01-02/REPORT.md";
+  const withRows = (rows) => readE2e(copy((d) => {
+    const f = path.join(d, rep);
+    fs.appendFileSync(f, rows);
+  }));
+  let lenient = readE2e(copy((d) => {
+    sub(d, rep, "| TC-1a | pass |", "| TC-1a | pass after 2 tries |");
+    sub(d, rep, "| TC-1b | pass |", "| TC-1b | **fail** |");
+    sub(d, rep, "| TC-1c | pass |", "| TC-1c | Not run |");
+    sub(d, rep, "| TC-3a | pass |", "| TC-3a | passed |");
+  }));
+  assert.deepEqual(lenient.problems, []);
+  assert.deepEqual([lenient.results.byCase["TC-1a"], lenient.results.byCase["TC-1b"], lenient.results.byCase["TC-1c"], lenient.results.byCase["TC-3a"]], ["pass", "fail", "not run", "pass"]);
+  lenient = readE2e(copy((d) => {
+    sub(d, rep, "| TC-1a | pass |", "| TC-1a | maybe |");
+    sub(d, rep, "| TC-1b | pass |", "| TC-1b |  |");
+  }));
+  assert.deepEqual(lenient.problems.map((x) => x.message), ["TC-1a Result must be pass, fail or not run", "TC-1b Result must be pass, fail or not run"]);
+  assert.ok(!("TC-1a" in lenient.results.byCase) && !("TC-1b" in lenient.results.byCase));
+
+  // A duplicate report row keeps the first value; an unknown case is reported and not stored.
+  const dup = withRows("| TC-1a | fail | P0 | again | |\n| TC-9z | pass | P0 | nope | |\n");
+  assert.equal(dup.results.byCase["TC-1a"], "pass");
+  assert.ok(!("TC-9z" in dup.results.byCase));
+  assert.deepEqual(dup.problems.map((x) => x.message), ["TC-1a is defined twice", "TC-9z is referenced but not defined"]);
+
+  // An unclosed code fence is a problem and does not hide what follows.
+  const fence = readE2e(copy((d) => sub(d, "TESTCASES.md", "### TC-1c", "```\n### TC-1c")));
+  assert.deepEqual(fence.problems, [{ file: "TESTCASES.md", line: 20, message: "code fence opened here is never closed" }]);
+  assert.equal(fence.cases.length, 6);
+
   assert.throws(() => readE2e(path.join(fixture, "nope")));
   console.log("ok e2e-model");
 } finally {

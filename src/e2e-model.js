@@ -31,14 +31,19 @@ const list = (s) => s.split(",").map((x) => x.trim()).filter(Boolean);
 const oneOf = (v, allowed) => allowed.includes(v);
 const words = (a) => `${a.slice(0, -1).join(", ")} or ${a.at(-1)}`;
 
-/** Non-fenced lines as { n, t } with 1-based numbers. */
+/** Non-fenced lines as { n, t } with 1-based numbers; `open` is the line of a fence never closed. */
 function linesOf(text) {
-  let fenced = false;
+  const all = text.split(/\r?\n/);
+  let fenced = 0;
+  all.forEach((t, i) => { if (/^\s*```/.test(t)) fenced = fenced ? 0 : i + 1; });
   const out = [];
-  text.split(/\r?\n/).forEach((t, i) => {
-    if (/^\s*```/.test(t)) { fenced = !fenced; return; }
-    if (!fenced) out.push({ n: i + 1, t });
+  let inside = false;
+  all.forEach((t, i) => {
+    if (/^\s*```/.test(t) && !(fenced && i + 1 >= fenced)) { inside = !inside; return; }
+    if (fenced && i + 1 === fenced) return; // ponytail: the unclosed fence line itself is dropped
+    if (!inside) out.push({ n: i + 1, t });
   });
+  out.open = fenced;
   return out;
 }
 
@@ -60,7 +65,9 @@ export function readE2e(dir) {
     if (!fs.existsSync(p)) { problem(name, 0, `${name} is missing`); return null; }
     const buf = fs.readFileSync(p);
     m.files[name] = { path: p, sha256: crypto.createHash("sha256").update(buf).digest("hex") };
-    return linesOf(buf.toString("utf8"));
+    const lines = linesOf(buf.toString("utf8"));
+    if (lines.open) problem(name, lines.open, "code fence opened here is never closed");
+    return lines;
   };
   const refs = []; // [file, line, id, kind] checked once every file is parsed
 
@@ -235,10 +242,13 @@ export function readE2e(dir) {
       for (let i = at + 2; i < rep.length && rep[i].t.trim().startsWith("|"); i++) {
         const [id, res] = splitCells(rep[i].t);
         if (!id) continue;
-        if (id in m.results.byCase) problem(name, rep[i].n, `${id} is defined twice`);
-        if (!oneOf(res, RESULTS)) problem(name, rep[i].n, `${id} Result must be ${words(RESULTS)}`);
-        else m.results.byCase[id] = res;
-        refs.push([name, rep[i].n, id, "case"]);
+        const known = !tcs || m.cases.some((c) => c.id === id);
+        if (id in m.results.byCase) { problem(name, rep[i].n, `${id} is defined twice`); continue; }
+        if (!known) { problem(name, rep[i].n, `${id} is referenced but not defined`); continue; }
+        const r = (res ?? "").replace(/\*\*/g, "").trim().toLowerCase();
+        const result = r.startsWith("not run") ? "not run" : r.startsWith("pass") ? "pass" : r.startsWith("fail") ? "fail" : null;
+        if (!result) problem(name, rep[i].n, `${id} Result must be ${words(RESULTS)}`);
+        else m.results.byCase[id] = result;
       }
     }
   }
