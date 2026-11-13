@@ -37,7 +37,8 @@ try {
   // Capabilities: C1-C6. C1-C5 are in a requirement's Caps (C6 in none). Runnable cases cover C4 (TC-1a),
   // C1+C3 (TC-1c), C2 (TC-3a, TC-3b); C5 only by the manual TC-2a. Reports: TC-1a/1b/1c/3a pass, TC-3b fail.
   // not_seen: C5 ("no: ...") and C6 ("?").
-  assert.deepEqual(q.capabilities, { total: 6, in_feature: 5, with_case: 4, exercised: 4, passing: 4, not_seen: 2 });
+  assert.deepEqual(q.capabilities, { total: 6, in_feature: 5, with_case: 4, exercised: 4, passing: 4, not_seen: 2, set_aside: 0 });
+  assert.deepEqual(q.set_aside, []);
   // Requirements R1-R4: R3 only has the manual case. Proof: R1 kept (TC-1a kept), R2 screen (TC-1c screen),
   // R4 elsewhere (TC-3a, TC-3b only screen), so at_depth is below with_case.
   assert.deepEqual(q.requirements, { total: 4, with_case: 3, at_depth: 2 });
@@ -157,11 +158,31 @@ try {
   assert.deepEqual([faked.capabilities, faked.requirements, faked.failures, faked.cases.by_tier], [q.capabilities, q.requirements, q.failures, q.cases.by_tier]);
   assert.deepEqual(faked.untested, q.untested);
 
+  // a4. A Non-goal line sets C6 aside: out of untested, out of the denominators, listed with its reason.
+  const aside = (edit) => quality(readE2e(copy((d) => fs.appendFileSync(path.join(d, "PRD.md"), "\n- Non-goal: C6 · sharing needs a second phone\n"))));
+  const as = aside();
+  assert.equal(as.ok, true);
+  assert.deepEqual(as.capabilities, { total: 6, in_feature: 5, with_case: 4, exercised: 4, passing: 4, not_seen: 1, set_aside: 1 });
+  assert.deepEqual(as.untested.map((u) => u.id), ["C5"]);
+  assert.deepEqual(as.set_aside, [{ id: "C6", screen: `"Edit note" (NoteEditorFragment)`, control: 'description "Share"', reason: "sharing needs a second phone" }]);
+  const asModel = readE2e(copy((d) => fs.appendFileSync(path.join(d, "PRD.md"), "\n- Non-goal: C6 · sharing needs a second phone\n")));
+  const asMd = qualityMd(as, asModel);
+  assert.match(asMd, /\| Capabilities in scope \| 5 \(1 set aside as non-goals\) \|/);
+  assert.match(asMd, /\| Capabilities with a case \| 4 of 5 \(80%\) \|/);
+  assert.match(asMd, /## Set aside as non-goals\n\n### "Edit note" \(NoteEditorFragment\)\n\n- C6 · description "Share": sharing needs a second phone/);
+  assert.doesNotMatch(asMd, /C6.*not in any feature/);
+  assert.doesNotMatch(qualityMd(q, model), /set aside|in scope/i, "nothing about set aside when nothing is");
+  // A capability set aside and also in a requirement is a problem, and still leaves the counts.
+  const both = quality(readE2e(copy((d) => fs.appendFileSync(path.join(d, "PRD.md"), "\n- Non-goal: C5 · never\n"))));
+  assert.equal(both.ok, false);
+  assert.equal(both.capabilities.set_aside, 1);
+  assert.ok(!both.untested.some((u) => u.id === "C5"));
+
   // b. Manual plus a not-run runnable case on C2: with a case, not exercised, not passing, not untested.
   const mnr = withAdded(block("TC-4a", "F2", "R4 (C2)", "manual"),
     ["reports/2026-01-02/REPORT.md", "| TC-3a | pass |", "| TC-3a | not run |"],
     ["reports/2026-01-02/REPORT.md", "| TC-3b | fail |", "| TC-3b | not run |"]);
-  assert.deepEqual(mnr.capabilities, { total: 6, in_feature: 5, with_case: 4, exercised: 3, passing: 3, not_seen: 2 });
+  assert.deepEqual(mnr.capabilities, { total: 6, in_feature: 5, with_case: 4, exercised: 3, passing: 3, not_seen: 2, set_aside: 0 });
   assert.deepEqual(mnr.untested.map((u) => u.id), ["C5", "C6"]);
 
   // c. R2.f1 covered only by a manual case: failures with_case stays 2 (R1.f1, R1.f2).

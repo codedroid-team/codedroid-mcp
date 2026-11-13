@@ -267,6 +267,22 @@ try {
   p = readE2e(copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n### TC-4a · P1 · Plain\nFeature: F1 · Type: happy\nRun mode: phone\n"))).problems.map((x) => x.message);
   assert.deepEqual(p, ["TC-4a has no Covers: line", "TC-4a has no Tier: line (smoke, core, deep or edge)", "TC-4a has no Depth: line (screen, elsewhere or kept)"]);
 
+  // Non-goal lines: capabilities the PRD sets aside, with a reason. Prose bullets under Non-goals are ignored.
+  const ng = (line) => readE2e(copy((d) => fs.appendFileSync(path.join(d, "PRD.md"), `${line}\n`)));
+  const prdLines = fs.readFileSync(path.join(fixture, "PRD.md"), "utf8").split("\n").length - 1;
+  let n = ng("- Non-goal: C6, C2x · sharing needs a second phone".replace("C2x", "C99"));
+  assert.deepEqual(n.nonGoals, [{ caps: ["C6", "C99"], reason: "sharing needs a second phone", line: prdLines + 1 }]);
+  assert.deepEqual(n.problems, [{ file: "PRD.md", line: prdLines + 1, message: "C99 is referenced but not defined" }]);
+  assert.deepEqual(readE2e(fixture).nonGoals, []);
+  n = ng("- Non-goal: C6 · sharing needs a second phone");
+  assert.deepEqual(n.problems, []);
+  p = ng("- Non-goal: C5 · never tested").problems;
+  assert.deepEqual(p, [{ file: "PRD.md", line: prdLines + 1, message: "C5 is in a Non-goal line and in R3's Caps" }]);
+  for (const bad of ["- Non-goal: C6", "- Non-goal: C6 · ", "- Non-goal: C6 ·   "]) {
+    assert.deepEqual(ng(bad).problems.map((x) => x.message), ["Non-goal C6 has no reason"], bad);
+  }
+  assert.deepEqual(ng("- Non-goal: · why").problems.map((x) => x.message), ["Non-goal line names no capability"]);
+
   assert.throws(() => readE2e(path.join(fixture, "nope")));
   console.log("ok e2e-model");
 } finally {

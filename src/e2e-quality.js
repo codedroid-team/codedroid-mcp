@@ -49,6 +49,9 @@ export function quality(model) {
   const manualOnly = new Set(real.filter((c) => c.mode === "manual").flatMap((c) => [...reach(c)]));
   const seenYes = new Set(model.capabilities.filter((c) => c.seen.startsWith("yes")).map((c) => c.id));
   const counts = (ids) => capCounts(ids, inFeature, withCase, exercised, passing, seenYes);
+  // Capabilities a Non-goal line sets aside leave every counter and the untested list.
+  const reasons = new Map();
+  for (const g of model.nonGoals) for (const id of g.caps) if (caps.has(id) && !reasons.has(id)) reasons.set(id, g.reason);
 
   const coverRefs = new Set(runnable.flatMap((c) => c.covers.map((e) => e.ref)));
   const reqCounts = (list) => ({
@@ -65,11 +68,12 @@ export function quality(model) {
 
   const capsOf = (list) => new Set(list.flatMap((r) => r.caps).filter((id) => caps.has(id)));
   const screens = new Map(model.screens.map((s) => [s.id, s]));
+  const screenOf = (c) => { const s = screens.get(c.screen); return s ? `"${s.title}" (${s.source})` : c.screen; };
 
   return {
     ok: model.problems.length === 0,
     problems: model.problems,
-    capabilities: counts(caps.keys()),
+    capabilities: { ...counts([...caps.keys()].filter((id) => !reasons.has(id))), total: caps.size, set_aside: reasons.size },
     requirements: reqCounts(model.requirements),
     failures: failCounts(model.requirements),
     cases: {
@@ -96,10 +100,10 @@ export function quality(model) {
         capabilities: counts(capsOf(j.proves.map((id) => reqs.get(id)).filter(Boolean))),
       };
     }),
-    untested: model.capabilities.filter((c) => !withCase.has(c.id)).map((c) => {
-      const s = screens.get(c.screen);
+    set_aside: model.capabilities.filter((c) => reasons.has(c.id)).map((c) => ({ id: c.id, screen: screenOf(c), control: c.control, reason: reasons.get(c.id) })),
+    untested: model.capabilities.filter((c) => !withCase.has(c.id) && !reasons.has(c.id)).map((c) => {
       return {
-        id: c.id, screen: s ? `"${s.title}" (${s.source})` : c.screen, control: c.control,
+        id: c.id, screen: screenOf(c), control: c.control,
         why: !inFeature.has(c.id) ? "not in any feature" : manualOnly.has(c.id) ? "manual case only" : "no case",
       };
     }),
@@ -121,12 +125,14 @@ export function qualityMd(q, model) {
   const c = q.capabilities;
   out.push("## Headline", "");
   if (!q.ok) out.push("The counts below may be wrong until the problems above are fixed.", "");
+  const scope = c.total - c.set_aside;
   out.push("| What | Count |", "| --- | --- |");
-  out.push(`| Capabilities in features | ${frac(c.in_feature, c.total)} |`);
-  out.push(`| Capabilities with a case | ${frac(c.with_case, c.total)} |`);
-  out.push(`| Capabilities exercised in the last report | ${frac(c.exercised, c.total)} |`);
-  out.push(`| Capabilities passing in the last report | ${frac(c.passing, c.total)} |`);
-  out.push(`| Capabilities not seen on the phone | ${c.not_seen} of ${c.total} |`);
+  if (c.set_aside) out.push(`| Capabilities in scope | ${scope} (${c.set_aside} set aside as non-goals) |`);
+  out.push(`| Capabilities in features | ${frac(c.in_feature, scope)} |`);
+  out.push(`| Capabilities with a case | ${frac(c.with_case, scope)} |`);
+  out.push(`| Capabilities exercised in the last report | ${frac(c.exercised, scope)} |`);
+  out.push(`| Capabilities passing in the last report | ${frac(c.passing, scope)} |`);
+  out.push(`| Capabilities not seen on the phone | ${c.not_seen} of ${scope} |`);
   out.push(`| Requirements with a case | ${frac(q.requirements.with_case, q.requirements.total)} |`);
   out.push(`| Requirements tested deep enough | ${frac(q.requirements.at_depth, q.requirements.total)} |`);
   out.push(`| Failures with a case | ${frac(q.failures.with_case, q.failures.total)} |`);
@@ -149,12 +155,23 @@ export function qualityMd(q, model) {
   }
   out.push("", "## Not covered by a runnable case", "");
   if (!q.untested.length) out.push("Every capability has a case.");
-  const byScreen = new Map();
-  for (const u of q.untested) byScreen.set(u.screen, [...(byScreen.get(u.screen) ?? []), u]);
-  for (const [screen, list] of byScreen) {
+  const byScreen = (list) => {
+    const g = new Map();
+    for (const u of list) g.set(u.screen, [...(g.get(u.screen) ?? []), u]);
+    return g;
+  };
+  for (const [screen, list] of byScreen(q.untested)) {
     out.push(`### ${screen}`, "");
     for (const u of list) out.push(`- ${u.id} · ${u.control}: ${u.why}`);
     out.push("");
+  }
+  if (q.set_aside.length) {
+    out.push("## Set aside as non-goals", "");
+    for (const [screen, list] of byScreen(q.set_aside)) {
+      out.push(`### ${screen}`, "");
+      for (const u of list) out.push(`- ${u.id} · ${u.control}: ${u.reason}`);
+      out.push("");
+    }
   }
   return out.join("\n").replace(/\n+$/, "\n");
 }

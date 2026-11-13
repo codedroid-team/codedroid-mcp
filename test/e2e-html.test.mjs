@@ -171,6 +171,13 @@ try {
   assert.ok(!card.includes("tier:") && !card.includes("depth:") && !card.includes("no type"), card);
   assert.ok(setupPages["TESTCASES.html"].includes("1 setup"), "lede counts setup cases");
   assert.ok(render(fixture)["TESTCASES.html"].includes("tier: deep"), "other cases keep their tier chip");
+  // Set aside: its own section with the reason, the in-scope denominator in the tiles, a chip in the inventory.
+  const asPages = render(copy((d) => fs.appendFileSync(path.join(d, "PRD.md"), "\n- Non-goal: C6 · sharing <b>needs</b> a second phone\n")));
+  const aq = asPages["QUALITY.html"];
+  assert.ok(aq.includes("Set aside as non-goals") && aq.includes("sharing &lt;b&gt;needs&lt;/b&gt; a second phone"), "section with escaped reason");
+  assert.ok(aq.includes("4 of 5") && aq.includes("1 set aside as non-goals"), "in-scope denominator and the set-aside count");
+  assert.ok(!aq.includes("not in any feature"), "C6 is no longer listed as in no feature");
+  assert.ok(!render(fixture)["QUALITY.html"].includes("Set aside as non-goals"), "no section when nothing is set aside");
   console.log("e2e-html ok");
 } finally {
   for (const d of tmps) fs.rmSync(d, { recursive: true, force: true });

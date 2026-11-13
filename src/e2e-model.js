@@ -60,7 +60,7 @@ function linesOf(text) {
 export function readE2e(dir) {
   if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) throw new Error(`e2e folder not found: ${dir}`);
   const m = {
-    dir, screens: [], capabilities: [], features: [], requirements: [], cujs: [], cases: [],
+    dir, screens: [], capabilities: [], features: [], requirements: [], nonGoals: [], gaps: [], cujs: [], cases: [],
     results: { report: null, byCase: {} }, problems: [], pending: [], files: {},
   };
   const exists = SOURCES.map((n) => fs.existsSync(path.join(dir, n)));
@@ -137,6 +137,15 @@ export function readE2e(dir) {
         finish();
         if (/^### F\d/.test(t)) problem("PRD.md", n, UNREADABLE.feature);
         feature = null;
+      } else if ((h = t.match(/^- Non-goal:\s*(.*)$/))) {
+        finish();
+        const cut = h[1].indexOf("·");
+        const caps = list(cut < 0 ? h[1] : h[1].slice(0, cut));
+        const reason = cut < 0 ? "" : h[1].slice(cut + 1).trim();
+        m.nonGoals.push({ caps, reason, line: n });
+        if (!caps.length) problem("PRD.md", n, "Non-goal line names no capability");
+        else if (!reason) problem("PRD.md", n, `Non-goal ${caps.join(", ")} has no reason`);
+        for (const c of caps) refs.push(["PRD.md", n, c, "cap"]);
       } else if (feature && /^- R\d/.test(t) && !/^- (R\d+) · /.test(t)) {
         finish();
         problem("PRD.md", n, UNREADABLE.requirement);
@@ -310,6 +319,11 @@ export function readE2e(dir) {
   };
   for (const [file, line, id, kind] of refs) {
     if (ids[kind] && !ids[kind].has(id)) problem(file, line, `${id} is referenced but not defined`);
+  }
+  for (const g of m.nonGoals) {
+    for (const cap of g.caps) {
+      for (const r of m.requirements) if (r.caps.includes(cap)) problem("PRD.md", g.line, `${cap} is in a Non-goal line and in ${r.id}'s Caps`);
+    }
   }
   for (const [line, ref, cap] of bracketed) {
     const r = m.requirements.find((q) => q.id === ref.replace(/\.f\d+$/, ""));

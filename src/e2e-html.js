@@ -180,6 +180,7 @@ ${groups.filter(([, cs]) => cs.length).map(([f, cs]) => `<h2${f ? ` id="${esc(f.
 
   const qual = page(QUAL, "", "Test quality", (link) => {
     const c = q.capabilities;
+    const scope = c.total - c.set_aside;
     const tile = (label, n, d, text) => `<div class="tile"><b>${text ?? `${n} of ${d}`}</b><small>${esc(label)}${text ? "" : ` (${pct(n, d)})`}</small>${text ? "" : bar(n, d)}</div>`;
     const problems = q.problems.length
       ? `<section class="card problems" id="problems"><h2>${q.problems.length} problem${q.problems.length === 1 ? "" : "s"} in the documents</h2><p class="muted">Fix these first; the counts below may be wrong until they are fixed.</p><ul>${q.problems.map((p) => `<li><code>${esc(p.file)}${p.line ? `:${p.line}` : ""}</code> ${esc(p.message)}</li>`).join("")}</ul></section>`
@@ -189,9 +190,15 @@ ${groups.filter(([, cs]) => cs.length).map(([f, cs]) => `<h2${f ? ` id="${esc(f.
     const gaps = q.untested.length
       ? [...rows].map(([sid, us]) => { const s = screens.get(sid); return `<h3><a href="#${esc(sid)}">${esc(sid)}</a> · ${s ? `${esc(s.title)} <span class="muted">${esc(s.source)}</span>` : ""}</h3>${table(["Id", "Control", "Why"], us.map((u) => tr([link(u.id), inline(u.control), esc(u.why)])))}`; }).join("\n")
       : "<p>Every capability has a case.</p>";
+    const asideRows = new Map();
+    for (const u of q.set_aside) asideRows.set(caps.get(u.id).screen, [...(asideRows.get(caps.get(u.id).screen) ?? []), u]);
+    const aside = q.set_aside.length
+      ? `<h2>Set aside as non-goals</h2>\n${[...asideRows].map(([sid, us]) => { const s = screens.get(sid); return `<h3><a href="#${esc(sid)}">${esc(sid)}</a> · ${s ? `${esc(s.title)} <span class="muted">${esc(s.source)}</span>` : ""}</h3>${table(["Id", "Control", "Reason"], us.map((u) => tr([link(u.id), inline(u.control), esc(u.reason)])))}`; }).join("\n")}`
+      : "";
+    const asideIds = new Set(q.set_aside.map((u) => u.id));
     const inventory = model.screens.map((s) => `<section id="${esc(s.id)}"><h3>${esc(s.id)} · ${esc(s.title)} <span class="muted">${esc(s.source)}</span></h3>${table(["Id", "Control", "Does", "Source", "States", "Seen"],
       model.capabilities.filter((x) => x.screen === s.id).map((x) => {
-        const mark = untested.has(x.id) ? `<br>${chip(untested.get(x.id), "warn")}` : "";
+        const mark = untested.has(x.id) ? `<br>${chip(untested.get(x.id), "warn")}` : asideIds.has(x.id) ? `<br>${chip("set aside")}` : "";
         const idCell = inFeature.has(x.id) ? link(x.id) : esc(x.id);
         return tr([idCell + mark, inline(x.control), inline(x.does), inline(x.source), inline(x.states), inline(x.seen)], inFeature.has(x.id) ? "" : ` id="${esc(x.id)}"`);
       }))}</section>`).join("\n");
@@ -199,19 +206,21 @@ ${groups.filter(([, cs]) => cs.length).map(([f, cs]) => `<h2${f ? ` id="${esc(f.
 <p class="lede">${chip("not verified")} These are counts of the documents, not test results.</p>
 ${model.pending.length ? `<p class="muted">Not written yet: ${model.pending.join(", ")}.</p>` : ""}
 ${problems}
+${c.set_aside ? `<p class="muted">Percentages count the ${scope} capabilities in scope; ${c.set_aside} set aside as non-goals.</p>` : ""}
 <div class="tiles">
-${tile("capabilities have a case", c.with_case, c.total)}
-${tile("capabilities are in a feature", c.in_feature, c.total)}
+${tile("capabilities have a case", c.with_case, scope)}
+${tile("capabilities are in a feature", c.in_feature, scope)}
 ${tile("requirements have a case", q.requirements.with_case, q.requirements.total)}
 ${tile("requirements tested deep enough", q.requirements.at_depth, q.requirements.total)}
 ${tile("failures have a case", q.failures.with_case, q.failures.total)}
-${tile("capabilities exercised in the last report", c.exercised, c.total)}
-${tile("capabilities passing in the last report", c.passing, c.total)}
-${tile("capabilities not seen on the phone", 0, 0, `${c.not_seen} of ${c.total}`)}
+${tile("capabilities exercised in the last report", c.exercised, scope)}
+${tile("capabilities passing in the last report", c.passing, scope)}
+${tile("capabilities not seen on the phone", 0, 0, `${c.not_seen} of ${scope}`)}
 ${tile("cases", 0, 0, `${q.cases.total}`)}
 </div>
 <h2>Not covered by a runnable case</h2>
 ${gaps}
+${aside}
 <h2>By feature</h2>
 ${table(["Feature", "Controls with a case", "Exercised in report", "Passing in report", "Requirements with a case", "Tested deep enough", "Failures with a case", "Cases smoke / core / deep / edge"],
       q.by_feature.map((f) => { const k = f.capabilities, r = f.requirements, t = f.tiers; return tr([`${link(f.id)} · ${esc(f.name)} ${chip(f.priority)}`, pct(k.with_case, k.total), pct(k.exercised, k.total), pct(k.passing, k.total), pct(r.with_case, r.total), pct(r.at_depth, r.total), pct(f.failures.with_case, f.failures.total), `${t.smoke}/${t.core}/${t.deep}/${t.edge}`]); }))}
