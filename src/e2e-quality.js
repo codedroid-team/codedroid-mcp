@@ -228,6 +228,7 @@ export function qualityMd(q, model) {
   for (const n of q.not_approved) out.push(`- ${n.id} · ${n.status} · ${n.reason}`);
   if (q.not_approved.length) out.push("");
   out.push(`Judged by an independent agent: ${v.by.independent}. By the same agent: ${v.by.same}.`);
+  out.push(`Approved on the first attempt: ${v.approved_first}. After a repair: ${v.approved_after_repair}. Not approved: ${v.judged - v.approved}.`);
   out.push("", "## Left open", "");
   if (!q.open.length) out.push("Nothing is left open.", "");
   else out.push("Nothing below has a runnable case that settles it, or a Gap line. Write the case or the Gap line.", "");

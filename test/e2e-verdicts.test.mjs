@@ -24,7 +24,7 @@ const copy = (edit) => {
   return dir;
 };
 const NOW = new Date(2026, 10, 20, 12, 0, 0); // local 2026-11-20
-const v = (id, verdict, reason = "R1: a reason", by = "independent") => ({ id, verdict, by, reason });
+const v = (id, verdict, reason = "R1: a reason", by = verdict === "reopen" ? "user" : "independent") => ({ id, verdict, by, reason });
 const put = (dir, objs) => {
   const f = path.join(path.dirname(dir), `v${n++}.jsonl`);
   fs.writeFileSync(f, objs.map((o) => (typeof o === "string" ? o : JSON.stringify(o))).join("\n") + "\n");
@@ -33,6 +33,7 @@ const put = (dir, objs) => {
 const rec = (dir, objs) => recordVerdicts({ dir, file: put(dir, objs), now: NOW });
 const verifyBytes = (dir) => fs.readFileSync(path.join(dir, "VERIFY.md"));
 const status = (dir, id) => readE2e(dir).cases.find((c) => c.id === id).verify;
+const e2eReport = (dir) => spawnSync(process.execPath, ["src/index.js", "e2e", "report", dir], { encoding: "utf8", timeout: 10000, env: { ...process.env, HOME: home, USERPROFILE: home } });
 
 try {
   // A valid file: rows appended, readE2e reads the statuses.
@@ -114,6 +115,9 @@ try {
   refuse([v("TC-99", "repair")], /:1: TC-99 is not a current, judged case/);
   refuse([v("TC-1c", "maybe")], /:1: verdict must be approved, repair, question or reopen/);
   refuse([v("TC-1c", "repair", "r", "robot")], /:1: by must be independent or same/);
+  refuse([v("TC-1c", "repair", "r", "user")], /:1: by "user" is only for "reopen"; a verdict's by is independent or same/);
+  refuse([v("TC-3a", "reopen", "r", "independent")], /:1: "reopen" must have by "user": only the user allows more attempts/);
+  refuse([v("TC-3a", "reopen", "r", "same")], /:1: "reopen" must have by "user"/);
   refuse([v("TC-1c", "repair", " \n ")], /:1: reason is empty/);
   refuse([v("TC-1c", "repair"), v("TC-1c", "approved")], /:2: TC-1c appears twice/);
   refuse([v("TC-1c", "reopen")], /:1: TC-1c is not unresolved: "reopen" is only for a case that used its three attempts/);
@@ -125,13 +129,34 @@ try {
   assert.deepEqual(recordVerdicts({ dir, file: empty, now: NOW }), { code: 2, lines: [`${empty} holds no verdicts`] });
   assert.equal(recordVerdicts({ dir: path.join(root, "nodir"), file: empty, now: NOW }).lines[0], `No such folder: ${path.join(root, "nodir")}`);
 
-  // Invalid ledger row for the case; document problems; no table header.
-  dir = copy((d) => fs.appendFileSync(path.join(d, "VERIFY.md"), "| TC-1c | x | repair | independent | 0123456789abcdef | 2026-11-14 | r |\n"));
-  let bytes2 = verifyBytes(dir);
-  r = rec(dir, [v("TC-1c", "repair")]);
-  assert.equal(r.code, 2);
-  assert.match(r.lines[0], /:1: TC-1c has an unreadable row in VERIFY.md: fix the file first$/);
-  assert.ok(verifyBytes(dir).equals(bytes2));
+  // An approved case, then an unreadable row for it: invalid and a problem. A new verdict supersedes the row;
+  // the approval never comes back.
+  dir = copy((d) => fs.appendFileSync(path.join(d, "VERIFY.md"), "| TC-1a | x | approved | independent | 0123456789abcdef | 2026-11-14 | r |\n"));
+  const badLine = verifyBytes(dir).toString().trimEnd().split("\n").length;
+  let m2 = readE2e(dir);
+  assert.equal(status(dir, "TC-1a").status, "invalid");
+  assert.deepEqual(m2.problems.map((p) => [p.file, p.line]), [["VERIFY.md", badLine]]);
+  assert.equal(e2eReport(dir).status, 1, "the unreadable row is a problem");
+  r = rec(dir, [v("TC-1a", "repair")]);
+  assert.equal(r.code, 0, r.lines.join("\n"));
+  assert.equal(r.lines[0], "TC-1a: repair (attempt 1 of 3)", "numbered from the readable rows: the approval closed the last cycle");
+  m2 = readE2e(dir);
+  assert.equal(status(dir, "TC-1a").status, "repair");
+  assert.deepEqual(m2.problems, []);
+  assert.deepEqual(m2.verify.superseded, [{ item: "TC-1a", line: badLine }]);
+  assert.equal(e2eReport(dir).status, 0, "a superseded row is not a problem");
+  // An unknown id's unreadable row is still a problem.
+  dir = copy((d) => fs.appendFileSync(path.join(d, "VERIFY.md"), "| TC-0z | x | repair | independent | 0123456789abcdef | 2026-11-14 | r |\n"));
+  assert.equal(readE2e(dir).problems.length, 1);
+  assert.deepEqual(readE2e(dir).verify.superseded, []);
+  // A case whose cycle holds three attempts stays capped while invalid: reopen is the way forward.
+  dir = copy((d) => fs.appendFileSync(path.join(d, "VERIFY.md"), "| TC-3a | x | repair | independent | 0123456789abcdef | 2026-11-14 | r |\n"));
+  assert.equal(status(dir, "TC-3a").status, "invalid");
+  assert.match(rec(dir, [v("TC-3a", "repair")]).lines[0], /TC-3a has had three attempts/);
+  assert.equal(rec(dir, [v("TC-3a", "reopen", "the user allowed more")]).code, 0);
+  assert.equal(status(dir, "TC-3a").status, "invalid", "a reopen row supersedes nothing");
+  assert.equal(rec(dir, [v("TC-3a", "approved")]).lines[0], "TC-3a: approved (attempt 1 of 3)");
+  assert.equal(status(dir, "TC-3a").status, "approved");
   dir = copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n### TC-1c · P1 · duplicate\n"));
   r = rec(dir, [v("TC-3b", "repair")]);
   assert.deepEqual(r, { code: 2, lines: ['the documents have problems: run "e2e report" and fix them first'] });

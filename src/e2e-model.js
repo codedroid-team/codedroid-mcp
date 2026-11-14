@@ -88,7 +88,7 @@ export function readE2e(dir) {
   const root = fs.realpathSync(dir);
   const m = {
     dir, screens: [], capabilities: [], features: [], requirements: [], nonGoals: [], gaps: [], cujs: [], cases: [],
-    results: { report: null, byCase: {} }, problems: [], pending: [], files: {}, verify: { rows: [], orphans: 0 },
+    results: { report: null, byCase: {} }, problems: [], pending: [], files: {}, verify: { rows: [], orphans: 0, superseded: [] },
   };
   const exists = SOURCES.map((n) => lexists(path.join(root, n)));
   const problem = (file, line, message) => m.problems.push({ file, line, message });
@@ -402,19 +402,27 @@ export function readE2e(dir) {
 
   // The verifier's ledger: rows for cases that are judged (not setup, not retired) give each its status; other rows are orphans.
   let rejected = [];
+  let verifyProblems = [];
   if (read("VERIFY.md")) {
     const v = parseVerify(m.files["VERIFY.md"].text);
-    for (const p of v.problems) problem("VERIFY.md", p.line, p.message);
     m.verify.rows = v.rows;
     rejected = v.rejected;
+    verifyProblems = v.problems;
   }
   const judged = new Set(m.cases.filter((c) => c.retired === null && c.type !== "setup").map((c) => c.id));
   m.verify.orphans = m.verify.rows.filter((r) => !judged.has(r.item)).length;
+  // An unreadable row for a judged case is superseded by a later readable verdict for it (a reopen is not a
+  // verdict): no longer a problem, listed in `superseded`. The latest unreadable row after the latest verdict
+  // makes the case invalid, with that row's problem.
+  const lastVerdictLine = (id) => m.verify.rows.filter((r) => r.item === id && r.verdict !== "reopen").at(-1)?.line ?? 0;
+  const superseded = rejected.filter((r) => judged.has(r.item) && r.line < lastVerdictLine(r.item));
+  m.verify.superseded = superseded.map(({ item, line }) => ({ item, line }));
+  for (const p of verifyProblems) if (!superseded.some((r) => r.line === p.line)) problem("VERIFY.md", p.line, p.message);
   for (const c of m.cases) {
     if (!judged.has(c.id)) { c.verify = null; continue; }
     const hash = caseHash(m, c.id);
     c.verify = { ...statusOf(m.verify.rows.filter((r) => r.item === c.id), hash), hash };
-    const bad = rejected.find((r) => r.item === c.id); // a damaged ledger for this case: never approved until the row is fixed
+    const bad = rejected.findLast((r) => r.item === c.id && r.line > lastVerdictLine(c.id)); // damaged after the latest verdict: never approved
     if (bad) Object.assign(c.verify, { status: "invalid", reason: `VERIFY.md line ${bad.line} cannot be read` });
   }
 

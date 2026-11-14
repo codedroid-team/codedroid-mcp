@@ -16,7 +16,7 @@ const pct = (n, d) => (d ? `${Math.round((100 * n) / d)}%` : "–");
 const table = (head, rows) => `<div class="scroll"><table><thead><tr>${head.map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table></div>`;
 const tr = (cells, attr = "") => `<tr${attr}>${cells.map((c) => `<td>${c}</td>`).join("")}</tr>`;
 const TONE = { approved: "pass", repair: "warn", unresolved: "warn", question: "ask", invalid: "fail" };
-const who = (by) => (by === "independent" ? "independent agent" : by === "same" ? "same agent" : "");
+const who = (by) => (by === "independent" ? "independent agent" : by === "same" ? "same agent" : by === "user" ? "the user" : "");
 const MIME = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg" };
 
 // `extra` is more [name, sha256] pairs for a page, such as the screenshots a report page embeds.

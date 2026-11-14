@@ -226,9 +226,10 @@ try {
   assert.ok(cardOf(prd, "R1").includes('<span class="chip pass">approved</span>'));
   assert.ok(cardOf(cujs, "CUJ-1").includes('<span class="chip pass">approved</span>'));
   assert.ok(!/<h3>R1<\/h3>[^]*?<\/div>/.exec(cardOf(prd, "R1"))[0].includes("approved"), "the requirement itself has no verifier chip");
-  // A reopen row reads "reopened".
-  const reopened = render(copy((d) => fs.appendFileSync(path.join(d, "VERIFY.md"), "| TC-3a | 0 | reopen | independent | 38f398cb4a7e8d60 | 2026-11-17 | The user allowed three more tries. |\n")));
+  // A reopen row reads "reopened", by the user.
+  const reopened = render(copy((d) => fs.appendFileSync(path.join(d, "VERIFY.md"), "| TC-3a | 0 | reopen | user | 38f398cb4a7e8d60 | 2026-11-17 | The user allowed three more tries. |\n")));
   assert.ok(cardOf(reopened["TESTCASES.html"], "TC-3a").includes("reopened") && cardOf(reopened["TESTCASES.html"], "TC-3a").includes("The user allowed three more tries."));
+  assert.match(cardOf(reopened["TESTCASES.html"], "TC-3a"), /<b>reopened<\/b> <span class="muted">the user, 2026-11-17<\/span>/);
   // QUALITY.html: approved tiles lead, with-a-case numbers are secondary text; Verifier section.
   assert.ok(/1 of 6<\/b><small>controls have an approved case[^]*?4 of 6 have a case/.test(qual), "capabilities tile");
   assert.ok(/1 of 4<\/b><small>requirements have an approved case[^]*?3 of 4 have a case/.test(qual));

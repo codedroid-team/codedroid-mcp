@@ -33,7 +33,7 @@ const sub = (dir, file, from, to) => {
 const HEAD = "| Item | Attempt | Verdict | By | Text | Date | Reason |\n| --- | --- | --- | --- | --- | --- | --- |\n";
 const H = "0123456789abcdef";
 const G = "fedcba9876543210";
-const row = (item, attempt, verdict, text = H, reason = "r") => `| ${item} | ${attempt} | ${verdict} | independent | ${text} | 2026-11-14 | ${reason} |`;
+const row = (item, attempt, verdict, text = H, reason = "r", by = verdict === "reopen" ? "user" : "independent") => `| ${item} | ${attempt} | ${verdict} | ${by} | ${text} | 2026-11-14 | ${reason} |`;
 
 try {
   // The fixture: histories and the statuses they give.
@@ -97,7 +97,7 @@ try {
   assert.deepEqual(none.problems, []);
   assert.deepEqual(none.pending, []);
   assert.ok(none.cases.every((c) => c.verify.status === "unverified" && c.verify.attempt === 0));
-  assert.deepEqual(none.verify, { rows: [], orphans: 0 });
+  assert.deepEqual(none.verify, { rows: [], orphans: 0, superseded: [] });
   assert.ok(!("VERIFY.md" in none.files));
 
   // A linked VERIFY.md is a problem and is not read.
@@ -117,7 +117,12 @@ try {
   const bad = (line, message) => assert.deepEqual(pv(line + "\n").problems, [{ line: 3, message }], message);
   bad("| TC-1a | 1 | repair | independent | " + H + " | 2026-11-14 |", "row has 6 cells, expected 7");
   bad(row("TC-1a", 1, "maybe"), "verdict must be approved, repair, question or reopen");
-  bad(row("TC-1a", 1, "repair").replace("independent", "robot"), "By must be independent or same");
+  bad(row("TC-1a", 1, "repair").replace("independent", "robot"), "By must be independent, same or user");
+  // `user` is the reopen row's By, and only its.
+  bad(row("TC-1a", 0, "reopen", H, "r", "independent"), "a reopen row must have By user");
+  bad(row("TC-1a", 0, "reopen", H, "r", "same"), "a reopen row must have By user");
+  bad(row("TC-1a", 1, "repair", H, "r", "user"), "By user is only for a reopen row");
+  assert.equal(pv(row("TC-1a", 0, "reopen") + "\n").rows[0].by, "user");
   bad(row("TC-1a", 1, "repair", "3f9a"), "Text must be 16 hex characters");
   bad(row("TC-1a", 1, "repair", H, ""), "reason is empty");
   bad(row("TC-1a", 1, "repair").replace("2026-11-14", "14/11/2026"), "Date must be YYYY-MM-DD");
@@ -152,11 +157,23 @@ try {
   const unk = inv(badRow("TC-0z") + "\n");
   assert.equal(unk.problems.length, 1);
   assert.deepEqual(unk.cases.map((c) => c.verify.status), m.cases.map((c) => c.verify.status), "an unknown id changes no case");
-  // An unreadable row first, then a valid approved attempt 1: still invalid.
+  assert.deepEqual(sixM.verify.superseded, []);
+  assert.deepEqual(unk.verify.superseded, [], "an unknown id is never superseded");
+  // An unreadable row, then a readable verdict for the case: superseded, no problem, the case takes its status.
   const firstBad = readE2e(copy((d) => fs.writeFileSync(path.join(d, "VERIFY.md"), HEAD + badRow("TC-1a") + "\n" + row("TC-1a", 1, "approved", caseHash(m, "TC-1a")) + "\n")));
-  assert.equal(firstBad.cases[0].verify.status, "invalid");
-  assert.equal(firstBad.problems.length, 1);
+  assert.equal(firstBad.cases[0].verify.status, "approved");
+  assert.deepEqual(firstBad.problems, []);
+  assert.deepEqual(firstBad.verify.superseded, [{ item: "TC-1a", line: 3 }]);
   assert.equal(firstBad.cases[0].verify.history.length, 1);
+  // Only the latest unreadable row counts: one after the latest readable verdict makes the case invalid again.
+  const again = readE2e(copy((d) => fs.writeFileSync(path.join(d, "VERIFY.md"), HEAD + badRow("TC-1a") + "\n" + row("TC-1a", 1, "repair", caseHash(m, "TC-1a")) + "\n" + badRow("TC-1a") + "\n")));
+  assert.equal(again.cases[0].verify.status, "invalid");
+  assert.match(again.cases[0].verify.reason, /^VERIFY\.md line 5 cannot be read$/);
+  assert.deepEqual(again.problems.map((p) => p.line), [5]);
+  assert.deepEqual(again.verify.superseded, [{ item: "TC-1a", line: 3 }]);
+  // A reopen row is not a verdict: it supersedes nothing.
+  const reo = readE2e(copy((d) => fs.writeFileSync(path.join(d, "VERIFY.md"), HEAD + badRow("TC-1a") + "\n" + row("TC-1a", 0, "reopen", caseHash(m, "TC-1a")) + "\n")));
+  assert.equal(reo.cases[0].verify.status, "invalid");
 
   // A table row inside a fenced block is not a ledger row.
   const fenced = pv("```\n" + row("TC-1a", 1, "repair") + "\n" + badRow("TC-1b") + "\n```\n");

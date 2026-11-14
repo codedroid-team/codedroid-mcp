@@ -330,7 +330,7 @@ try {
   assert.match(md, /\| Controls with an approved case \| 1 of 6 \(17%\) \|\n\| Controls with a case \| 4 of 6 \(67%\) \|/);
   assert.match(md, /\| Requirements with an approved case \| 1 of 4 \(25%\) \|/);
   assert.match(md, /\| Failures with an approved case \| 2 of 3 \(67%\) \|/);
-  assert.match(md, /## Verifier\n\n- TC-1c · repair · R2: an app that opens an empty note passes; Expected only checks the screen title\.\n- TC-2a · question · Is a confirmation dialog[^\n]*\n- TC-3a · unresolved · R4: Expected names[^\n]*\n- TC-3b · unverified · Not judged yet\n\nJudged by an independent agent: 4\. By the same agent: 1\.\n\n## Left open/);
+  assert.match(md, /## Verifier\n\n- TC-1c · repair · R2: an app that opens an empty note passes; Expected only checks the screen title\.\n- TC-2a · question · Is a confirmation dialog[^\n]*\n- TC-3a · unresolved · R4: Expected names[^\n]*\n- TC-3b · unverified · Not judged yet\n\nJudged by an independent agent: 4\. By the same agent: 1\.\nApproved on the first attempt: 1\. After a repair: 1\. Not approved: 4\.\n\n## Left open/);
   assert.deepEqual([j.verify, j.not_approved], [q.verify, q.not_approved]);
 
   // v2. No VERIFY.md: nothing approved, every judged case unverified, and the page says nobody judged yet.
@@ -343,7 +343,7 @@ try {
   assert.deepEqual(nv.open, q.open, "open is about missing cases, not unapproved ones");
   const nvMd = qualityMd(nv, noVerifyModel);
   assert.match(nvMd, /These are counts of the documents, not test results\. No test case has been judged by the verifier yet\./);
-  assert.match(nvMd, /Judged by an independent agent: 0\. By the same agent: 0\./);
+  assert.match(nvMd, /Judged by an independent agent: 0\. By the same agent: 0\.\nApproved on the first attempt: 0\. After a repair: 0\. Not approved: 6\.\n/);
 
   // Statuses the fixture lacks are made on copies; an approved row is written by recordVerdicts, the real writer.
   const approve = (dir, ...ids) => {

@@ -198,7 +198,8 @@ feature. When there are any, the command prints `N left open: see
 After the headline the command prints `N of M cases not approved by the verifier (K not judged yet): see
 <dir>/QUALITY.md` when any judged case is not approved (N counts every case that is not approved, K those the
 verifier has not judged; the bracket is left out when K is 0), or `No case has been judged by the verifier yet.`
-when no case has any verdict. These lines do not change the exit code.
+when no case has any verdict. These lines do not change the exit code. `QUALITY.md`'s Verifier
+section ends with `Approved on the first attempt: A. After a repair: B. Not approved: C.`
 
 Exit codes: 0 when all is well (`--check`: every page is current), 1 when the documents have
 problems (`--check`: a page is stale), 2 for a usage error, a folder that does not exist, or a file
@@ -213,20 +214,24 @@ npx -y @codedroid/mcp e2e verdicts <file> [dir]
 
 The `app-e2e-verify` skill has a fresh agent judge each case and runs this command on its output.
 `<file>` is the verifier's output: UTF-8 JSON Lines, one object per judged case, each with exactly
-the string fields `id`, `verdict` (`approved`, `repair`, `question` or `reopen`), `by` (`independent`
-or `same`) and `reason`. Blank lines are skipped; the file may live anywhere and is only read. The
+the string fields `id`, `verdict` (`approved`, `repair`, `question` or `reopen`), `by` and `reason`.
+For a verdict, `by` is `independent` (a fresh agent) or `same` (the agent that wrote the cases).
+`reopen` is the user's: written only when the user says to give a case more attempts, as
+`{"id": "TC-3a", "verdict": "reopen", "by": "user", "reason": "<what the user said>"}`. Blank lines are skipped; the file may live anywhere and is only read. The
 command checks every line against one read of `dir` (default `./e2e`) and, only if all are valid,
 appends one row per line to `VERIFY.md`, creating it with its header if needed. It stamps the attempt
 (the next in the case's current cycle; a `reopen` row is `0`), the hash of the case text and the
 requirements it covers, and today's local date. A reason's line breaks become one space and `|` is
 written `\|`. Existing lines are never rewritten, and nothing is written through a link or outside
-`dir`. Nobody edits `VERIFY.md` by hand.
+`dir`. Nobody edits `VERIFY.md` by hand. A row the reader cannot parse marks its case `invalid` and
+is a problem in `e2e report`; a new verdict recorded for that case supersedes the row, which then is
+no longer a problem. A parse error in a row that names no current judged case stays a problem.
 
 On success it prints one line per verdict (`TC-12a: repair (attempt 1 of 3)`, `TC-12a: reopened`)
 and a reminder to run `e2e report`, and exits 0. Otherwise it exits 2 with nothing appended and one
 `<file>:<line>: <message>` per fault: invalid JSON, a missing, extra or non-string field, an id that
-is not a current judged case, a verdict or `by` outside the lists, an empty reason, an id twice, a
-case with an unreadable row in `VERIFY.md`, a fourth verdict in a cycle (only `reopen`, on the
+is not a current judged case, a verdict outside the list, `by` other than `user` on a `reopen` or
+other than `independent` or `same` on a verdict, an empty reason, an id twice, a fourth verdict in a cycle (only `reopen`, on the
 user's word, allows more), or `reopen` for a case whose current cycle does not yet hold three attempts (`reopen` is allowed once it does, even if the case text has changed since, so the case shows as stale). It also exits 2, with one
 line, for a missing file or folder, a file with no verdicts, problems in `TESTCASES.md` or `PRD.md`,
 a `VERIFY.md` with no table, or a write failure. It needs no phone, daemon or network.

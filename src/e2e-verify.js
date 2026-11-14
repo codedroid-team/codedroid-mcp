@@ -3,7 +3,9 @@
 import crypto from "node:crypto";
 
 export const VERDICTS = ["approved", "repair", "question", "reopen"];
+/** Who gave a verdict; a reopen row is the user's and carries `user` instead. */
 export const BYS = ["independent", "same"];
+export const USER = "user";
 const COLS = 7;
 const words = (a) => `${a.slice(0, -1).join(", ")} or ${a.at(-1)}`;
 
@@ -58,7 +60,9 @@ export function parseVerify(markdown) {
     if (c.length !== COLS) return bad(`row has ${c.length} cells, expected ${COLS}`);
     const [item, att, verdict, by, text, date, reason] = c;
     if (!VERDICTS.includes(verdict)) return bad(`verdict must be ${words(VERDICTS)}`);
-    if (!BYS.includes(by)) return bad(`By must be ${words(BYS)}`);
+    if (![...BYS, USER].includes(by)) return bad(`By must be ${words([...BYS, USER])}`);
+    if (verdict === "reopen" && by !== USER) return bad("a reopen row must have By user");
+    if (verdict !== "reopen" && by === USER) return bad("By user is only for a reopen row");
     if (!/^\d+$/.test(att) && att !== "-") return bad("Attempt must be a number");
     if (!/^[0-9a-f]{16}$/.test(text)) return bad("Text must be 16 hex characters");
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return bad("Date must be YYYY-MM-DD");
@@ -88,7 +92,8 @@ export function cycleOf(rows) {
  * hash -> stale; latest is approved -> approved; three or more in the cycle -> unresolved; latest question ->
  * question; else repair. A trailing reopen empties the cycle (attempt 0), so it takes the status of the latest
  * verdict with the counter reset: approved stays approved, question stays question, anything else is repair.
- * (`invalid`, an unreadable row for the case, is set by the model, which sees the rejected rows.)
+ * (`invalid`, an unreadable row for the case after its latest verdict row, is set by the model, which sees the
+ * rejected rows.)
  */
 export function statusOf(rows, hash) {
   const verdicts = rows.filter((r) => r.verdict !== "reopen");
