@@ -12,24 +12,33 @@ time and check each one.
 
 ## Before the first call
 
-If the phone's tools are missing, or a call says CodeDroid is not connected, call
-`codedroid_status`. Its `problem` says exactly what to fix (this computer is not paired yet, the
-phone is offline or CodeDroid is not open on it, the user has not tapped Allow on the phone yet).
-Tell the user that in their words, and call `codedroid_status` again once they have fixed it.
-If this computer is not paired, call `codedroid_setup_phone`: with the phone plugged in (USB
-debugging on), it turns CodeDroid on and pairs, and says what the user has left to do (sign in on
-the phone, tap Allow). If CodeDroid is not on the phone yet, it says so: ask the user before calling
-it again with `install` true. If it answers "still working", call it again. Without adb, pairing is
-theirs to do: on the phone, CodeDroid > Settings > Computers > Pair a computer shows a command to
-run on this computer.
-Once connected it also returns
-the phone's `instructions`: read them if your session started before the phone connected.
+CodeDroid reaches you one of two ways, and your tool list says which. **Local**: the
+codedroid-mcp bridge on this computer, which pairs with phones and has `codedroid_status`,
+`codedroid_setup_phone`, `install_apk` and `adb`. **Remote**: CodeDroid's hosted connector,
+signed in with the user's Google account, which reaches every phone on that account and has
+`codedroid_devices` but none of those four.
 
-The first time a computer connects, the phone asks the user to allow it. While you drive the
-phone, it shows "<this computer> is using this phone" with a Stop button.
+If the phone's tools are missing, or a call says CodeDroid is not connected: with the local
+bridge, call `codedroid_status`. Its `problem` says exactly what to fix (this computer is not
+paired yet, the phone is offline or CodeDroid is not open on it, the user has not tapped Allow on
+the phone yet). Tell the user that in their words, and call `codedroid_status` again once they have
+fixed it. If this computer is not paired, call `codedroid_setup_phone`: with the phone plugged in
+(USB debugging on), it turns CodeDroid on and pairs, and says what the user has left to do (sign in
+on the phone, tap Allow). If CodeDroid is not on the phone yet, it says so: ask the user before
+calling it again with `install` true. If it answers "still working", call it again. Without adb,
+pairing is theirs to do: on the phone, CodeDroid > Settings > Computers > Pair a computer shows a
+command to run on this computer. Once connected it also returns the phone's `instructions`: read
+them if your session started before the phone connected.
 
-Several phones can be paired with one computer. `codedroid_devices` lists them right away with
-each one's id, model and link state, without connecting. With more than one paired, pass `device`
+With the remote connector there is no pairing: call `codedroid_devices`. A phone that is
+`disconnected` needs the user to open CodeDroid on it, signed in with the same Google account and
+online, and to tap Allow the first time this client connects. Tell them so and call it again.
+
+The first time a computer or client connects, the phone asks the user to allow it. While you
+drive the phone, it shows "<this computer> is using this phone" with a Stop button.
+
+Several phones can be paired with one computer, or be on one account. `codedroid_devices` lists
+them right away with each one's id, model and link state, without connecting. With more than one, pass `device`
 on every phone tool call. It can be the id, or the model or part of it ("Pixel") when that names
 only one phone. If the user hasn't said which phone, ask them. Each phone has its own screen,
 tasks and task ids, so pass the same `device` to `get_task` as to its `run_task`. A phone that is
@@ -69,7 +78,7 @@ depend on each other fail with `not_found`.
   by `x`, `y`.
 - "Nothing on screen passed the visibility filter" while a screen loads: `wait_for` it.
 - Player controls hide themselves, often before `get_screen` returns. Check playback with `adb`
-  `shell dumpsys media_session`.
+  `shell dumpsys media_session` when you have the `adb` tool.
 
 ## The tools
 
@@ -86,8 +95,10 @@ depend on each other fail with `not_found`.
 | `clipboard` | Read it, or set it with `text` |
 | `device_info` | Model, Android version, Android user, screen, locked, CodeDroid ready and signed in |
 | `run_task`, `get_task`, `answer_task`, `cancel_task` | Hand CodeDroid's own phone agent a whole goal (below) |
-| `install_apk` | Install an APK from this computer, with no cable or shared network |
-| `adb` | This computer's adb, when the phone is on USB or Wireless debugging. `device` picks the phone as elsewhere; `save_to` keeps binary or very long output in a file |
+| `codedroid_devices` | The phones: id, model, and whether each is connected |
+| `install_apk` | Local bridge only: install an APK from this computer, with no cable or shared network |
+| `adb` | Local bridge only: this computer's adb, when the phone is on USB or Wireless debugging. `device` picks the phone as elsewhere; `save_to` keeps binary or very long output in a file |
+| `codedroid_status`, `codedroid_setup_phone` | Local bridge only: the pairing's state and what to fix; set the phone up over USB |
 
 ## Handing CodeDroid a task
 
