@@ -49,11 +49,13 @@ for (const word of ["approved", "repair", "question", "id", "verdict", "by", "re
 for (const name of ["app-e2e", "app-e2e-testcases", "app-e2e-maintain", "app-e2e-bug"]) {
   assert.match(fs.readFileSync(skillSource(name), "utf8"), /app-e2e-verify/, `${name} sends cases through app-e2e-verify`);
 }
-const example = [...verify.matchAll(/^```json\r?\n([\s\S]*?)^```/gm)].map(([, b]) => b.trim());
-assert.equal(example.length, 1, "verify has one json example");
-assert.equal(example[0].split("\n").length, 1, "the json example is one line");
-const verdict = JSON.parse(example[0]);
-assert.equal(verdict.verdict, "repair");
+// The brief's example output lines: an approval and a repair, each one JSON object with exactly the four fields.
+const example = brief[1].split("\n").filter((l) => l.startsWith("{"));
+const examples = example.map((l) => JSON.parse(l));
+for (const o of examples) assert.deepEqual(Object.keys(o).sort(), ["by", "id", "reason", "verdict"]);
+assert.ok(examples.some((o) => o.verdict === "approved"), "the brief shows an approved line");
+const verdict = examples.find((o) => o.verdict === "repair");
+assert.ok(verdict, "the brief shows a repair line");
 
 for (const [kind, blocks] of Object.entries(stitched)) assert.ok(blocks.length, `no skill has a ${FILES[kind]} example`);
 
@@ -75,7 +77,7 @@ try {
   assert.ok(m.cujs.every((j) => j.proves.length) && m.cases.filter((c) => c.type !== "setup").every((c) => c.covers.length), "Proves and Covers name something");
   // The verify skill's example line is a verdict `e2e verdicts` records for a case in the examples.
   const jsonl = path.join(path.dirname(dir), "verdicts.jsonl");
-  fs.writeFileSync(jsonl, example[0] + "\n");
+  fs.writeFileSync(jsonl, JSON.stringify(verdict) + "\n");
   const recorded = recordVerdicts({ dir, file: jsonl });
   assert.equal(recorded.code, 0, recorded.lines.join("\n"));
   assert.equal(readE2e(dir).cases.find((c) => c.id === verdict.id)?.verify?.status, "repair");

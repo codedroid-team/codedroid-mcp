@@ -133,9 +133,10 @@ Steps:
 ## Before handing to the user
 
 Run `npx -y @codedroid/mcp e2e report e2e`; it must print no problems before you go on (fix each
-`file:line: message` and rerun).
-Give the user `e2e/TESTCASES.html` to review and `e2e/QUALITY.html` for what no runnable case
-covers; its "Left open" list should be empty, or each item explained to the user. List the cases by feature, with priority, type and which run a CodeDroid task; the CUJs left
-without a case and the Gate and Harm lines left without a negative case, and why. Then send the
-cases through the app-e2e-verify skill, and hand them over as its gate 2 says. Ask for approval
-before running.
+`file:line: message` and rerun). Then send the cases through the app-e2e-verify skill, and finish
+its loop before the user sees anything.
+
+Only then give the user the pages, as that skill's gate 2 says. Add: `e2e/QUALITY.html`'s "Left
+open" list should be empty, or each item explained; the cases by feature, with priority, type and
+which run a CodeDroid task; the CUJs left without a case and the Gate and Harm lines left without a
+negative case, and why. Ask for approval before running.
