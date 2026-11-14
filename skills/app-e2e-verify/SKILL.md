@@ -16,7 +16,7 @@ One fresh agent per feature that has cases, given the brief below verbatim with 
 `<file>` (a new file in a temp folder, outside `e2e/`) filled in, and nothing else: not your notes,
 not why you wrote a case as you did. Setup and retired cases are never judged. Where the host cannot
 start another agent, judge in a separate pass: reread the documents and the source from the top,
-follow the brief to the letter, and write `by` as `same`. The pages show who judged; be honest.
+follow the brief to the letter, and write `by` as `same`: the pages show who judged.
 
 ```text
 === VERIFIER BRIEF ===
@@ -77,8 +77,8 @@ fields `id` (the case id), `verdict`, `by` (`independent`; `same` if you wrote t
    then `e2e verdicts` refuses every verdict). Start one verifier per feature, each its own `<file>`.
 2. Record each file: `npx -y @codedroid/mcp e2e verdicts <file> e2e`, then `e2e report`. A refused
    file (exit 2, `<file>:<line>: <message>` per fault) records nothing: have its verifier correct
-   the output, and record again. A case shown `invalid` has a row the command cannot read:
-   restore `VERIFY.md` from git, never retype a row.
+   the output, and record again. A case shown `invalid` has a damaged row in `VERIFY.md`: send it to
+   a fresh verifier and record the new verdict, which supersedes that row.
 3. Each `repair`: change the case to answer its reason, without weakening another check or changing
    its `Covers:` to dodge the finding. If the answer is a new case or a Gap line, say so and write
    that. The edited case shows as `stale`.
@@ -88,14 +88,15 @@ fields `id` (the case id), `verdict`, `by` (`independent`; `same` if you wrote t
 
 A case you still believe is right after a `repair` stays as it is: it is the user's call at gate 2.
 Never argue with the verifier in the documents. Only when the user says to give a case more
-attempts, record a line with `"verdict": "reopen"`, `"by": "same"` and their words as the reason.
+attempts, record this line for it:
+`{"id": "TC-3a", "verdict": "reopen", "by": "user", "reason": "<what the user said>"}`
 
 ## Gate 2
 
-Give the user `e2e/TESTCASES.html` and `e2e/QUALITY.html`. Say how many cases were approved the
-first time (attempt 1 on the approved row in `VERIFY.md`), after repair, and not at all, each of
-these with the verifier's last reason; ask each `question`; say whether an independent agent or the
-same agent judged. An approved case has a sound design, not a passing run.
+Give the user `e2e/TESTCASES.html` and `e2e/QUALITY.html`. From the Verifier section of
+`e2e/QUALITY.md`, say how many cases were approved on the first attempt, after a repair, and not at
+all, each unapproved one with its last reason; ask each `question`; say whether an independent agent
+or the same agent judged. An approved case has a sound design, not a passing run.
 
 ## Never
 
