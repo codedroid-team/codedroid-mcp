@@ -30,10 +30,11 @@ line. PRD.md: features (F<n>) and requirements (R<n>), each with Caps (its contr
 failure lines, R<n>.f<m>) and Proof, how deep its check must go: `screen` where the user acted,
 `elsewhere` (another screen, a notification, a file, the server), `kept` (still true after leaving
 and reopening the app). TESTCASES.md: the cases. A case's Covers line names the requirements and
-failures it checks, controls in brackets; Tier is smoke, core, deep or edge; Depth is the deepest
-place its Expected lines check. EXPLORE.md: labels seen on the phone. Read the source at each
-covered control's line, and what it calls. Do not read VERIFY.md or any earlier verdict. Do not edit
-any file under `e2e/`. Run nothing on the phone.
+failures it checks, with the controls it exercises in brackets (a control in the requirement's Caps
+that the case does not name there is not its to exercise); Tier is smoke, core, deep or edge; Depth
+is the deepest place its Expected lines check. EXPLORE.md: labels seen on the phone. Read the source
+at each covered control's line, and what it calls. Do not read VERIFY.md or any earlier verdict. Do
+not edit any file under `e2e/`. Run nothing on the phone.
 
 Judge a case against what it claims: the requirements and failures in its Covers, to the depth its
 Depth line says. It need not reach a requirement's Proof alone: an honest Depth shallower than the
@@ -54,14 +55,15 @@ For each case, in this order:
 3. The oracle is independent: no Expected line asserts on text the case typed, on a toast that is
    gone by then, or on something every state shows.
 4. A failure case asserts the exact message the source shows, and that the user's data survived.
-5. The steps run as written: the start state is reachable, every label is in INVENTORY.md or
-   EXPLORE.md, the steps touch every control in Covers, the cleanup removes what the case made.
+5. The steps run as written: the start is reachable, every label is in INVENTORY.md or EXPLORE.md,
+   the steps touch each control in its Covers brackets, the cleanup removes what the case made.
 6. The tier is honest: a `deep` case is an extended scenario (several items, awkward data, a long
    sequence, state carried across reopening).
 
-One verdict per case, its reason naming the evidence with file and line:
-- `repair`: a check fails. Name the requirement, the broken app that passes or the check that
-  fails, and the Expected line or step that would catch it.
+Run all six checks on a case before its verdict. Its reason leads with each defect and its fix, then
+the evidence with file and line:
+- `repair`: every check that fails, most serious first, each with its requirement, the broken app
+  that passes or the step that fails, and the Expected line or step that would catch it.
 - `approved`: nothing fails. Name, per covered requirement and failure, the broken behaviour you
   tried and the Expected line that rejects it. "Looks thorough" is not a reason.
 - `question`: only the app's owner can say which behaviour is intended. The reason is the question.
@@ -71,7 +73,7 @@ Write to <file> only this: one JSON object per line, one line per case, with exa
 fields `id` (the case id), `verdict`, `by` (`independent`; `same` if you wrote the cases) and
 `reason` (one line). For example:
 {"id": "TC-05a", "verdict": "approved", "by": "independent", "reason": "R5, which this case checks at kept: an app that lists the note but never stores it (app/src/main/java/notes/NoteRepository.kt:44 inserts it) is rejected by Expected \"e2e-note\" is listed after the app is reopened. R5.f1: an app that shows any error is rejected by Expected \"Couldn't save\", the string at app/src/main/java/notes/EditorFragment.kt:88, and by the title still in the editor."}
-{"id": "TC-12a", "verdict": "repair", "by": "independent", "reason": "R8.f1: an app that enables \"Use Skill\" once any blank is filled passes, since e2e-timer has one blank (app/src/main/java/skills/FillInSheet.kt:96 checks every blank). Use a skill with two blanks, fill one, and check \"Use Skill\" is still disabled."}
+{"id": "TC-12a", "verdict": "repair", "by": "independent", "reason": "R8.f1: e2e-timer has one blank, so the case cannot show that \"Use Skill\" waits for every blank; use a skill with two blanks, fill one, and check \"Use Skill\" is still disabled. An app that enables it once any blank is filled passes now (app/src/main/java/skills/FillInSheet.kt:96 checks every blank)."}
 === END OF VERIFIER BRIEF ===
 ```
 
@@ -84,9 +86,9 @@ fields `id` (the case id), `verdict`, `by` (`independent`; `same` if you wrote t
    file (exit 2, `<file>:<line>: <message>` per fault) records nothing: have its verifier correct
    the output, and record again. A case shown `invalid` has a damaged row in `VERIFY.md`: send it to
    a fresh verifier and record the new verdict, which supersedes that row.
-3. Each `repair`: change the case to answer its reason, without weakening another check or changing
-   its `Covers:` to dodge the finding. If the answer is a new case or a Gap line, say so and write
-   that. The edited case shows as `stale`.
+3. Each `repair`: change the case to answer every finding in its reason, without weakening another
+   check. Add to `Covers:` a control the repaired steps now use; never remove one to escape a
+   finding. If the answer is a new case or a Gap line, say so and write that. It shows as `stale`.
 4. Send the next round to a new verifier, never the one that judged before (or, with no agents, a
    new pass from the top), with `<ids>` only the cases now `stale`, `unverified`, `invalid`, or
    `repair` with attempts left, and any the user reopened; never an `approved` one or one that used
@@ -111,3 +113,4 @@ design, not a passing run.
 ## Never
 
 - Force-stop, clear, uninstall or `am instrument` com.codedroid.agent: it switches CodeDroid off.
+- Edit `VERIFY.md`, or record `reopen` without the user's word.
