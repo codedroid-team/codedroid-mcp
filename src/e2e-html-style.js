@@ -37,6 +37,7 @@ h4,h5,h6{font-size:1rem;margin:1rem 0 .3rem}
 .chip.ask{background:var(--ask-bg);color:var(--ask-fg)}
 .by{color:var(--muted);font-size:.78rem}
 .verdict{margin:.5rem 0;padding:.35rem .7rem;border-left:3px solid var(--line);font-size:.9rem;overflow-wrap:anywhere}
+.verdict.clamp{padding-block:0;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;line-clamp:4;overflow:hidden}
 .verdict.warn{border-color:var(--warn-fg)}
 .verdict.fail{border-color:var(--fail-fg)}
 .verdict.ask{border-color:var(--ask-fg)}

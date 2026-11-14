@@ -239,6 +239,20 @@ try {
   assert.ok(ver.includes("approved") && ver.includes("independent agent") && ver.includes("same agent"));
   assert.ok(ver.includes('href="TESTCASES.html#TC-1c"') && ver.includes("Expected only checks the screen title") && ver.includes("Not judged yet"));
   assert.ok(qual.includes("not a run"), "approval is of a design, not a run");
+  // Not-judged cases share one line of linked ids; judged ones keep their own.
+  assert.match(ver, /<li>Not judged yet \(1\): <a class="nw" href="TESTCASES\.html#TC-3b">TC-3b<\/a><\/li>/);
+  const nvq = render(copy((d) => fs.rmSync(path.join(d, "VERIFY.md"))))["QUALITY.html"];
+  const nvVer = nvq.slice(nvq.indexOf('id="verifier"'));
+  assert.equal(nvVer.split("Not judged yet").length - 1, 1, "one line for all six");
+  assert.match(nvVer, /<li>Not judged yet \(6\): <a class="nw" href="TESTCASES\.html#TC-1a">TC-1a<\/a>, <a class="nw" href="TESTCASES\.html#TC-1b">TC-1b<\/a>,[^<]*<a/);
+  // A long latest reason: the card's verdict block is clamped by CSS, and the history holds the full text.
+  const long = "R2: " + "an app that opens the wrong note still shows a title, ".repeat(14) + "END-OF-REASON.";
+  const lp = render(copy((d) => fs.appendFileSync(path.join(d, "VERIFY.md"), `| TC-1c | 2 | repair | independent | fc6504d516bf4b24 | 2026-11-17 | ${long} |\n`)))["TESTCASES.html"];
+  assert.ok(long.length > 600);
+  assert.match(cardOf(lp, "TC-1c"), /<p class="verdict clamp warn">/);
+  assert.ok(/<details class="history">[^]*END-OF-REASON\./.test(cardOf(lp, "TC-1c")), "the history holds the full reason");
+  assert.ok(cardOf(lp, "TC-1c").includes(long), "the full text, not a cut one");
+  assert.match(lp, /\.verdict\.clamp\{[^}]*-webkit-line-clamp:4/);
   assert.ok(qual.includes("approved / with a case") && /<td>\d+% \/ \d+%<\/td>/.test(qual), "by-feature table carries approved beside with-a-case percentages");
   // Escaping: a reason is shown as plain text, Markdown not formatted.
   const ev = render(copy((d) => sub(d, "VERIFY.md", "R2: an app that opens an empty note passes; Expected only checks the screen title.", '<script>alert(1)</script> \\| "x" **bold**')));

@@ -84,10 +84,10 @@ const acked = copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n## 
 r = run("report", acked);
 assert.equal(r.status, 0, r.stdout + r.stderr);
 assert.ok(!r.stdout.includes("left open"), r.stdout);
-assert.equal(r.stdout.split("\n")[0], "6 controls, 4 with a case, 1 approved; 4 requirements, 3 with a case, 1 acknowledged, 2 tested deep enough; 3 failures, 2 with a case, 1 acknowledged; 6 cases.");
+assert.equal(r.stdout.split("\n")[0], "6 controls, 4 with a case, 1 with an approved case; 4 requirements, 3 with a case, 1 acknowledged, 2 tested deep enough; 3 failures, 2 with a case, 1 acknowledged; 6 cases.");
 // Set-aside capabilities: the headline names the scope exactly.
 r = run("report", copy((d) => fs.appendFileSync(path.join(d, "PRD.md"), "\n- Non-goal: C6 · sharing needs a second phone\n")));
-assert.equal(r.stdout.split("\n")[0], "5 controls in scope (1 set aside), 4 with a case, 1 approved; 4 requirements, 3 with a case, 2 tested deep enough; 3 failures, 2 with a case; 6 cases.");
+assert.equal(r.stdout.split("\n")[0], "5 controls in scope (1 set aside), 4 with a case, 1 with an approved case; 4 requirements, 3 with a case, 2 tested deep enough; 3 failures, 2 with a case; 6 cases.");
 const oneOpen = copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n## Gaps\n- Gap: R3 · needs a wipe\n- Gap: R4 depth · one screen\n"));
 r = run("report", oneOpen);
 assert.equal(r.stdout.split("\n").at(-3), `1 left open: see ${oneOpen}/QUALITY.md`);
@@ -103,7 +103,7 @@ const early = copy((d) => {
 r = run("report", early);
 assert.equal(r.status, 0, r.stdout + r.stderr);
 assert.deepEqual(r.stdout.split("\n").slice(0, 2), [
-  "1 control, 0 with a case, 0 approved; 0 requirements, 0 with a case, 0 tested deep enough; 0 failures, 0 with a case; 0 cases.",
+  "1 control, 0 with a case, 0 with an approved case; 0 requirements, 0 with a case, 0 tested deep enough; 0 failures, 0 with a case; 0 cases.",
   "Not written yet: PRD.md, CUJs.md, TESTCASES.md. Next: PRD.md.",
 ]);
 const one = copy((d) => {

@@ -43,7 +43,7 @@ export function runE2eReport({ dir, check = false }) {
   const scope = c.set_aside ? `${c.total - c.set_aside} ${c.total - c.set_aside === 1 ? "control" : "controls"} in scope (${c.set_aside} set aside)` : count(c.total, "control", "controls");
   const ack = (n) => (n ? `, ${n} acknowledged` : "");
   const lines = [
-    `${scope}, ${c.with_case} with a case, ${c.approved} approved; ${count(r.total, "requirement", "requirements")}, ${r.with_case} with a case${ack(r.acknowledged)}, ${r.at_depth} tested deep enough; ${count(f.total, "failure", "failures")}, ${f.with_case} with a case${ack(f.acknowledged)}; ${count(q.cases.total, "case", "cases")}.`,
+    `${scope}, ${c.with_case} with a case, ${c.approved} with an approved case; ${count(r.total, "requirement", "requirements")}, ${r.with_case} with a case${ack(r.acknowledged)}, ${r.at_depth} tested deep enough; ${count(f.total, "failure", "failures")}, ${f.with_case} with a case${ack(f.acknowledged)}; ${count(q.cases.total, "case", "cases")}.`,
   ];
   const md = `${dir.replace(/\/+$/, "") || "/"}/QUALITY.md`;
   const v = q.verify;

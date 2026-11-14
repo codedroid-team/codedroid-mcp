@@ -225,7 +225,10 @@ export function qualityMd(q, model) {
   }
   out.push("", "## Verifier", "");
   if (!q.not_approved.length) out.push("Every test case is approved.", "");
-  for (const n of q.not_approved) out.push(`- ${n.id} · ${n.status} · ${n.reason}`);
+  // Judged cases one per line; the not-judged ones share a line, in document order.
+  const notJudged = q.not_approved.filter((n) => n.status === "unverified").map((n) => n.id);
+  for (const n of q.not_approved) if (n.status !== "unverified") out.push(`- ${n.id} · ${n.status} · ${n.reason}`);
+  if (notJudged.length) out.push(`- Not judged yet (${notJudged.length}): ${notJudged.join(", ")}`);
   if (q.not_approved.length) out.push("");
   out.push(`Judged by an independent agent: ${v.by.independent}. By the same agent: ${v.by.same}.`);
   out.push(`Approved on the first attempt: ${v.approved_first}. After a repair: ${v.approved_after_repair}. Not approved: ${v.judged - v.approved}.`);

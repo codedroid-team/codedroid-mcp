@@ -107,7 +107,8 @@ export function renderPages(model, q) {
     const text = v.status === "unverified" ? "Not judged yet"
       : v.status === "stale" ? `Changed since it was judged. Before that: ${last.verdict}, ${last.reason}`
       : v.reason;
-    return `<p class="verdict ${TONE[v.status] ?? ""}"><b>Verifier:</b> ${esc(text)}</p>`;
+    // Clamped to a few lines: a long reason would push the steps down; the history below holds it in full.
+    return `<p class="verdict clamp ${TONE[v.status] ?? ""}"><b>Verifier:</b> ${esc(text)}</p>`;
   };
   const verdictHistory = (c) => {
     const h = c.verify?.history ?? [];
@@ -233,11 +234,12 @@ ${gone.length ? `<h2>Retired</h2>\n${gone.map(retiredCard).join("\n")}` : ""}`;
     const atile = (label, a, w, d, what = "have a case") => tile(label, a, d, undefined, `${w} of ${d} ${what}`);
     const v = q.verify;
     const status = (k) => v[k] ? `<li>${chip(k, TONE[k] ?? "")} ${v[k]}</li>` : "";
+    const notJudged = q.not_approved.filter((n) => n.status === "unverified").map((n) => n.id);
     const verifier = `<h2 id="verifier">Verifier</h2>
 <p class="muted">The verifier judges whether a test case's design would catch a broken app. Approval is of a design, not of a run.</p>
 ${v.judged ? `<ul class="plain inline">${["approved", "repair", "question", "unresolved", "stale", "unverified", "invalid"].map(status).join("")}</ul>
 <p class="muted">Latest verdicts by an independent agent: ${v.by.independent}. By the same agent: ${v.by.same}.${v.approved ? ` Approved on the first attempt: ${v.approved_first}, after a repair: ${v.approved_after_repair}.` : ""}</p>
-${q.not_approved.length ? `<ul class="plain">${q.not_approved.map((n) => `<li>${link(n.id)} ${chip(n.status, TONE[n.status] ?? "")} ${esc(n.reason)}</li>`).join("")}</ul>` : "<p>Every test case is approved.</p>"}` : "<p>There are no test cases to judge.</p>"}`;
+${q.not_approved.length ? `<ul class="plain">${q.not_approved.filter((n) => n.status !== "unverified").map((n) => `<li>${link(n.id)} ${chip(n.status, TONE[n.status] ?? "")} ${esc(n.reason)}</li>`).join("")}${notJudged.length ? `<li>Not judged yet (${notJudged.length}): ${notJudged.map(link).join(", ")}</li>` : ""}</ul>` : "<p>Every test case is approved.</p>"}` : "<p>There are no test cases to judge.</p>"}`;
     const problems = q.problems.length
       ? `<section class="card problems" id="problems"><h2>${q.problems.length} problem${q.problems.length === 1 ? "" : "s"} in the documents</h2><p class="muted">Fix these first; the counts below may be wrong until they are fixed.</p><ul>${q.problems.map((p) => `<li><code>${esc(p.file)}${p.line ? `:${p.line}` : ""}</code> ${esc(p.message)}</li>`).join("")}</ul></section>`
       : `<p id="problems" class="muted">No problems found in the documents.</p>`;
