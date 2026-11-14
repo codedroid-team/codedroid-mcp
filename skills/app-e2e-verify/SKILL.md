@@ -5,10 +5,10 @@ description: Have a fresh agent judge each e2e test case's design before the use
 
 # Verify the test cases
 
-A case can pass on a broken app (it checks that a screen appeared, not that the action took
-effect), and its author reads past that. A fresh agent with only the documents and the source hunts
-for the broken app; its verdicts go into `e2e/VERIFY.md`, which only the `e2e verdicts` command
-writes. Run this before gate 2, and for every case app-e2e-maintain or app-e2e-bug adds or edits.
+A case can pass on a broken app, and its author reads past it. A fresh agent with only the
+documents and the source hunts for that app; its verdicts go into `e2e/VERIFY.md`, which only the
+`e2e verdicts` command writes (never edit it). Run this before gate 2, and for every case
+app-e2e-maintain or app-e2e-bug adds or edits.
 
 ## Who judges
 
@@ -34,6 +34,12 @@ failures it checks, controls in brackets; Tier is smoke, core, deep or edge; Dep
 place its Expected lines check. EXPLORE.md: labels seen on the phone. Read the source at each
 covered control's line, and what it calls. Do not read VERIFY.md or any earlier verdict. Do not edit
 any file under `e2e/`. Run nothing on the phone.
+
+Judge a case against what it claims: the requirements and failures in its Covers, to the depth its
+Depth line says. It need not reach a requirement's Proof alone: an honest Depth shallower than the
+Proof is no reason for `repair` (the report lists that requirement as left open), nor is a broken
+app only a deeper check would catch (lost on restart, against a case that claims `screen`). A case
+that claims a depth it does not reach is `repair`.
 
 For each case, in this order:
 1. Counterexample hunt. For each requirement and failure in Covers, name the most plausible broken
@@ -64,7 +70,7 @@ No other word: `reopen` is the user's.
 Write to <file> only this: one JSON object per line, one line per case, with exactly the string
 fields `id` (the case id), `verdict`, `by` (`independent`; `same` if you wrote the cases) and
 `reason` (one line). For example:
-{"id": "TC-05a", "verdict": "approved", "by": "independent", "reason": "R5: an app that lists the note but never stores it (app/src/main/java/notes/NoteRepository.kt:44 inserts it) is rejected by Expected \"e2e-note\" is listed after the app is reopened. R5.f1: an app that shows any error is rejected by Expected \"Couldn't save\", the string at app/src/main/java/notes/EditorFragment.kt:88, and by the title still in the editor."}
+{"id": "TC-05a", "verdict": "approved", "by": "independent", "reason": "R5, which this case checks at kept: an app that lists the note but never stores it (app/src/main/java/notes/NoteRepository.kt:44 inserts it) is rejected by Expected \"e2e-note\" is listed after the app is reopened. R5.f1: an app that shows any error is rejected by Expected \"Couldn't save\", the string at app/src/main/java/notes/EditorFragment.kt:88, and by the title still in the editor."}
 {"id": "TC-12a", "verdict": "repair", "by": "independent", "reason": "R8.f1: an app that enables \"Use Skill\" once any blank is filled passes, since e2e-timer has one blank (app/src/main/java/skills/FillInSheet.kt:96 checks every blank). Use a skill with two blanks, fill one, and check \"Use Skill\" is still disabled."}
 === END OF VERIFIER BRIEF ===
 ```
@@ -83,15 +89,15 @@ fields `id` (the case id), `verdict`, `by` (`independent`; `same` if you wrote t
    that. The edited case shows as `stale`.
 4. Send the next round to a new verifier, never the one that judged before (or, with no agents, a
    new pass from the top), with `<ids>` only the cases now `stale`, `unverified`, `invalid`, or
-   `repair` with attempts left; never an `approved` one or one that used its three attempts (it
-   waits for the user). Record its file.
+   `repair` with attempts left, and any the user reopened; never an `approved` one or one that used
+   its three attempts (it waits for the user). An attempt is one recorded verdict on a case; a
+   `reopen` is not one. Record its file.
 5. Stop when every case is `approved`, a `question`, or `unresolved` (its three attempts used).
 
 A `question` waits for the user; their answer changes the case or the PRD, which makes the case
-stale, and it goes to the next round. A case you still believe is right after a `repair` stays as
-it is: it is the user's call at gate 2.
-Never argue with the verifier in the documents. Only when the user says to give a case more
-attempts, record this line for it:
+stale, and it goes to the next round. A case you still believe is right after a `repair` stays as it
+is: it is the user's call at gate 2. Never argue with the verifier in the documents. Only when the
+user says to give a case more attempts, record this line for it:
 `{"id": "TC-3a", "verdict": "reopen", "by": "user", "reason": "<what the user said>"}`
 
 ## Gate 2
@@ -99,10 +105,9 @@ attempts, record this line for it:
 Give the user `e2e/TESTCASES.html` and `e2e/QUALITY.html`. From the Verifier section of
 `e2e/QUALITY.md`, say how many cases were approved on the first attempt, after a repair, and not at
 all, each unapproved one with its last reason (a case not judged yet has none: say so); ask each
-`question`; say whether an independent agent
-or the same agent judged. An approved case has a sound design, not a passing run.
+`question`; say whether an independent agent or the same agent judged. An approved case has a sound
+design, not a passing run.
 
 ## Never
 
 - Force-stop, clear, uninstall or `am instrument` com.codedroid.agent: it switches CodeDroid off.
-- Edit `VERIFY.md`, or record `reopen` without the user's word.
