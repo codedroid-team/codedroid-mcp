@@ -23,8 +23,12 @@ const manifest = JSON.parse(read(new URL(".claude-plugin/plugin.json", plugin)))
 assert.equal(manifest.name, "codedroid");
 assert.equal(manifest.version, VERSION, "claude-plugin/ and package.json: run scripts/sync-claude-plugin.mjs");
 const local = JSON.parse(read(new URL(".claude-plugin/plugin.json", root)));
-for (const field of ["displayName", "author", "homepage", "repository", "license", "icon", "documentationUrl", "supportUrl", "termsOfServiceUrl", "privacyPolicyUrl"]) {
+for (const field of ["author", "homepage", "repository", "license", "icon", "privacyPolicyUrl"]) {
   assert.deepEqual(manifest[field], local[field], `${field}: the two plugins say the same`);
+}
+// The portal warns on fields the plugins reference does not list; the listing form takes these.
+for (const field of ["displayName", "documentationUrl", "supportUrl", "termsOfServiceUrl"]) {
+  assert.ok(!(field in manifest), `${field}: not a field the directory recognizes in plugin.json`);
 }
 assert.ok(fs.existsSync(new URL(manifest.icon, plugin)), "the icon the manifest names is in the folder");
 

@@ -1,6 +1,5 @@
 {
   "name": "codedroid",
-  "displayName": "CodeDroid",
   "version": "0.1.15",
   "description": "Your Android phone, through CodeDroid: read the screen, tap and type, hand CodeDroid a whole task, and verify app changes on the device. Signs in with your CodeDroid account; nothing runs on your computer.",
   "author": {
@@ -17,8 +16,5 @@
     "device"
   ],
   "icon": "./assets/icon.png",
-  "documentationUrl": "https://github.com/codedroid-team/codedroid-mcp/blob/main/docs/reference.md",
-  "supportUrl": "https://github.com/codedroid-team/codedroid-mcp/issues",
-  "termsOfServiceUrl": "https://www.codedroid.com/terms",
   "privacyPolicyUrl": "https://www.codedroid.com/privacy"
 }
