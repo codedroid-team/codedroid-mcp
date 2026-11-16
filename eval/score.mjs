@@ -24,15 +24,16 @@ export const LIMITS =
   "Limits: the judge is a model, so its verdicts are checked by hand on a sample; the authoring model may have seen this app's public test plans in training; one app is one data point.";
 
 const lines = (text) => text.replace(/^\uFEFF/, "").split(/\r?\n/);
-const HEADING_MODE = /^(manual|task)(?=$|[\s(:\-—–])/i;
+const HEADING_MODE = /^(manual|task)\s*(?:$|[(:\-—–])/i;
 const BODY_MODE = /^\s*(?:[-*]\s+)?(?:(?:\*\*)?Feature:.*?\s·\s)?(?:\*\*)?Run mode(?:\*\*)?:(?:\*\*)?\s*(?:\*\*|`)?(phone|task|manual)\b/i;
 const RETIRED = /^\s*(?:[-*]\s+)?(?:\*\*)?Retired(?:\*\*)?:/i;
 
 /**
  * Case ids from `### TC-12a · P0 · title [· task|· manual]` headings, in document order, each with its run mode.
- * The mode is a ` · manual` / ` · task` segment after the title (a reason may follow) or a body line
- * `Run mode: phone|task|manual`; manual wins over task, task over phone. A body line `Retired:` marks a
- * retired case, which no verdict may cite.
+ * The mode is the last ` · ` segment of the heading when it is `manual` or `task`, alone or followed by a
+ * reason in brackets or after a colon or dash, and comes after the title; or a body line
+ * `Run mode: phone|task|manual`. Manual wins over task, task over phone. A body line `Retired:` marks a
+ * retired case, which no verdict may cite. Any other heading ends the case.
  */
 export function caseIds(markdown) {
   const cases = new Map();
@@ -47,13 +48,11 @@ export function caseIds(markdown) {
       if (cases.has(id)) throw new Error(`TESTCASES.md repeats ${id}`);
       cases.set(id, "phone");
       const segs = m[2].split(" · ").slice(1).map((s) => s.trim());
-      // the title follows the priority (or comes first without one); only segments after it set the mode
-      const start = /^P\d+$/i.test(segs[0] ?? "") ? 2 : 1;
-      for (const seg of segs.slice(start)) {
-        const mode = seg.match(HEADING_MODE);
-        if (mode) set(mode[1].toLowerCase());
-      }
-    } else if (/^###\s/.test(line)) id = null;
+      // the title follows the priority (or comes first without one), so it is never the mode segment
+      const min = /^P\d+\b/i.test(segs[0] ?? "") ? 3 : 2;
+      const mode = segs.length >= min && segs.at(-1).match(HEADING_MODE);
+      if (mode) set(mode[1].toLowerCase());
+    } else if (/^#{1,6}[ \t]/.test(line)) id = null;
     else if (id) {
       if (RETIRED.test(line)) set("retired");
       const mode = line.match(BODY_MODE);
@@ -122,7 +121,7 @@ export function score(key, judge, cases) {
       t[field]++;
     }
   }
-  s.unmatched_cases = [...cases.keys()].filter((id) => !cited.has(id));
+  s.unmatched_cases = [...cases.keys()].filter((id) => !cited.has(id) && cases.get(id) !== "retired");
   s.score = rate(s.on_phone);
   return s;
 }

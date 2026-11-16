@@ -147,7 +147,7 @@ try {
       [" · manual(needs a wipe)", "manual"],
       [" · task", "task"],
       [" · TASK: runs the agent", "task"],
-      [" · manual · slow", "manual"],
+      [" · manual · slow", "phone"],
       [" (manual)", "phone"],
       [" · manually checked", "phone"],
       [" · tasks list", "phone"],
@@ -158,6 +158,32 @@ try {
     assert.deepEqual(modesOf("### TC-6a · P1 · Manual upload of a file"), [["TC-6a", "phone"]]);
     assert.deepEqual(modesOf("### TC-6b · P1 · Task list sorting · task"), [["TC-6b", "task"]]);
     assert.deepEqual(modesOf("### TC-6c · Manual upload of a file"), [["TC-6c", "phone"]]);
+  });
+
+  test("run mode from the heading: only the last segment, and never the title", () => {
+    for (const [heading, mode] of [
+      ["### TC-1 · P0 · Upload · manual sync is off", "phone"],
+      ["### TC-1 · P0 (smoke) · Manual upload of a photo", "phone"],
+      ["### TC-1 · Priority P0 · Task list opens", "phone"],
+      ["### TC-1 · P0 · Manual upload", "phone"],
+      ["### TC-1 · P0 · Task", "phone"],
+      ["### TC-1 · P0 · t · manual", "manual"],
+      ["### TC-1 · P0 · t · manual (needs a second account)", "manual"],
+      ["### TC-1 · P0 · t · manual: why", "manual"],
+      ["### TC-1 · P0 · t · manual - why", "manual"],
+      ["### TC-1 · P0 · t · manual — why", "manual"],
+      ["### TC-1 · P0 · t · task", "task"],
+      ["### TC-1 · P0 (smoke) · t · task", "task"],
+      ["### TC-1 · t · manual", "manual"],
+      ["### TC-1 · t · task (runs the agent)", "task"],
+      ["### TC-1 · Upload in P2 mode · manual", "manual"],
+      ["### TC-1 · manual", "phone"],
+      ["### TC-1 · P0 · t · manual · extra words", "phone"],
+      ["### TC-1 · P0 · t · manual.", "phone"],
+      ["### TC-12a · P0 · title", "phone"],
+    ]) {
+      assert.equal(modesOf(heading)[0][1], mode, heading);
+    }
   });
 
   test("run mode from a body line: Run mode with bullets, bold, backticks or on a Feature line", () => {
@@ -212,6 +238,21 @@ try {
     assert.deepEqual(modesOf("### TC-1 · P0 · a\n### Notes\nRun mode: manual\nRetired: gone\n"), [["TC-1", "phone"]]);
   });
 
+  test("any heading that is not a case heading ends the case", () => {
+    for (const heading of ["# Test cases", "## Gaps", "## Retired cases", "#### Notes", "##### More", "###### Last", "## TC-9 · P0 · not a case"]) {
+      const text = `### TC-1 · P0 · Upload a photo\nSteps:\n1. Tap Upload\n\n${heading}\n- Run mode: manual for sharing\nRetired: TC-3, removed\n`;
+      assert.deepEqual(modesOf(text), [["TC-1", "phone"]], heading);
+    }
+    // a line starting with # but no space is not a heading
+    assert.deepEqual(modesOf("### TC-1 · P0 · a\n#tag\nRun mode: manual\n"), [["TC-1", "manual"]]);
+    // the next case after a section heading is still read
+    assert.deepEqual(modesOf("### TC-1 · P0 · a\n## Area two\nRun mode: manual\n### TC-2 · P0 · b\nRun mode: task\n"), [["TC-1", "phone"], ["TC-2", "task"]]);
+  });
+
+  test("Run mode and Retired are read only at the start of a line", () => {
+    assert.deepEqual(modesOf("### TC-1 · P0 · a\n1. Check that Run mode: manual is shown\nExpected: shows Retired: yes\n"), [["TC-1", "phone"]]);
+  });
+
   test("TESTCASES.md with a BOM and CRLF line ends", () => {
     assert.deepEqual(modesOf("\uFEFF### TC-1 · P0 · a · manual\r\n### TC-2 · P0 · b\r\nRun mode: task\r\n"), [["TC-1", "manual"], ["TC-2", "task"]]);
   });
@@ -227,6 +268,18 @@ try {
     throws([j(1, "covered", ["TC-2a"]), j(2, "missed", []), j(3, "missed", [])], "K-x-1 cites TC-2a, which is retired", retired);
     throws([j(1, "partly", ["TC-1a", "TC-3a"]), j(2, "missed", []), j(3, "missed", [])], "K-x-1 cites TC-3a, which is retired", retired);
     assert.deepEqual(score(key, [j(1, "covered", ["TC-1a"]), j(2, "missed", []), j(3, "missed", [])], retired).cases, { phone: 1, task: 0, manual: 0, retired: 2 });
+  });
+
+  test("retired cases are not listed as cases no key row cites", () => {
+    const retired = caseIds("### TC-1a · P0 · a\n### TC-2a · P0 · b\nRetired: 2026-01-01\n### TC-3a · P0 · c\n");
+    assert.deepEqual(score(key, [j(1, "covered", ["TC-1a"]), j(2, "missed", []), j(3, "missed", [])], retired).unmatched_cases, ["TC-3a"]);
+  });
+
+  test("Cases read counts phone, task, manual and retired each in its place", () => {
+    const text = "### TC-1 · P0 · a\n### TC-2 · P0 · b · task\n### TC-3 · P0 · c · manual\n### TC-4 · P0 · d · manual\n### TC-5 · P0 · e · manual\n### TC-6 · P0 · f\nRetired: x\n### TC-7 · P0 · g\nRetired: y\n### TC-8 · P0 · h\nRetired: z\n### TC-9 · P0 · i\nRetired: w\n";
+    const dir = runDir(text, [j(1, "covered", ["TC-1"]), j(2, "missed", []), j(3, "missed", [])]);
+    main(dir, { qaSha: "a".repeat(40), rows: key });
+    assert.ok(fs.readFileSync(path.join(dir, "SCORE.md"), "utf8").includes("Cases read: 1 phone, 1 task, 3 manual, 4 retired"));
   });
 
   test("main writes summary.json and SCORE.md with case counts, inputs and every table", () => {
@@ -330,9 +383,11 @@ try {
     assert.ok(node([SCORE, "compare", a, b, summaryDir(32, 100)]).stdout.includes("no change"));
     assert.ok(node([SCORE, "compare", a, b, summaryDir(20, 100)]).stdout.includes("down"));
 
-    const usage = node([SCORE, "compare", a, b]);
-    assert.equal(usage.status, 2);
-    assert.ok(usage.stderr.includes("usage"), usage.stderr);
+    for (const args of [[a, b], [a, b, summaryDir(40, 100), summaryDir(40, 100)], []]) {
+      const usage = node([SCORE, "compare", ...args]);
+      assert.equal(usage.status, 2, `${args.length} folders`);
+      assert.ok(usage.stderr.includes("usage"), usage.stderr);
+    }
     const missing = node([SCORE, "compare", a, b, tmpDir("eval-cmp-")]);
     assert.equal(missing.status, 1);
     assert.ok(missing.stderr.startsWith("score.mjs: ") && missing.stderr.includes("summary.json"), missing.stderr);
@@ -347,6 +402,12 @@ try {
     const empty = node([SCORE, "compare", a, b, garbled]);
     assert.equal(empty.status, 1);
     noStack(empty);
+    for (const on_phone of [{ covered_runnable: 3 }, { covered_runnable: 3, total: "10" }, { total: 10 }, { covered_runnable: null, total: 10 }]) {
+      fs.writeFileSync(path.join(garbled, "summary.json"), JSON.stringify({ on_phone }));
+      const r = node([SCORE, "compare", a, b, garbled]);
+      assert.equal(r.status, 1, JSON.stringify(on_phone));
+      assert.ok(r.stderr.includes("has no on-phone counts"), r.stderr);
+    }
   });
 
   test("CLI: usage exits 2, a refusal exits 1 with one line and no stack trace", () => {
