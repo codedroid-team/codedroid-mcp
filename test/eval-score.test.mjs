@@ -290,6 +290,9 @@ try {
     assert.equal(verdict(0.5, 0.25, 0.25), "no change");
     // equal counts, unequal floats: 7/50 - 1/50 is 0.12000000000000001, 6/50 is 0.12
     assert.equal(verdict(1 / 50, 6 / 50, 7 / 50), "no change");
+    // the float tolerance is part of "no larger than": a change of exactly 1e-9 over a zero spread is no change
+    assert.equal(verdict(0, 0, 1e-9), "no change");
+    assert.equal(verdict(0, 0, 2e-9), "up");
     assert.equal(verdict(50 / 300, 5 / 300, 55 / 300), "no change");
     assert.equal(verdict(50 / 300, 5 / 300, 56 / 300), "up");
     assert.equal(verdict(55 / 300, 5 / 300, 50 / 300), "no change");
