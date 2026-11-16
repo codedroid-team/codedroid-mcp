@@ -1,4 +1,6 @@
 name: codedroid-eval-owncloud
+# seed.sh reads E2E_PASSWORD; naming it here makes compose refuse an empty one without passing it to the server
+x-required-by-seed: ${E2E_PASSWORD:?set E2E_PASSWORD in eval/owncloud/.env}
 services:
   owncloud:
     image: owncloud/server:10.16.7
