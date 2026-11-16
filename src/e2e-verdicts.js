@@ -13,13 +13,15 @@ const MAX_ATTEMPTS = 3;
 const HEADER = "# Verifier verdicts\n\nWritten by `e2e verdicts`. Do not edit by hand.\n\n| Item | Attempt | Verdict | By | Text | Date | Reason |\n| --- | --- | --- | --- | --- | --- | --- |\n";
 const words = (a) => `${a.slice(0, -1).join(", ")} or ${a.at(-1)}`;
 const clean = (s) => s.replace(/[\r\n]+/g, " ").trim();
+/** An id as echoed in a fault line: quoted when it holds a control character. */
+const shown = (id) => (/[\u0000-\u001f\u007f-\u009f]/.test(id) ? JSON.stringify(id) : id);
 const today = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 export function recordVerdicts({ dir, file, now = new Date() }) {
   const fail = (...lines) => ({ code: 2, lines });
   if (!fs.existsSync(file) || !fs.statSync(file).isFile()) return fail(`No such file: ${file}`);
   if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) return fail(`No such folder: ${dir}`);
-  const lines = fs.readFileSync(file, "utf8").split(/\r?\n/).map((text, i) => ({ text, n: i + 1 })).filter((l) => l.text.trim());
+  const lines = fs.readFileSync(file, "utf8").replace(/^\uFEFF/, "").split(/\r?\n/).map((text, i) => ({ text, n: i + 1 })).filter((l) => l.text.trim());
   if (!lines.length) return fail(`${file} holds no verdicts`);
 
   const model = readE2e(dir);
@@ -43,14 +45,15 @@ export function recordVerdicts({ dir, file, now = new Date() }) {
     const { id, verdict, by } = o;
     const reason = clean(o.reason);
     const tc = model.cases.find((c) => c.id === id);
-    if (!tc?.verify) bad(`${id} is not a current, judged case`);
+    if (!tc?.verify) bad(`${shown(id)} is not a current, judged case`);
     if (!VERDICTS.includes(verdict)) bad(`verdict must be ${words(VERDICTS)}`);
     if (verdict === "reopen") {
       if (by !== USER) bad(`"reopen" must have by "${USER}": only the user allows more attempts`);
     } else if (by === USER) bad(`by "${USER}" is only for "reopen"; a verdict's by is ${words(BYS)}`);
     else if (!BYS.includes(by)) bad(`by must be ${words(BYS)}`);
     if (!reason) bad("reason is empty");
-    if (seen.has(id)) bad(`${id} appears twice (first on line ${seen.get(id)})`);
+    else if (!reason.isWellFormed()) bad("reason is not well-formed Unicode");
+    if (seen.has(id)) bad(`${shown(id)} appears twice (first on line ${seen.get(id)})`);
     else seen.set(id, n);
     if (tc?.verify && VERDICTS.includes(verdict)) {
       const held = cycleOf(tc.verify.history, tc.verify.rejected).length; // a rejected row holds its slot
@@ -64,16 +67,23 @@ export function recordVerdicts({ dir, file, now = new Date() }) {
   const root = fs.realpathSync(dir);
   const full = path.join(root, "VERIFY.md");
   if (escapesRoot(root, full)) return fail(`Refusing to write VERIFY.md: it is a link or leads outside ${dir}`);
+  const fence = model.problems.find((p) => p.file === "VERIFY.md" && p.message === "code fence opened here is never closed");
+  if (fence) return fail(`VERIFY.md line ${fence.line} opens a code fence that is never closed: rows written after it could not be read`);
   const date = today(now);
   const rows = todo.map((t) => `| ${t.id} | ${t.attempt} | ${t.verdict} | ${t.by} | ${t.hash} | ${date} | ${t.reason.replace(/\|/g, "\\|")} |\n`).join("");
+  // Exit 2 means nothing was recorded: on any failure after this point VERIFY.md goes back to its old bytes.
+  const created = !fs.existsSync(full);
+  const oldSize = created ? 0 : fs.statSync(full).size;
+  const restore = () => { try { if (created) fs.rmSync(full, { force: true }); else fs.truncateSync(full, oldSize); } catch { /* reported below */ } };
   try {
-    if (!fs.existsSync(full)) fs.writeFileSync(full, HEADER + rows);
+    if (created) fs.writeFileSync(full, HEADER + rows, { flag: "wx" });
     else {
       const old = fs.readFileSync(full, "utf8");
       if (!/^[ \t]*\|[ \t]*Item[ \t]*\|/m.test(old)) return fail("VERIFY.md has no verdict table: delete it or restore it");
       fs.appendFileSync(full, (old.endsWith("\n") ? "" : "\n") + rows);
     }
   } catch (e) {
+    if (e.code !== "EEXIST") restore();
     return fail(`Cannot write VERIFY.md: ${e.code ?? e.message}`);
   }
 
@@ -82,7 +92,8 @@ export function recordVerdicts({ dir, file, now = new Date() }) {
   for (const t of todo) {
     const last = back.findLast((r) => r.item === t.id);
     if (!last || last.verdict !== t.verdict || last.attempt !== t.attempt || last.by !== t.by || last.text !== t.hash || last.date !== date || last.reason !== t.reason) {
-      return fail(`${t.id}: VERIFY.md could not be read back after writing`);
+      restore();
+      return fail(`${t.id}: VERIFY.md could not be read back after writing; nothing was recorded`);
     }
   }
   return {

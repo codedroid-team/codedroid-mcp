@@ -382,6 +382,12 @@ try {
   assert.equal(stale.verify.approved, 1);
   assert.deepEqual(approvedCounters(stale), [1, 0, 0, 2]); // C4 and R1.f1/f2 still through TC-1b
   assert.deepEqual(stale.not_approved[0], { id: "TC-1a", status: "stale", reason: "changed since it was judged" });
+  { // a stale case has its own line, never the not-judged one
+    const sm = readE2e(copy((d) => sub(d, "TESTCASES.md", "type a title, tap", "type a long title, tap")));
+    const smd = qualityMd(quality(sm), sm);
+    assert.match(smd, /\n- TC-1a · stale · changed since it was judged\n/);
+    assert.match(smd, /\n- Not judged yet \(1\): TC-3b\n/);
+  }
   assert.equal(stale.verify.approved + stale.verify.repair + stale.verify.question + stale.verify.unresolved + stale.verify.stale + stale.verify.unverified + stale.verify.invalid, stale.verify.judged);
 
   // v6. An invalid case (an unreadable row names it) approves nothing and is listed with the model's reason.

@@ -176,6 +176,43 @@ try {
   assert.deepEqual(r, { code: 2, lines: ["VERIFY.md has no verdict table: delete it or restore it"] });
   assert.equal(fs.readFileSync(path.join(dir, "VERIFY.md"), "utf8"), "just notes\n");
 
+  // Exit 2 records nothing. A reason that is not well-formed Unicode is a fault.
+  dir = copy();
+  let keep = verifyBytes(dir);
+  r = rec(dir, [v("TC-3b", "repair", "R1 \ud800 x")]);
+  assert.equal(r.code, 2);
+  assert.match(r.lines[0], /:1: reason is not well-formed Unicode$/);
+  assert.ok(verifyBytes(dir).equals(keep));
+  // A VERIFY.md whose last line opens a code fence cannot take rows: refused before anything is appended.
+  dir = copy((d) => fs.appendFileSync(path.join(d, "VERIFY.md"), "```\n"));
+  keep = verifyBytes(dir);
+  r = rec(dir, [v("TC-3b", "repair")]);
+  assert.deepEqual(r, { code: 2, lines: [`VERIFY.md line ${keep.toString().split("\n").length - 1} opens a code fence that is never closed: rows written after it could not be read`] });
+  assert.ok(verifyBytes(dir).equals(keep));
+  // The backstop: rows that do not read back (a date past 9999 is not YYYY-MM-DD) are taken out again.
+  const far = new Date(10000, 0, 1, 12);
+  dir = copy();
+  keep = verifyBytes(dir);
+  r = recordVerdicts({ dir, file: put(dir, [v("TC-3b", "repair"), v("TC-1c", "repair")]), now: far });
+  assert.deepEqual(r, { code: 2, lines: ["TC-3b: VERIFY.md could not be read back after writing; nothing was recorded"] });
+  assert.ok(verifyBytes(dir).equals(keep), "VERIFY.md is byte-identical");
+  dir = copy((d) => { const p = path.join(d, "VERIFY.md"); fs.writeFileSync(p, fs.readFileSync(p, "utf8").trimEnd()); });
+  keep = verifyBytes(dir);
+  assert.equal(recordVerdicts({ dir, file: put(dir, [v("TC-3b", "repair")]), now: far }).code, 2);
+  assert.ok(verifyBytes(dir).equals(keep), "no final newline added either");
+  dir = copy((d) => fs.rmSync(path.join(d, "VERIFY.md")));
+  assert.equal(recordVerdicts({ dir, file: put(dir, [v("TC-3b", "repair")]), now: far }).code, 2);
+  assert.ok(!fs.existsSync(path.join(dir, "VERIFY.md")), "a VERIFY.md this run created is removed");
+
+  // A byte order mark at the start of the verdicts file is skipped.
+  dir = copy();
+  { const f = put(dir, [v("TC-3b", "repair")]); fs.writeFileSync(f, "\uFEFF" + fs.readFileSync(f, "utf8")); r = recordVerdicts({ dir, file: f, now: NOW }); }
+  assert.equal(r.code, 0, r.lines.join("\n"));
+  // An id with control characters is quoted in the fault line.
+  r = rec(dir, [v("TC-\u001b[2Jx", "repair")]);
+  assert.equal(r.code, 2);
+  assert.ok(r.lines[0].endsWith(':1: "TC-\\u001b[2Jx" is not a current, judged case'), r.lines[0]);
+
   // A file without a final newline gets one first.
   dir = copy((d) => { const p = path.join(d, "VERIFY.md"); fs.writeFileSync(p, fs.readFileSync(p, "utf8").trimEnd()); });
   r = rec(dir, [v("TC-3b", "repair")]);

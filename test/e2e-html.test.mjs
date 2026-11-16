@@ -263,6 +263,9 @@ try {
   const st = render(copy((d) => sub(d, "TESTCASES.md", "Opening a note shows its text", "Opening a note shows its title")));
   chipOf(st["TESTCASES.html"], "TC-1c", "", "stale");
   assert.ok(/Changed since it was judged[^]*repair[^]*an app that opens an empty note passes/.test(cardOf(st["TESTCASES.html"], "TC-1c")));
+  const stVer = st["QUALITY.html"].slice(st["QUALITY.html"].indexOf('id="verifier"'));
+  assert.match(stVer, /<li>Not judged yet \(1\): <a class="nw" href="TESTCASES\.html#TC-3b">TC-3b<\/a><\/li>/, "a stale case is not in the not-judged line");
+  assert.match(stVer, /TC-1c<\/a> <span class="chip [^"]*">stale<\/span> changed since it was judged/);
   // Invalid: an unreadable ledger row for the case.
   const inv = render(copy((d) => fs.appendFileSync(path.join(d, "VERIFY.md"), "| TC-3b | 1 | maybe | same | x | y | z |\n")));
   chipOf(inv["TESTCASES.html"], "TC-3b", "fail", "invalid");
