@@ -366,7 +366,8 @@ try {
   test("a keyFiles entry outside the clone is refused, naming it, before anything is read", () => {
     const { root, ev, config } = setup({ "d/A.md": TABLE + "| a | s | e |\n" });
     fs.writeFileSync(path.join(root, "outside.md"), TABLE + "| x | s | e |\n");
-    for (const entry of ["../../../outside.md", "../QA-sibling/A.md", "..", path.join(root, "outside.md"), "d/../../x.md"]) {
+    // an absolute path is refused even when it points into the clone (realpath: key.mjs sees its own folder resolved)
+    for (const entry of ["../../../outside.md", "../QA-sibling/A.md", "..", path.join(root, "outside.md"), "d/../../x.md", path.join(fs.realpathSync(ev), ".cache", "QA", "d", "A.md")]) {
       writeConfig(ev, { ...config, keyFiles: ["d/A.md", entry] });
       refused(fetch(ev), entry);
       assert.ok(!fs.existsSync(path.join(ev, ".cache", "QA")), entry);
