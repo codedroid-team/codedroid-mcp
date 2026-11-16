@@ -14,16 +14,24 @@ const slice = (text, [from, to]) => clean(text.split(/\r?\n/).slice(from - 1, to
 
 /**
  * The judged text of a case (the case object, or an id: its first case): the case block, then each covered
- * requirement's block in id order, each after a `--- <id>` line.
+ * requirement's block in id order, then the INVENTORY row of each control it covers (the bracketed ones, or the
+ * requirement's Caps for an entry without brackets) in id order, each after a `--- <id>` line.
  */
 export function caseText(model, which) {
   const tc = typeof which === "string" ? model.cases.find((c) => c.id === which) : which;
   if (!tc || !model.files["TESTCASES.md"]) return null;
+  const byNumber = (a, b) => a.slice(1) - b.slice(1);
   const parts = [slice(model.files["TESTCASES.md"].text, tc.lines)];
-  const ids = [...new Set(tc.covers.map((e) => e.ref.replace(/\.f\d+$/, "")))].sort((a, b) => a.slice(1) - b.slice(1));
+  const reqOf = (ref) => model.requirements.find((r) => r.id === ref.replace(/\.f\d+$/, ""));
+  const ids = [...new Set(tc.covers.map((e) => e.ref.replace(/\.f\d+$/, "")))].sort(byNumber);
   for (const id of ids) {
-    const req = model.requirements.find((r) => r.id === id);
+    const req = reqOf(id);
     if (req && model.files["PRD.md"]) parts.push(`--- ${id}`, slice(model.files["PRD.md"].text, req.lines));
+  }
+  const caps = [...new Set(tc.covers.flatMap((e) => (e.caps.length ? e.caps : reqOf(e.ref)?.caps ?? [])))].sort(byNumber);
+  for (const id of caps) {
+    const cap = model.capabilities.find((c) => c.id === id);
+    if (cap && model.files["INVENTORY.md"]) parts.push(`--- ${id}`, slice(model.files["INVENTORY.md"].text, [cap.line, cap.line]));
   }
   return parts.join("\n");
 }

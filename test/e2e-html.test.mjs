@@ -227,7 +227,7 @@ try {
   assert.ok(cardOf(cujs, "CUJ-1").includes('<span class="chip pass">approved</span>'));
   assert.ok(!/<h3>R1<\/h3>[^]*?<\/div>/.exec(cardOf(prd, "R1"))[0].includes("approved"), "the requirement itself has no verifier chip");
   // A reopen row reads "reopened", by the user.
-  const reopened = render(copy((d) => fs.appendFileSync(path.join(d, "VERIFY.md"), "| TC-3a | 0 | reopen | user | 38f398cb4a7e8d60 | 2026-11-17 | The user allowed three more tries. |\n")));
+  const reopened = render(copy((d) => fs.appendFileSync(path.join(d, "VERIFY.md"), "| TC-3a | 0 | reopen | user | 3b2c1eaffa0c0ca6 | 2026-11-17 | The user allowed three more tries. |\n")));
   assert.ok(cardOf(reopened["TESTCASES.html"], "TC-3a").includes("reopened") && cardOf(reopened["TESTCASES.html"], "TC-3a").includes("The user allowed three more tries."));
   assert.match(cardOf(reopened["TESTCASES.html"], "TC-3a"), /<b>reopened<\/b> <span class="muted">the user, 2026-11-17<\/span>/);
   // QUALITY.html: approved tiles lead, with-a-case numbers are secondary text; Verifier section.
@@ -247,7 +247,7 @@ try {
   assert.match(nvVer, /<li>Not judged yet \(6\): <a class="nw" href="TESTCASES\.html#TC-1a">TC-1a<\/a>, <a class="nw" href="TESTCASES\.html#TC-1b">TC-1b<\/a>,[^<]*<a/);
   // A long latest reason: the card's verdict block is clamped by CSS, and the history holds the full text.
   const long = "R2: " + "an app that opens the wrong note still shows a title, ".repeat(14) + "END-OF-REASON.";
-  const lp = render(copy((d) => fs.appendFileSync(path.join(d, "VERIFY.md"), `| TC-1c | 2 | repair | independent | fc6504d516bf4b24 | 2026-11-17 | ${long} |\n`)))["TESTCASES.html"];
+  const lp = render(copy((d) => fs.appendFileSync(path.join(d, "VERIFY.md"), `| TC-1c | 2 | repair | independent | 9ce5e9680a7f9cc1 | 2026-11-17 | ${long} |\n`)))["TESTCASES.html"];
   assert.ok(long.length > 600);
   assert.match(cardOf(lp, "TC-1c"), /<p class="verdict clamp warn">/);
   assert.ok(/<details class="history">[^]*END-OF-REASON\./.test(cardOf(lp, "TC-1c")), "the history holds the full reason");

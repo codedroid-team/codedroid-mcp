@@ -60,7 +60,23 @@ try {
   assert.ok(t1b.includes("\n--- R1\n- R1 · A saved note appears in the list with its title.\n  Caps: C4\n  Proof: kept\n  Fails:\n  - R1.f1"));
   assert.equal(t1b.split("--- R1").length, 2, "R1 once for R1.f1 and R1.f2");
   assert.ok(!t1b.includes("R2"));
-  assert.ok(t1b.endsWith(`an empty title leaves "Save" disabled`), "ends at the requirement's last line");
+  assert.ok(t1b.includes(`an empty title leaves "Save" disabled\n--- C4\n| C4 | text "Save" |`), "the requirement's last line, then the covered control's INVENTORY row");
+  assert.ok(t1b.endsWith(`error "Couldn't save" | yes |`), "ends at the last covered control's row");
+  // H6. Each covered control's INVENTORY row, in id order: the bracketed ones, or the requirement's Caps without brackets.
+  const ctl = (id) => caseText(m, id).split("\n").filter((l) => l.startsWith("--- C")).join(" ");
+  assert.equal(ctl("TC-1c"), "--- C1 --- C3");
+  assert.equal(ctl("TC-3b"), "--- C2", "Covers: R4 with no brackets: R4's Caps");
+  const swapped = readE2e(copy((d) => sub(d, "TESTCASES.md", "Covers: R2 (C1, C3)", "Covers: R2 (C3, C1)")));
+  assert.equal(caseText(swapped, "TC-1c").split("--- C").length, 3);
+  assert.ok(caseText(swapped, "TC-1c").indexOf("--- C1") < caseText(swapped, "TC-1c").indexOf("--- C3"), "ascending id order");
+  const tenth = readE2e(copy((d) => {
+    fs.appendFileSync(path.join(d, "INVENTORY.md"), "| C10 | text \"Undo\" | restores the note | app/src/main/java/notes/ListFragment.kt:90 | | yes |\n");
+    sub(d, "PRD.md", "  Caps: C1, C3", "  Caps: C10, C1, C3");
+    sub(d, "TESTCASES.md", "Covers: R2 (C1, C3)", "Covers: R2 (C10, C3)");
+  }));
+  assert.deepEqual(caseText(tenth, "TC-1c").split("\n").filter((l) => l.startsWith("--- C")), ["--- C3", "--- C10"], "numeric, not string, order");
+  assert.ok(!caseText(m, "TC-1a").includes("C6"), "an uncovered control is not part of the text");
+
   assert.ok(!caseText(m, "TC-1a").includes("TC-1b"), "a case block ends at the next heading");
   assert.equal(caseHash(m, "TC-1a").length, 16);
   assert.match(caseHash(m, "TC-1a"), /^[0-9a-f]{16}$/);
@@ -73,9 +89,15 @@ try {
   assert.equal(stale("PRD.md", "  Proof: screen\n  Fails:\n  - R2.f1", "  Proof: kept\n  Fails:\n  - R2.f1").cases[0].verify.status, "approved");
   assert.equal(stale("PRD.md", "Typing in search narrows", "Typing narrows").cases[0].verify.status, "approved");
   assert.equal(stale("PRD.md", "Typing in search narrows", "Typing narrows").cases[4].verify.status, "stale", "TC-3a covers R4: stale beats unresolved");
+  // A covered control's row (label, source line, state) is judged text; an uncovered control's row is not.
+  assert.equal(stale("INVENTORY.md", "| C4 | text \"Save\" |", "| C4 | text \"Save note\" |").cases[0].verify.status, "stale");
+  assert.equal(stale("INVENTORY.md", "EditorFragment.kt:88", "EditorFragment.kt:91").cases[0].verify.status, "stale");
+  assert.equal(stale("INVENTORY.md", "disabled while the title is empty", "disabled while empty").cases[1].verify.status, "stale", "TC-1b covers C4 through R1.f1 (C4)");
+  assert.deepEqual(stale("INVENTORY.md", "hands the note text to the share sheet", "shares it").cases.map((c) => c.verify.status), m.cases.map((c) => c.verify.status), "C6 is covered by no case");
+  assert.equal(stale("INVENTORY.md", "filters the list by title", "filters by title").cases[0].verify.status, "approved", "C2 is not TC-1a's");
   // CRLF and trailing spaces do not change the hash.
   const crlf = readE2e(copy((d) => {
-    for (const f of ["TESTCASES.md", "PRD.md"]) {
+    for (const f of ["TESTCASES.md", "PRD.md", "INVENTORY.md"]) {
       const p = path.join(d, f);
       fs.writeFileSync(p, fs.readFileSync(p, "utf8").replace(/\n/g, "  \r\n"));
     }

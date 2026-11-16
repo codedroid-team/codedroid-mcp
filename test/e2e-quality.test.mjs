@@ -371,6 +371,13 @@ try {
   assert.deepEqual(approvedCounters(rep2), [3, 2, 2, 2]);
   assert.equal(rep2.by_feature[0].requirements.approved, 2);
 
+  // v3b. Covers without brackets means every control in the requirement's Caps: approving such a case approves
+  // all of them; a bracketed entry approves only the controls it names. TC-1c covers R2 (Caps C1, C3).
+  const allCaps = vq((d) => { sub(d, "TESTCASES.md", "Covers: R2 (C1, C3)", "Covers: R2"); approve(d, "TC-1c"); });
+  assert.equal(allCaps.capabilities.approved, 3, "C4, and C1 and C3 through the bracket-less R2");
+  const oneCap = vq((d) => { sub(d, "TESTCASES.md", "Covers: R2 (C1, C3)", "Covers: R2 (C1)"); approve(d, "TC-1c"); });
+  assert.equal(oneCap.capabilities.approved, 2, "C4, and only C1");
+
   // v4. An approved manual case counts as approved but approves nothing: TC-2a covers R3 (C5), manual.
   const man = vq((d) => approve(d, "TC-2a"));
   assert.equal(man.verify.approved, 3);
