@@ -4,6 +4,7 @@
  *
  * Run: node eval/key.mjs fetch
  *   clones qaRepo into eval/.cache/QA (or reuses it), checks out qaSha and writes eval/.cache/key.json.
+ *   An existing key.json is removed first, so a refused fetch leaves none.
  *   Exit codes: 0 done; 1 refused (bad config, damaged or changed cache, git error; one line says what); 2 usage error.
  */
 import { execFileSync, spawnSync } from "node:child_process";
@@ -95,25 +96,38 @@ export function loadKey(cacheDir) {
   const file = path.join(cacheDir, "key.json");
   const stale = (why) => new Error(`${why}; run: node eval/key.mjs fetch`);
   if (!fs.existsSync(file)) throw stale(`no answer key at ${file}`);
-  const key = JSON.parse(fs.readFileSync(file, "utf8"));
+  let key;
+  try {
+    key = JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch {
+    throw stale(`the answer key at ${file} is not valid JSON`);
+  }
+  if (!Array.isArray(key?.rows)) throw stale(`the answer key at ${file} has no rows`);
   if (key.qaSha !== config.qaSha) throw stale(`answer key is at ${key.qaSha} but config pins ${config.qaSha}`);
   if (JSON.stringify(key.keyFiles) !== JSON.stringify(config.keyFiles)) throw stale("answer key was built from other keyFiles than config.json lists");
   if (key.parser !== PARSER) throw stale("answer key was built by another parser (key.mjs changed since the fetch)");
   return key.rows;
 }
 
+/** The environment for git, without the variables that would point it at another repository. */
+function gitEnv() {
+  const env = { ...process.env };
+  for (const k of ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_NAMESPACE"]) delete env[k];
+  return env;
+}
+
 /** Runs git; a failure becomes one line: the command and git's first line of complaint. */
 function git(args) {
   try {
-    return execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+    return execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: gitEnv() }).trim();
   } catch (e) {
     const why = String(e.stderr ?? "").split("\n").map((l) => l.trim()).find(Boolean) ?? e.message;
     throw new Error(`git ${args.join(" ")}: ${why}`);
   }
 }
-const gitOk = (args) => spawnSync("git", args, { stdio: "ignore" }).status === 0;
+const gitOk = (args) => spawnSync("git", args, { stdio: "ignore", env: gitEnv() }).status === 0;
 
-function checkConfig() {
+function checkConfig(qa) {
   if (typeof config.qaRepo !== "string") throw new Error("config.json: qaRepo must be a string");
   if (typeof config.qaSha !== "string" || !/^[0-9a-f]{40}$/.test(config.qaSha)) {
     throw new Error("config.json: qaSha must be a full commit sha (40 lowercase hex characters)");
@@ -121,14 +135,25 @@ function checkConfig() {
   if (!Array.isArray(config.keyFiles) || !config.keyFiles.length || !config.keyFiles.every((f) => typeof f === "string")) {
     throw new Error("config.json: keyFiles must be a non-empty list of paths");
   }
+  for (const f of config.keyFiles) {
+    const rel = path.relative(qa, path.resolve(qa, f));
+    if (path.isAbsolute(f) || path.isAbsolute(rel) || rel === ".." || rel.startsWith(`..${path.sep}`)) {
+      throw new Error(`config.json: keyFiles entry ${f} is outside the clone`);
+    }
+  }
 }
 
+const lstat = (p) => fs.lstatSync(p, { throwIfNoEntry: false });
+
 function fetchKey() {
-  checkConfig();
   const cache = path.join(here, ".cache");
   const qa = path.join(cache, "QA");
+  const keyFile = path.join(cache, "key.json");
+  // a refused or failed fetch must not leave an older key looking current
+  fs.rmSync(keyFile, { force: true });
+  checkConfig(qa);
   fs.mkdirSync(cache, { recursive: true });
-  if (!fs.existsSync(qa)) {
+  if (!lstat(qa)) {
     // clone beside it and rename, so an interrupted clone never looks like a cache
     for (const f of fs.readdirSync(cache)) if (f.startsWith("QA.tmp-")) fs.rmSync(path.join(cache, f), { recursive: true, force: true });
     const tmp = path.join(cache, `QA.tmp-${process.pid}`);
@@ -140,13 +165,15 @@ function fetchKey() {
     }
     fs.renameSync(tmp, qa);
   }
-  // an empty or half-made folder would let git -C act on an enclosing repository
+  // a symlink, a .git file or an empty or half-made folder would let git -C act on another repository
+  const damaged = () => new Error(`the cache at ${qa} is damaged (not a complete clone); delete ${qa} and run: node eval/key.mjs fetch`);
+  if (!lstat(qa).isDirectory() || !lstat(path.join(qa, ".git"))?.isDirectory()) throw damaged();
   let top = "";
   try {
     top = git(["-C", qa, "rev-parse", "--show-toplevel"]);
   } catch {}
   if (!top || fs.realpathSync(top) !== fs.realpathSync(qa) || !gitOk(["-C", qa, "rev-parse", "--verify", "--quiet", "HEAD^{commit}"])) {
-    throw new Error(`the cache at ${qa} is damaged (not a complete clone); delete ${qa} and run: node eval/key.mjs fetch`);
+    throw damaged();
   }
   const has = () => gitOk(["-C", qa, "cat-file", "-e", `${config.qaSha}^{commit}`]);
   if (!has()) {
@@ -160,7 +187,9 @@ function fetchKey() {
   const rows = buildKey(qa, config.keyFiles);
   for (const f of config.keyFiles) console.log(`${rows.filter((r) => r.file === f).length}\t${f}`);
   const key = { qaSha: config.qaSha, keyFiles: config.keyFiles, parser: PARSER, rows };
-  fs.writeFileSync(path.join(cache, "key.json"), JSON.stringify(key, null, 2));
+  const tmp = `${keyFile}.tmp-${process.pid}`;
+  fs.writeFileSync(tmp, JSON.stringify(key, null, 2));
+  fs.renameSync(tmp, keyFile);
   console.log(`${rows.length}\ttotal`);
 }
 

@@ -65,7 +65,30 @@ function setup(files, root = tmpDir("eval-fetch-")) {
   return { root, up, ev, sha, config };
 }
 const writeConfig = (ev, config) => fs.writeFileSync(path.join(ev, "config.json"), JSON.stringify(config));
-const fetch = (ev) => spawnSync(process.execPath, [path.join(ev, "key.mjs"), "fetch"], { cwd: ev, encoding: "utf8" });
+const fetch = (ev, env = {}) => spawnSync(process.execPath, [path.join(ev, "key.mjs"), "fetch"], { cwd: ev, encoding: "utf8", env: { ...process.env, ...env } });
+/** Another repository whose origin has a commit it has not fetched, so a `git fetch` in it would show. */
+function otherRepo(root) {
+  const other = path.join(root, "other");
+  fs.mkdirSync(other);
+  git(other, "init", "-q", "-b", "main");
+  commit(other, { README: "other\n" });
+  const origin = path.join(root, "other-origin.git");
+  git(root, "clone", "-q", "--bare", other, origin);
+  const w = path.join(root, "other-work");
+  git(root, "clone", "-q", origin, w);
+  commit(w, { "n.txt": "n\n" });
+  git(w, "push", "-q", "origin", "main");
+  git(other, "remote", "add", "origin", origin);
+  return other;
+}
+/** What a git command run in `repo` by mistake would change. */
+const repoState = (repo) => ({
+  remotes: git(repo, "for-each-ref", "refs/remotes"),
+  fetchHead: fs.existsSync(path.join(repo, ".git", "FETCH_HEAD")),
+  head: git(repo, "rev-parse", "HEAD"),
+  branch: git(repo, "symbolic-ref", "HEAD"),
+  status: git(repo, "status", "--porcelain"),
+});
 const readKey = (ev) => JSON.parse(fs.readFileSync(path.join(ev, ".cache", "key.json"), "utf8"));
 /** A refusal: exit 1, one line on stderr, no stack trace, containing each of `parts`. */
 function refused(r, ...parts) {
@@ -208,6 +231,19 @@ try {
     assert.throws(() => loadKey(dir), (e) => e.message.endsWith("run: node eval/key.mjs fetch"));
   });
 
+  test("loadKey refuses a key.json that is not JSON or has no rows array, with the fetch hint", () => {
+    const dir = tmpDir("eval-key-");
+    const good = { qaSha: CONFIG.qaSha, keyFiles: CONFIG.keyFiles, parser: PARSER };
+    for (const text of ["{bad", "", "null", "[]", "5", JSON.stringify(good), JSON.stringify({ ...good, rows: {} }), JSON.stringify({ ...good, rows: "x" })]) {
+      fs.writeFileSync(path.join(dir, "key.json"), text);
+      assert.throws(
+        () => loadKey(dir),
+        (e) => !(e instanceof SyntaxError) && !(e instanceof TypeError) && e.message.endsWith("; run: node eval/key.mjs fetch") && e.message.includes("key.json"),
+        text,
+      );
+    }
+  });
+
   test("fetch writes key.json with qaSha, keyFiles, parser and rows", () => {
     const { ev, sha, config } = setup({ "d/A.md": TABLE + "| a | s | e |\n" });
     const r = fetch(ev);
@@ -277,6 +313,82 @@ try {
       assert.deepEqual([git(root, "rev-parse", "HEAD"), git(root, "symbolic-ref", "HEAD"), git(root, "status", "--porcelain")], before);
       assert.ok(!fs.existsSync(path.join(ev, ".cache", "key.json")));
     }
+  });
+
+  test("a QA path that is a symlink or a file, or whose .git is a file, is damaged and git never runs in the other repository", () => {
+    const links = [
+      ["symlink", (qa, other) => fs.symlinkSync(other, qa)],
+      ["gitfile", (qa, other) => {
+        fs.mkdirSync(qa);
+        fs.writeFileSync(path.join(qa, ".git"), `gitdir: ${path.join(other, ".git")}\n`);
+      }],
+      ["file", (qa) => fs.writeFileSync(qa, "x")],
+    ];
+    for (const [how, make] of links) {
+      const { root, ev } = setup({ "d/A.md": TABLE + "| a | s | e |\n" });
+      const other = otherRepo(root);
+      const qa = path.join(ev, ".cache", "QA");
+      fs.mkdirSync(path.dirname(qa), { recursive: true });
+      make(qa, other);
+      const before = repoState(other);
+      const r = fetch(ev);
+      assert.equal(r.status, 1, `${how}: exit ${r.status}: ${r.stderr}`);
+      refused(r, "damaged", ".cache/QA");
+      assert.deepEqual(repoState(other), before, how);
+      assert.ok(!fs.existsSync(path.join(ev, ".cache", "key.json")), how);
+    }
+  });
+
+  test("GIT_DIR in the environment never sends git to another repository", () => {
+    // no cache yet: the clone and checkout happen in the cache
+    const fresh = setup({ "d/A.md": TABLE + "| a | s | e |\n" });
+    const other1 = otherRepo(fresh.root);
+    const before1 = repoState(other1);
+    const r1 = fetch(fresh.ev, { GIT_DIR: path.join(other1, ".git") });
+    assert.equal(r1.status, 0, r1.stderr);
+    assert.deepEqual(repoState(other1), before1);
+    assert.deepEqual(fields(readKey(fresh.ev).rows), [["K-a-1", "a", "", "s", "e"]]);
+
+    // a healthy cache that must fetch a new pin: the fetch runs in the cache
+    const { root, up, ev, config } = setup({ "d/A.md": TABLE + "| a | s | e |\n" });
+    assert.equal(fetch(ev).status, 0);
+    const sha2 = commit(up, { "d/A.md": TABLE + "| a | s | e |\n| b | s | e |\n" });
+    writeConfig(ev, { ...config, qaSha: sha2 });
+    const other = otherRepo(root);
+    const before = repoState(other);
+    const r = fetch(ev, { GIT_DIR: path.join(other, ".git"), GIT_WORK_TREE: other, GIT_INDEX_FILE: path.join(other, ".git", "index") });
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(repoState(other), before);
+    assert.equal(readKey(ev).qaSha, sha2);
+    assert.equal(readKey(ev).rows.length, 2);
+  });
+
+  test("a keyFiles entry outside the clone is refused, naming it, before anything is read", () => {
+    const { root, ev, config } = setup({ "d/A.md": TABLE + "| a | s | e |\n" });
+    fs.writeFileSync(path.join(root, "outside.md"), TABLE + "| x | s | e |\n");
+    for (const entry of ["../../../outside.md", "../QA-sibling/A.md", "..", path.join(root, "outside.md"), "d/../../x.md"]) {
+      writeConfig(ev, { ...config, keyFiles: ["d/A.md", entry] });
+      refused(fetch(ev), entry);
+      assert.ok(!fs.existsSync(path.join(ev, ".cache", "QA")), entry);
+      assert.ok(!fs.existsSync(path.join(ev, ".cache", "key.json")), entry);
+    }
+    writeConfig(ev, { ...config, keyFiles: ["d/./A.md"] });
+    assert.equal(fetch(ev).status, 0);
+  });
+
+  test("a refused fetch leaves no older key.json behind", () => {
+    const { ev, config } = setup({ "d/A.md": TABLE + "| a | s | e |\n" });
+    assert.equal(fetch(ev).status, 0);
+    const key = path.join(ev, ".cache", "key.json");
+    for (const over of [{ qaSha: "main" }, { keyFiles: ["d/A.md", "d/Nope.md"] }, { qaSha: "0123456789abcdef0123456789abcdef01234567" }]) {
+      fs.writeFileSync(key, "{}");
+      writeConfig(ev, { ...config, ...over });
+      assert.equal(fetch(ev).status, 1, JSON.stringify(over));
+      assert.ok(!fs.existsSync(key), JSON.stringify(over));
+    }
+    writeConfig(ev, config);
+    assert.equal(fetch(ev).status, 0);
+    assert.deepEqual(fs.readdirSync(path.join(ev, ".cache")).sort(), ["QA", "key.json"]);
   });
 
   test("fetch refuses local changes in the QA folder", () => {
