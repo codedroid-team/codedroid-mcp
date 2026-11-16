@@ -10,7 +10,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const config = JSON.parse(fs.readFileSync(path.join(here, "config.json"), "utf8"));
+export const config = JSON.parse(fs.readFileSync(path.join(here, "config.json"), "utf8"));
 
 /** Split a table line on `|` outside backticks, dropping the outer pipes. */
 function splitCells(line) {
@@ -66,7 +66,9 @@ export function parseKeyFile(markdown, file) {
 }
 
 export function loadKey(cacheDir) {
-  const key = JSON.parse(fs.readFileSync(path.join(cacheDir, "key.json"), "utf8"));
+  const file = path.join(cacheDir, "key.json");
+  if (!fs.existsSync(file)) throw new Error(`no answer key at ${file}; run: node eval/key.mjs fetch`);
+  const key = JSON.parse(fs.readFileSync(file, "utf8"));
   if (key.qaSha !== config.qaSha) {
     throw new Error(`answer key is at ${key.qaSha} but config pins ${config.qaSha}; run: node eval/key.mjs fetch`);
   }
@@ -94,7 +96,15 @@ function fetchKey() {
   console.log(`${rows.length}\ttotal`);
 }
 
-if (process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url))) {
+function isMain() {
+  try {
+    return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (isMain()) {
   if (process.argv[2] === "fetch") fetchKey();
   else {
     console.error("usage: node eval/key.mjs fetch");

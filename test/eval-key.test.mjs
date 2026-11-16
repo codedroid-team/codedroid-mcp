@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { loadKey, parseKeyFile } from "../eval/key.mjs";
 
 const md = [
@@ -58,5 +59,14 @@ const pinned = JSON.parse(fs.readFileSync(new URL("../eval/config.json", import.
 assert.throws(() => loadKey(dir), (e) => e.message.includes("deadbeef") && e.message.includes(pinned));
 fs.writeFileSync(path.join(dir, "key.json"), JSON.stringify({ qaSha: pinned, rows: rows }));
 assert.equal(loadKey(dir).length, 4);
+fs.rmSync(path.join(dir, "key.json"));
+assert.throws(() => loadKey(dir), (e) => e.message.endsWith("run: node eval/key.mjs fetch"));
+
+// importing key.mjs when argv[1] is not a file does not throw
+{
+  const r = spawnSync(process.execPath, ["--input-type=module", "-e", `await import(${JSON.stringify(new URL("../eval/key.mjs", import.meta.url).href)})`, "not-a-file"], { encoding: "utf8" });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stderr, "");
+}
 
 console.log("eval-key: ok");
