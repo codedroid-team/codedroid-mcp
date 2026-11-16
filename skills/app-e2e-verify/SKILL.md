@@ -100,8 +100,10 @@ fields `id` (the case id), `verdict`, `by` (`independent`; `same` if you wrote t
 5. Stop when the command prints `No case is due for judging.`
 
 A `question` waits for the user. Write their answer into the PRD requirement it concerns (it is a
-decision about the app): that makes the case stale, and `--due` lists it. A case you still believe
-is right after a `repair` stays as it is: it is the user's call at gate 2. Never argue with the
+decision about the app): that makes the case stale, and `--due` lists it. If the question was the
+case's third attempt, also record the `reopen` line below for it with the user's answer as the
+reason; then `--due` lists it. A case you still believe is right after a `repair` stays as it
+is: it is the user's call at gate 2. Never argue with the
 verifier in the documents. Only when the user says to give a case more attempts, record this line:
 `{"id": "TC-3a", "verdict": "reopen", "by": "user", "reason": "<what the user said>"}`
 

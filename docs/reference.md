@@ -223,6 +223,10 @@ TC-02b@8629b9ce8edaa8a4`), or `No case is due for judging.`, and exits 0. A case
 `unverified`, `stale`, `invalid` or `repair` and its current cycle has attempts left, or when its
 latest row is a `reopen`; never when it is `approved`, a `question` or `unresolved`, and never a
 setup or retired case. A case whose cycle used three attempts waits for the user whatever its status.
+A `question` is answered by writing the user's answer into the PRD requirement it concerns, which
+makes the case stale and `--due` lists it; if the question was the case's third attempt, the answer
+is also the user's word to give it another go: record a `reopen` for it with the answer as the
+reason, and then `--due` lists it.
 The code is the first 16 hex characters of the sha256 of the judged text: the case's block, the PRD
 blocks of the requirements it covers, and the INVENTORY row of each control it covers (the bracketed
 controls, or the requirement's `Caps:` for a `Covers:` entry without brackets). Line ends and

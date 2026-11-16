@@ -247,6 +247,26 @@ try {
   rec(dir, [v("TC-1c", "reopen", "the user answered")]);
   assert.equal(status(dir, "TC-1c").status, "question");
   assert.equal(due(dir)[0], `F1: ${at(dir, "TC-1c")}`);
+  // A question as the third attempt: the user's answer goes into the PRD (stale, not due, capped); their reopen
+  // lets it be judged again, and the next verdict is attempt 1 of a new cycle.
+  dir = copy();
+  rec(dir, [v("TC-1c", "repair", "R2: 2")]);
+  assert.equal(rec(dir, [v("TC-1c", "question", "R2: should a deleted note open?")]).lines[0], "TC-1c: question (attempt 3 of 3)");
+  { const p = path.join(dir, "PRD.md"); fs.writeFileSync(p, fs.readFileSync(p, "utf8").replace("- R2 · A tap on a note opens it with its text.", "- R2 · A tap on a note opens it with its text; a deleted note does not open.")); }
+  assert.equal(status(dir, "TC-1c").status, "stale");
+  assert.ok(!due(dir).join(" ").includes("TC-1c"));
+  assert.match(rec(dir, [v("TC-1c", "repair", "R2: x")]).lines[0], /TC-1c has had three attempts/);
+  assert.equal(rec(dir, [v("TC-1c", "reopen", "a deleted note does not open")]).code, 0);
+  assert.equal(due(dir)[0], `F1: ${at(dir, "TC-1c")}`);
+  assert.equal(rec(dir, [v("TC-1c", "approved", "R2: a deleted note that opens is rejected.")]).lines[0], "TC-1c: approved (attempt 1 of 3)");
+  // A rejected reopen row (By independent) does not reset the cycle: it holds a slot like any rejected row.
+  dir = copy((d) => fs.appendFileSync(path.join(d, "VERIFY.md"), `| TC-3a | 0 | reopen | independent | ${"0".repeat(16)} | 2026-11-17 | not the user |\n`));
+  assert.equal(status(dir, "TC-3a").status, "invalid");
+  assert.ok(!due(dir).join(" ").includes("TC-3a"), "still capped: not due");
+  keep = verifyBytes(dir);
+  r = rec(dir, [v("TC-3a", "repair")]);
+  assert.match(r.lines[0], /TC-3a has had three attempts/);
+  assert.ok(verifyBytes(dir).equals(keep));
   // A stale case whose cycle used three attempts waits for the user too: the writer would refuse its verdict.
   dir = copy((d) => { const p = path.join(d, "TESTCASES.md"); fs.writeFileSync(p, fs.readFileSync(p, "utf8").replace("Search narrows the list", "Search narrows the list fast")); });
   assert.equal(status(dir, "TC-3a").status, "stale");
