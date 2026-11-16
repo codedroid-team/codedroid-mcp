@@ -10,7 +10,7 @@ import os from "node:os";
 import path from "node:path";
 import { readE2e } from "../src/e2e-model.js";
 import { caseHash } from "../src/e2e-verify.js";
-import { recordVerdicts } from "../src/e2e-verdicts.js";
+import { dueCases, recordVerdicts } from "../src/e2e-verdicts.js";
 
 const fixture = new URL("./fixtures/e2e-sample", import.meta.url).pathname;
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "e2e-verdicts-"));
@@ -25,9 +25,12 @@ const copy = (edit) => {
 };
 const NOW = new Date(2026, 10, 20, 12, 0, 0); // local 2026-11-20
 const v = (id, verdict, reason = "R1: a reason", by = verdict === "reopen" ? "user" : "independent") => ({ id, verdict, by, reason });
+// Each verdict object without a `text` gets the case's current code, as `e2e verdicts --due` hands it out.
 const put = (dir, objs) => {
   const f = path.join(path.dirname(dir), `v${n++}.jsonl`);
-  fs.writeFileSync(f, objs.map((o) => (typeof o === "string" ? o : JSON.stringify(o))).join("\n") + "\n");
+  const m = readE2e(dir);
+  const withText = (o) => ("text" in o || o.verdict === "reopen" ? o : { ...o, text: caseHash(m, o.id) ?? "0000000000000000" });
+  fs.writeFileSync(f, objs.map((o) => (typeof o === "string" ? o : JSON.stringify(withText(o)))).join("\n") + "\n");
   return f;
 };
 const rec = (dir, objs) => recordVerdicts({ dir, file: put(dir, objs), now: NOW });
@@ -176,9 +179,76 @@ try {
   assert.deepEqual(r, { code: 2, lines: ["VERIFY.md has no verdict table: delete it or restore it"] });
   assert.equal(fs.readFileSync(path.join(dir, "VERIFY.md"), "utf8"), "just notes\n");
 
+  // H1. A verdict is bound to the text it was judged on. The reviewer's repro: approve, weaken the case, record the
+  // same file again: refused, and the case stays stale.
+  dir = copy();
+  const approveFile = put(dir, [v("TC-3b", "approved", "R4: an app that shows the full list is rejected.")]);
+  assert.equal(recordVerdicts({ dir, file: approveFile, now: NOW }).code, 0);
+  assert.equal(status(dir, "TC-3b").status, "approved");
+  fs.appendFileSync(path.join(dir, "TESTCASES.md"), "Expected: anything at all.\n");
+  assert.equal(status(dir, "TC-3b").status, "stale");
+  let keep = verifyBytes(dir);
+  r = recordVerdicts({ dir, file: approveFile, now: NOW });
+  assert.equal(r.code, 2);
+  assert.match(r.lines[0], /:1: TC-3b changed since it was judged \(or the text code is wrong\): judge it again$/);
+  assert.ok(verifyBytes(dir).equals(keep));
+  assert.equal(status(dir, "TC-3b").status, "stale");
+  // Judged on the current text: accepted, and the row carries that text.
+  r = rec(dir, [v("TC-3b", "repair", "R4: Expected accepts any screen.")]);
+  assert.equal(r.code, 0, r.lines.join("\n"));
+  assert.equal(readE2e(dir).verify.rows.at(-1).text, caseHash(readE2e(dir), "TC-3b"));
+  // A wrong, malformed or missing text is refused.
+  dir = copy();
+  keep = verifyBytes(dir);
+  for (const [text, re] of [["0123456789abcdef", /TC-1c changed since it was judged/], ["XYZ", /"text" must be 16 hex characters/], [undefined, /missing field "text"/], [5, /"text" must be a string/]]) {
+    const o = { ...v("TC-1c", "repair"), text };
+    if (text === undefined) delete o.text;
+    r = recordVerdicts({ dir, file: put(dir, [JSON.stringify(o)]), now: NOW });
+    assert.equal(r.code, 2, String(text));
+    assert.match(r.lines.join("\n"), re);
+    assert.ok(verifyBytes(dir).equals(keep));
+  }
+  // A reopen judges nothing: its text is not needed, and ignored when given.
+  r = rec(dir, [{ ...v("TC-3a", "reopen", "the user allowed more"), text: "not a code" }]);
+  assert.equal(r.code, 0, r.lines.join("\n"));
+  // Recording the same file twice: the second time is refused, nothing appended.
+  dir = copy();
+  const twice = put(dir, [v("TC-1c", "repair", "R2: weak.\n"), v("TC-3b", "repair")]);
+  assert.equal(recordVerdicts({ dir, file: twice, now: NOW }).code, 0);
+  keep = verifyBytes(dir);
+  r = recordVerdicts({ dir, file: twice, now: NOW });
+  assert.deepEqual(r.lines, [`${twice}:1: TC-1c: this verdict is already recorded`, `${twice}:2: TC-3b: this verdict is already recorded`]);
+  assert.ok(verifyBytes(dir).equals(keep));
+  // ...but the same verdict with a new reason is a new attempt.
+  assert.equal(rec(dir, [v("TC-1c", "repair", "R2: weaker.")]).code, 0);
+
+  // --due: per feature, the cases a verifier judges next, each with its current code, in document order.
+  const due = (d) => dueCases(readE2e(d));
+  const at = (d, id) => `${id}@${caseHash(readE2e(d), id)}`;
+  dir = copy();
+  assert.deepEqual(due(dir), [`F1: ${at(dir, "TC-1c")}`, `F2: ${at(dir, "TC-3b")}`], "repair with attempts left and unverified; never approved, question or unresolved");
+  fs.appendFileSync(path.join(dir, "TESTCASES.md"), "\n### TC-00 · P1 · Sign in\nFeature: all · Type: setup\nRun mode: phone\n\n### TC-9r · P1 · Gone\nRetired: removed\n");
+  { const p = path.join(dir, "TESTCASES.md"); fs.writeFileSync(p, fs.readFileSync(p, "utf8").replace("Tap \"New note\", type a title", "Tap \"New note\", type a short title")); }
+  assert.deepEqual(due(dir), [`F1: ${at(dir, "TC-1a")} ${at(dir, "TC-1c")}`, `F2: ${at(dir, "TC-3b")}`], "an edited approved case is stale and due; setup and retired never");
+  rec(dir, [v("TC-1a", "approved"), v("TC-3b", "approved")]);
+  assert.deepEqual(due(dir), [`F1: ${at(dir, "TC-1c")}`], "approved: not due");
+  rec(dir, [v("TC-1c", "repair", "R2: 2")]);
+  assert.deepEqual(due(dir), [`F1: ${at(dir, "TC-1c")}`], "two attempts: still due");
+  rec(dir, [v("TC-1c", "repair", "R2: 3")]);
+  assert.deepEqual(due(dir), ["No case is due for judging."], "a third failed attempt waits for the user");
+  rec(dir, [v("TC-3a", "reopen", "the user allowed more")]);
+  assert.deepEqual(due(dir), [`F2: ${at(dir, "TC-3a")}`], "a reopened case is due");
+  // A stale case whose cycle used three attempts waits for the user too: the writer would refuse its verdict.
+  dir = copy((d) => { const p = path.join(d, "TESTCASES.md"); fs.writeFileSync(p, fs.readFileSync(p, "utf8").replace("Search narrows the list", "Search narrows the list fast")); });
+  assert.equal(status(dir, "TC-3a").status, "stale");
+  assert.ok(!due(dir).join(" ").includes("TC-3a"));
+  // An invalid case with attempts left is due.
+  dir = copy((d) => fs.appendFileSync(path.join(d, "VERIFY.md"), "| TC-1a | x | approved | independent | 0123456789abcdef | 2026-11-14 | r |\n"));
+  assert.ok(due(dir)[0].startsWith(`F1: ${at(dir, "TC-1a")} `));
+
   // Exit 2 records nothing. A reason that is not well-formed Unicode is a fault.
   dir = copy();
-  let keep = verifyBytes(dir);
+  keep = verifyBytes(dir);
   r = rec(dir, [v("TC-3b", "repair", "R1 \ud800 x")]);
   assert.equal(r.code, 2);
   assert.match(r.lines[0], /:1: reason is not well-formed Unicode$/);
@@ -242,11 +312,27 @@ try {
   assert.equal(b.status, 0, b.stderr);
   assert.equal(b.stdout, 'TC-3b: repair (attempt 1 of 3)\nRun "e2e report" to update the pages.\n');
   assert.deepEqual(fs.readdirSync(home), []);
-  for (const args of [["verdicts"], ["verdicts", file, dir, "extra"]]) {
+  for (const args of [["verdicts"], ["verdicts", file, dir, "extra"], ["verdicts", "--due", dir, "extra"]]) {
     b = run(...args);
     assert.equal(b.status, 2);
-    assert.equal(b.stderr, "Usage: codedroid-mcp e2e verdicts <file> [dir]\n");
+    assert.equal(b.stderr, "Usage: codedroid-mcp e2e verdicts <file> [dir] | codedroid-mcp e2e verdicts --due [dir]\n");
   }
+  // --due through the binary: writes nothing, exit 0; the documents' problems refuse it with exit 2.
+  dir = copy();
+  const dueBefore = fs.readdirSync(dir).sort();
+  b = run("verdicts", "--due", dir);
+  assert.equal(b.status, 0, b.stderr);
+  assert.equal(b.stdout, dueCases(readE2e(dir)).join("\n") + "\n");
+  assert.match(b.stdout, /^F1: TC-1c@[0-9a-f]{16}\nF2: TC-3b@[0-9a-f]{16}\n$/);
+  assert.deepEqual(fs.readdirSync(dir).sort(), dueBefore);
+  b = spawnSync(process.execPath, [path.resolve("src/index.js"), "e2e", "verdicts", "--due"], { cwd: path.dirname(dir), encoding: "utf8", timeout: 10000, env: { ...process.env, HOME: home, USERPROFILE: home } });
+  assert.equal(b.status, 0, "reads ./e2e");
+  assert.match(b.stdout, /^F1: TC-1c@/);
+  fs.appendFileSync(path.join(dir, "TESTCASES.md"), "\n### TC-1c · P1 · duplicate\n");
+  b = run("verdicts", "--due", dir);
+  assert.deepEqual([b.status, b.stdout], [2, 'the documents have problems: run "e2e report" and fix them first\n']);
+  b = run("verdicts", "--due", path.join(root, "nodir"));
+  assert.equal(b.status, 2);
   b = run("verdicts", path.join(root, "nope"), dir);
   assert.equal(b.status, 2);
 

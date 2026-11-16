@@ -11,6 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import { readE2e } from "../src/e2e-model.js";
 import { recordVerdicts } from "../src/e2e-verdicts.js";
+import { caseHash } from "../src/e2e-verify.js";
 import { skillSource } from "../src/skill.js";
 
 const NAMES = ["app-e2e", "app-e2e-explore", "app-e2e-prd", "app-e2e-cujs", "app-e2e-testcases", "app-e2e-run", "app-e2e-maintain", "app-e2e-bug", "app-e2e-verify"];
@@ -77,7 +78,7 @@ try {
   assert.ok(m.cujs.every((j) => j.proves.length) && m.cases.filter((c) => c.type !== "setup").every((c) => c.covers.length), "Proves and Covers name something");
   // The verify skill's example line is a verdict `e2e verdicts` records for a case in the examples.
   const jsonl = path.join(path.dirname(dir), "verdicts.jsonl");
-  fs.writeFileSync(jsonl, JSON.stringify(verdict) + "\n");
+  fs.writeFileSync(jsonl, JSON.stringify({ ...verdict, text: caseHash(m, verdict.id) }) + "\n");
   const recorded = recordVerdicts({ dir, file: jsonl });
   assert.equal(recorded.code, 0, recorded.lines.join("\n"));
   assert.equal(readE2e(dir).cases.find((c) => c.id === verdict.id)?.verify?.status, "repair");

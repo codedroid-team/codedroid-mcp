@@ -10,6 +10,7 @@ import os from "node:os";
 import path from "node:path";
 import { readE2e } from "../src/e2e-model.js";
 import { recordVerdicts } from "../src/e2e-verdicts.js";
+import { caseHash } from "../src/e2e-verify.js";
 import { quality, qualityJson, qualityMd } from "../src/e2e-quality.js";
 
 const fixture = new URL("./fixtures/e2e-sample", import.meta.url).pathname;
@@ -349,7 +350,8 @@ try {
   const approve = (dir, ...ids) => {
     const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "e2e-quality-v-")), "v.jsonl");
     tmps.push(path.dirname(f));
-    fs.writeFileSync(f, ids.map((id) => JSON.stringify({ id, verdict: "approved", by: "independent", reason: "R1: a broken app is rejected by Expected" })).join("\n") + "\n");
+    const m = readE2e(dir);
+    fs.writeFileSync(f, ids.map((id) => JSON.stringify({ id, verdict: "approved", by: "independent", reason: "R1: a broken app is rejected by Expected", text: caseHash(m, id) })).join("\n") + "\n");
     assert.equal(recordVerdicts({ dir, file: f }).code, 0);
   };
   const vq = (edit) => quality(readE2e(copy(edit)));

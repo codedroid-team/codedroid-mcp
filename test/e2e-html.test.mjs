@@ -273,7 +273,7 @@ try {
   // A damaged row superseded by a later verdict shows in the history where it stood.
   const supDir = copy((d) => fs.appendFileSync(path.join(d, "VERIFY.md"), "| TC-3b | 1 | maybe | same | x | y | z |\n"));
   const supLine = fs.readFileSync(path.join(supDir, "VERIFY.md"), "utf8").trimEnd().split("\n").length;
-  fs.writeFileSync(path.join(supDir, "s.jsonl"), JSON.stringify({ id: "TC-3b", verdict: "repair", by: "independent", reason: "R4: weak." }) + "\n");
+  fs.writeFileSync(path.join(supDir, "s.jsonl"), JSON.stringify({ id: "TC-3b", verdict: "repair", by: "independent", reason: "R4: weak." , text: readE2e(supDir).cases.find((c) => c.id === "TC-3b").verify.hash }) + "\n");
   assert.equal(recordVerdicts({ dir: supDir, file: path.join(supDir, "s.jsonl") }).code, 0);
   const supCard = cardOf(render(supDir)["TESTCASES.html"], "TC-3b");
   assert.ok(supCard.includes("Verdict history (2)"), supCard);
@@ -285,7 +285,7 @@ try {
   const vdir = copy();
   write(vdir, render(vdir));
   assert.deepEqual(stalePages(vdir), []);
-  fs.writeFileSync(path.join(vdir, "v.jsonl"), JSON.stringify({ id: "TC-3b", verdict: "approved", by: "independent", reason: "R4: a no-match search that shows the list is rejected." }) + "\n");
+  fs.writeFileSync(path.join(vdir, "v.jsonl"), JSON.stringify({ id: "TC-3b", verdict: "approved", by: "independent", reason: "R4: a no-match search that shows the list is rejected." , text: readE2e(vdir).cases.find((c) => c.id === "TC-3b").verify.hash }) + "\n");
   assert.equal(recordVerdicts({ dir: vdir, file: path.join(vdir, "v.jsonl"), now: new Date(2026, 10, 20) }).code, 0);
   assert.deepEqual(stalePages(vdir).sort(), ["CUJs.html", "PRD.html", "QUALITY.html", "TESTCASES.html", "reports/2026-01-02/REPORT.html"]);
 
