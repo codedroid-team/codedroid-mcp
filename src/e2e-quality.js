@@ -99,6 +99,7 @@ export function quality(model) {
     approved_first: judged.filter((c) => status(c) === "approved" && approvedRow(c).attempt === 1).length,
     approved_after_repair: judged.filter((c) => status(c) === "approved" && approvedRow(c).attempt > 1).length,
     ...Object.fromEntries(["repair", "question", "unresolved", "stale", "unverified", "invalid"].map((k) => [k, judged.filter((c) => status(c) === k).length])),
+    superseded: judged.reduce((n, c) => n + c.verify.rejected.filter((r) => r.superseded).length, 0),
     by: { independent: judged.filter((c) => c.verify.by === "independent").length, same: judged.filter((c) => c.verify.by === "same").length },
   };
   const tally = (list, key, values) => Object.fromEntries(values.map((v) => [v, list.filter((c) => c[key] === v).length]));
@@ -232,6 +233,7 @@ export function qualityMd(q, model) {
   if (q.not_approved.length) out.push("");
   out.push(`Judged by an independent agent: ${v.by.independent}. By the same agent: ${v.by.same}.`);
   out.push(`Approved on the first attempt: ${v.approved_first}. After a repair: ${v.approved_after_repair}. Not approved: ${v.judged - v.approved}.`);
+  if (v.superseded) out.push(`Unreadable rows superseded by a later verdict: ${v.superseded}.`);
   out.push("", "## Left open", "");
   if (!q.open.length) out.push("Nothing is left open.", "");
   else out.push("Nothing below has a runnable case that settles it, or a Gap line. Write the case or the Gap line.", "");

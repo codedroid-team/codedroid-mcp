@@ -420,10 +420,12 @@ export function readE2e(dir) {
   for (const p of verifyProblems) if (!superseded.some((r) => r.line === p.line)) problem("VERIFY.md", p.line, p.message);
   for (const c of m.cases) {
     if (!judged.has(c.id)) { c.verify = null; continue; }
-    const hash = caseHash(m, c.id);
-    c.verify = { ...statusOf(m.verify.rows.filter((r) => r.item === c.id), hash), hash };
-    const bad = rejected.findLast((r) => r.item === c.id && r.line > lastVerdictLine(c.id)); // damaged after the latest verdict: never approved
+    const hash = caseHash(m, c);
+    const own = rejected.filter((r) => r.item === c.id).map(({ line }) => ({ line, superseded: line < lastVerdictLine(c.id) }));
+    c.verify = { ...statusOf(m.verify.rows.filter((r) => r.item === c.id), hash, own), hash, rejected: own };
+    const bad = own.findLast((r) => !r.superseded); // damaged after the latest verdict: never approved
     if (bad) Object.assign(c.verify, { status: "invalid", reason: `VERIFY.md line ${bad.line} cannot be read` });
+    if (m.cases.filter((x) => x.id === c.id).length > 1) Object.assign(c.verify, { status: "invalid", reason: `${c.id} is defined twice` });
   }
 
   // References, checked only against files that were read.

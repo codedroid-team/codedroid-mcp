@@ -315,7 +315,7 @@ try {
   // v. Verifier counts. The fixture's VERIFY.md: TC-1a approved on attempt 1; TC-1b approved on attempt 2 (after a
   // repair); TC-1c repair; TC-2a (manual) question; TC-3a unresolved (three repairs); TC-3b no row.
   assert.deepEqual(q.verify, {
-    judged: 6, approved: 2, approved_first: 1, approved_after_repair: 1, repair: 1, question: 1, unresolved: 1, stale: 0, unverified: 1, invalid: 0,
+    judged: 6, approved: 2, approved_first: 1, approved_after_repair: 1, repair: 1, question: 1, unresolved: 1, stale: 0, unverified: 1, invalid: 0, superseded: 0,
     by: { independent: 4, same: 1 }, // latest rows: TC-1a, TC-1c, TC-2a, TC-3a independent; TC-1b same; TC-3b has none
   });
   assert.deepEqual(q.not_approved, [
@@ -336,7 +336,7 @@ try {
   // v2. No VERIFY.md: nothing approved, every judged case unverified, and the page says nobody judged yet.
   const noVerifyModel = readE2e(copy((d) => fs.rmSync(path.join(d, "VERIFY.md"))));
   const nv = quality(noVerifyModel);
-  assert.deepEqual(nv.verify, { judged: 6, approved: 0, approved_first: 0, approved_after_repair: 0, repair: 0, question: 0, unresolved: 0, stale: 0, unverified: 6, invalid: 0, by: { independent: 0, same: 0 } });
+  assert.deepEqual(nv.verify, { judged: 6, approved: 0, approved_first: 0, approved_after_repair: 0, repair: 0, question: 0, unresolved: 0, stale: 0, unverified: 6, invalid: 0, superseded: 0, by: { independent: 0, same: 0 } });
   assert.deepEqual([nv.capabilities.approved, nv.requirements.approved, nv.requirements.at_depth_approved, nv.failures.approved], [0, 0, 0, 0]);
   assert.deepEqual(nv.by_feature.map((f) => [f.capabilities.approved, f.requirements.approved, f.requirements.at_depth_approved, f.failures.approved]), [[0, 0, 0, 0], [0, 0, 0, 0]]);
   assert.equal(nv.not_approved.length, 6);
@@ -391,6 +391,13 @@ try {
   assert.deepEqual(approvedCounters(inv), [1, 0, 0, 2]);
   assert.match(inv.not_approved[0].reason, /^VERIFY\.md line \d+ cannot be read$/);
   assert.equal(inv.not_approved[0].status, "invalid");
+
+  assert.ok(!qualityMd(inv, readE2e(fixture)).includes("superseded"), "no superseded line without superseded rows");
+  // v6b. A damaged row superseded by a later verdict: counted in the Verifier section.
+  const supModel = readE2e(copy((d) => { fs.appendFileSync(path.join(d, "VERIFY.md"), "| TC-3b | 1 | maybe | same | x | y | z |\n"); approve(d, "TC-3b"); }));
+  const sup = quality(supModel);
+  assert.equal(sup.verify.superseded, 1);
+  assert.match(qualityMd(sup, supModel), /\nUnreadable rows superseded by a later verdict: 1\.\n/);
 
   // v7. Setup and retired cases are not judged and not listed.
   const su2 = withAdded("\n### TC-00 · P1 · Remove leftovers\nFeature: all · Type: setup\nRun mode: phone\n");

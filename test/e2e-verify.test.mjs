@@ -13,7 +13,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { readE2e } from "../src/e2e-model.js";
-import { caseHash, caseText, parseVerify, statusOf } from "../src/e2e-verify.js";
+import { caseHash, caseText, cycleOf, parseVerify, statusOf } from "../src/e2e-verify.js";
 
 const fixture = new URL("./fixtures/e2e-sample", import.meta.url).pathname;
 const tmps = [];
@@ -144,7 +144,7 @@ try {
 
   // A row that cannot be read marks its case invalid (checked before every other status); numbering skips it.
   const badRow = (item, rest = "| 1 | repair | independent | " + H + " | 2026-11-14") => `| ${item} ${rest} |`; // six cells
-  const six = pv(row("TC-1a", 1, "approved") + "\n" + badRow("TC-1a") + "\n" + row("TC-1a", 1, "repair") + "\n");
+  const six = pv(row("TC-1a", 1, "approved") + "\n" + badRow("TC-1a") + "\n" + row("TC-1a", 2, "repair") + "\n");
   assert.deepEqual(six.problems, [{ line: 4, message: "row has 6 cells, expected 7" }], "one problem, none on the following valid row");
   assert.deepEqual(six.rejected, [{ item: "TC-1a", line: 4, message: "row has 6 cells, expected 7" }]);
   assert.equal(six.rows.length, 2);
@@ -160,13 +160,13 @@ try {
   assert.deepEqual(sixM.verify.superseded, []);
   assert.deepEqual(unk.verify.superseded, [], "an unknown id is never superseded");
   // An unreadable row, then a readable verdict for the case: superseded, no problem, the case takes its status.
-  const firstBad = readE2e(copy((d) => fs.writeFileSync(path.join(d, "VERIFY.md"), HEAD + badRow("TC-1a") + "\n" + row("TC-1a", 1, "approved", caseHash(m, "TC-1a")) + "\n")));
+  const firstBad = readE2e(copy((d) => fs.writeFileSync(path.join(d, "VERIFY.md"), HEAD + badRow("TC-1a") + "\n" + row("TC-1a", 2, "approved", caseHash(m, "TC-1a")) + "\n")));
   assert.equal(firstBad.cases[0].verify.status, "approved");
   assert.deepEqual(firstBad.problems, []);
   assert.deepEqual(firstBad.verify.superseded, [{ item: "TC-1a", line: 3 }]);
   assert.equal(firstBad.cases[0].verify.history.length, 1);
   // Only the latest unreadable row counts: one after the latest readable verdict makes the case invalid again.
-  const again = readE2e(copy((d) => fs.writeFileSync(path.join(d, "VERIFY.md"), HEAD + badRow("TC-1a") + "\n" + row("TC-1a", 1, "repair", caseHash(m, "TC-1a")) + "\n" + badRow("TC-1a") + "\n")));
+  const again = readE2e(copy((d) => fs.writeFileSync(path.join(d, "VERIFY.md"), HEAD + badRow("TC-1a") + "\n" + row("TC-1a", 2, "repair", caseHash(m, "TC-1a")) + "\n" + badRow("TC-1a") + "\n")));
   assert.equal(again.cases[0].verify.status, "invalid");
   assert.match(again.cases[0].verify.reason, /^VERIFY\.md line 5 cannot be read$/);
   assert.deepEqual(again.problems.map((p) => p.line), [5]);
@@ -174,6 +174,38 @@ try {
   // A reopen row is not a verdict: it supersedes nothing.
   const reo = readE2e(copy((d) => fs.writeFileSync(path.join(d, "VERIFY.md"), HEAD + badRow("TC-1a") + "\n" + row("TC-1a", 0, "reopen", caseHash(m, "TC-1a")) + "\n")));
   assert.equal(reo.cases[0].verify.status, "invalid");
+
+
+  // H5. A row whose attempt does not follow its cycle, or whose date is not a calendar date, is rejected: not used.
+  const ooo = readE2e(copy((d) => fs.writeFileSync(path.join(d, "VERIFY.md"), HEAD + row("TC-1a", 1, "repair", caseHash(m, "TC-1a")) + "\n" + row("TC-1a", 10, "approved", caseHash(m, "TC-1a")) + "\n")));
+  assert.equal(ooo.cases[0].verify.status, "invalid", "repair 1 then approved attempt 10 does not read approved");
+  assert.deepEqual(ooo.cases[0].verify.history.map((h) => h.verdict), ["repair"]);
+  assert.deepEqual(ooo.problems.map((p) => [p.line, p.message]), [[4, "TC-1a attempt 10 does not follow attempt 1"]]);
+  bad(row("TC-1a", 1, "repair").replace("2026-11-14", "2026-13-45"), "Date 2026-13-45 is not a calendar date");
+  bad(row("TC-1a", 1, "repair").replace("2026-11-14", "2026-02-30"), "Date 2026-02-30 is not a calendar date");
+  assert.deepEqual(pv(row("TC-1a", 1, "repair").replace("2026-11-14", "2024-02-29") + "\n").problems, [], "a leap day is a date");
+  assert.equal(inv(row("TC-1a", 1, "approved", caseHash(m, "TC-1a")).replace("2026-11-14", "2026-13-45") + "\n").cases[0].verify.status, "invalid");
+  // A rejected row naming a case occupies a slot in its cycle: the next readable row is numbered after it.
+  const slot = pv(row("TC-1a", 1, "repair") + "\n" + badRow("TC-1a") + "\n" + row("TC-1a", 3, "repair") + "\n");
+  assert.deepEqual(slot.problems.map((p) => p.line), [4]);
+  assert.deepEqual(slot.rows.map((x) => x.attempt), [1, 3]);
+  assert.equal(cycleOf(slot.rows, slot.rejected).length, 3);
+  assert.equal(cycleOf(slot.rows).length, 2);
+  // Three slots used, the last one damaged: unresolved once a later readable row exists... the cycle counts it.
+  const capped = statusOf(slot.rows.slice(0, 1).concat([{ ...slot.rows[1], attempt: 3 }]), H, slot.rejected);
+  assert.equal(capped.status, "unresolved", "a rejected row is one of the three attempts");
+  // Superseded rows are kept on the case for its history.
+  assert.deepEqual(firstBad.cases[0].verify.rejected, [{ line: 3, superseded: true }]);
+  assert.deepEqual(again.cases[0].verify.rejected, [{ line: 3, superseded: true }, { line: 5, superseded: false }]);
+
+  // H4. A case id defined twice: every case with that id is invalid; each case's text is its own block.
+  const dup = readE2e(copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n### TC-1a · P2 · Another case with the same id\nFeature: F1 · Type: happy\nCovers: R1 (C4)\nTier: core · Depth: screen\nRun mode: phone\n")));
+  const both = dup.cases.filter((c) => c.id === "TC-1a");
+  assert.equal(both.length, 2);
+  for (const c of both) assert.deepEqual([c.verify.status, c.verify.reason], ["invalid", "TC-1a is defined twice"]);
+  assert.ok(caseText(dup, both[1]).startsWith("### TC-1a · P2 · Another case with the same id"));
+  assert.ok(caseText(dup, both[0]).startsWith("### TC-1a · P0 · A saved note"));
+  assert.notEqual(both[0].verify.hash, both[1].verify.hash);
 
   // A table row inside a fenced block is not a ledger row.
   const fenced = pv("```\n" + row("TC-1a", 1, "repair") + "\n" + badRow("TC-1b") + "\n```\n");

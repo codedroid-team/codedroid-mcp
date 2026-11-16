@@ -267,6 +267,15 @@ try {
   const inv = render(copy((d) => fs.appendFileSync(path.join(d, "VERIFY.md"), "| TC-3b | 1 | maybe | same | x | y | z |\n")));
   chipOf(inv["TESTCASES.html"], "TC-3b", "fail", "invalid");
   assert.ok(cardOf(inv["TESTCASES.html"], "TC-3b").includes("VERIFY.md line"));
+  // A damaged row superseded by a later verdict shows in the history where it stood.
+  const supDir = copy((d) => fs.appendFileSync(path.join(d, "VERIFY.md"), "| TC-3b | 1 | maybe | same | x | y | z |\n"));
+  const supLine = fs.readFileSync(path.join(supDir, "VERIFY.md"), "utf8").trimEnd().split("\n").length;
+  fs.writeFileSync(path.join(supDir, "s.jsonl"), JSON.stringify({ id: "TC-3b", verdict: "repair", by: "independent", reason: "R4: weak." }) + "\n");
+  assert.equal(recordVerdicts({ dir: supDir, file: path.join(supDir, "s.jsonl") }).code, 0);
+  const supCard = cardOf(render(supDir)["TESTCASES.html"], "TC-3b");
+  assert.ok(supCard.includes("Verdict history (2)"), supCard);
+  const supHist = supCard.slice(supCard.indexOf('<details class="history">'));
+  assert.ok(supHist.indexOf(`<li class="muted">row at VERIFY.md line ${supLine} could not be read (superseded)</li>`) > 0 && supHist.indexOf("could not be read") < supHist.indexOf("R4: weak."), supHist);
   // Setup cases get no verifier chip.
   assert.ok(!card.includes("unverified") && !card.includes("approved"), "setup: no verifier chip");
   // New verdicts mark every page stale: VERIFY.md is one of the hashed sources.

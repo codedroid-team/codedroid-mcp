@@ -111,9 +111,11 @@ export function renderPages(model, q) {
     return `<p class="verdict clamp ${TONE[v.status] ?? ""}"><b>Verifier:</b> ${esc(text)}</p>`;
   };
   const verdictHistory = (c) => {
-    const h = c.verify?.history ?? [];
+    // The readable rows and, where they stood, the damaged rows a later verdict superseded.
+    const h = [...(c.verify?.history ?? []), ...(c.verify?.rejected ?? []).filter((r) => r.superseded)].sort((a, b) => a.line - b.line);
     if (!h.length) return "";
-    const row = (r) => `<li>${r.verdict === "reopen" ? "<b>reopened</b>" : `attempt ${r.attempt}, <b>${esc(r.verdict)}</b>`} <span class="muted">${esc(who(r.by))}, ${esc(r.date)}</span><br>${esc(r.reason)}</li>`;
+    const row = (r) => (!r.verdict ? `<li class="muted">row at VERIFY.md line ${r.line} could not be read (superseded)</li>`
+      : `<li>${r.verdict === "reopen" ? "<b>reopened</b>" : `attempt ${r.attempt}, <b>${esc(r.verdict)}</b>`} <span class="muted">${esc(who(r.by))}, ${esc(r.date)}</span><br>${esc(r.reason)}</li>`);
     return `<details class="history"><summary>Verdict history (${h.length})</summary><ol>${h.map(row).join("")}</ol></details>`;
   };
   const pending = (name) => (model.pending.includes(name) ? `<p class="muted">${name} is not written yet.</p>` : "");

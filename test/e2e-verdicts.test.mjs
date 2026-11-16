@@ -139,7 +139,7 @@ try {
   assert.equal(e2eReport(dir).status, 1, "the unreadable row is a problem");
   r = rec(dir, [v("TC-1a", "repair")]);
   assert.equal(r.code, 0, r.lines.join("\n"));
-  assert.equal(r.lines[0], "TC-1a: repair (attempt 1 of 3)", "numbered from the readable rows: the approval closed the last cycle");
+  assert.equal(r.lines[0], "TC-1a: repair (attempt 2 of 3)", "the approval closed the last cycle; the unreadable row took attempt 1 of the new one");
   m2 = readE2e(dir);
   assert.equal(status(dir, "TC-1a").status, "repair");
   assert.deepEqual(m2.problems, []);
@@ -157,6 +157,17 @@ try {
   assert.equal(status(dir, "TC-3a").status, "invalid", "a reopen row supersedes nothing");
   assert.equal(rec(dir, [v("TC-3a", "approved")]).lines[0], "TC-3a: approved (attempt 1 of 3)");
   assert.equal(status(dir, "TC-3a").status, "approved");
+  // Three repairs, the last row damaged: it still holds the third slot, so a fourth verdict is refused; reopen is the way.
+  dir = copy((d) => { const p = path.join(d, "VERIFY.md"); fs.writeFileSync(p, fs.readFileSync(p, "utf8").replace("| TC-3a | 3 | repair | independent |", "| TC-3a | 3 | repair | robot |")); });
+  assert.equal(status(dir, "TC-3a").status, "invalid");
+  const capSnap = verifyBytes(dir);
+  r = rec(dir, [v("TC-3a", "repair")]);
+  assert.equal(r.code, 2);
+  assert.match(r.lines[0], /TC-3a has had three attempts/);
+  assert.ok(verifyBytes(dir).equals(capSnap));
+  assert.equal(rec(dir, [v("TC-3a", "reopen", "the user allowed more")]).code, 0);
+  assert.equal(rec(dir, [v("TC-3a", "repair")]).lines[0], "TC-3a: repair (attempt 1 of 3)");
+  assert.equal(status(dir, "TC-3a").status, "repair");
   dir = copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n### TC-1c · P1 · duplicate\n"));
   r = rec(dir, [v("TC-3b", "repair")]);
   assert.deepEqual(r, { code: 2, lines: ['the documents have problems: run "e2e report" and fix them first'] });

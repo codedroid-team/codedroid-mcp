@@ -53,7 +53,7 @@ export function recordVerdicts({ dir, file, now = new Date() }) {
     if (seen.has(id)) bad(`${id} appears twice (first on line ${seen.get(id)})`);
     else seen.set(id, n);
     if (tc?.verify && VERDICTS.includes(verdict)) {
-      const held = cycleOf(tc.verify.history).length;
+      const held = cycleOf(tc.verify.history, tc.verify.rejected).length; // a rejected row holds its slot
       if (verdict === "reopen" && held < MAX_ATTEMPTS) bad(`${id} is not unresolved: "reopen" is only for a case that used its three attempts`);
       else if (verdict !== "reopen" && held >= MAX_ATTEMPTS) bad(`${id} has had three attempts: only "reopen", on the user's word, allows more`);
       else todo.push({ id, verdict, by, reason, attempt: verdict === "reopen" ? 0 : held + 1, hash: tc.verify.hash });
