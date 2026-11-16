@@ -1,3 +1,4 @@
+name: codedroid-eval-owncloud
 services:
   owncloud:
     image: owncloud/server:10.16.7
