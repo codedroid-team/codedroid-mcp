@@ -126,12 +126,12 @@ try {
   test("other header names, tables without an Expected column, section rows with text, numbering across tables", () => {
     const rows = parse(
       [
-        "| Scenario | Actions | Expected outcome |",
+        "| What | Actions | Expected outcome |",
         "| :--- | :--- | :--- |",
         "|**S1**| some text |||",
         "| One | Tap `Go` | Done |",
         "",
-        "| Title | Status |",
+        "| Name | Status |",
         "| --- | --- |",
         "| Grid row | ok |",
         "",
@@ -145,7 +145,7 @@ try {
       ["K-z-1", "One", "S1", "Tap `Go`", "Done"],
       ["K-z-2", "Two", "S1", "Tap", "Shown"],
     ]);
-    assert.equal(parse(["| Title | Status |", "| --- | --- |", "| a | b |"], "Y.md").length, 0);
+    assert.equal(parse(["| Name | Status |", "| --- | --- |", "| a | b |"], "Y.md").length, 0);
   });
 
   test("a line that is not a table row ends the table", () => {
