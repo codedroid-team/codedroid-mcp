@@ -41,19 +41,27 @@ assert.match(fs.readFileSync(skillSource("app-e2e-explore"), "utf8"), /INVENTORY
 // The verify skill: the command, the ledger, and the brief handed to the verifier, with its words and fields.
 const verify = fs.readFileSync(skillSource("app-e2e-verify"), "utf8");
 assert.match(verify, /e2e verdicts/, "verify names the e2e verdicts command");
+assert.match(verify, /e2e verdicts --due e2e/, "the loop takes the cases to judge from e2e verdicts --due");
 assert.match(verify, /VERIFY\.md/, "verify names VERIFY.md");
 const brief = verify.match(/^=== VERIFIER BRIEF ===\r?\n([\s\S]*?)^=== END OF VERIFIER BRIEF ===/m);
 assert.ok(brief, "verify holds the brief between === VERIFIER BRIEF === and === END OF VERIFIER BRIEF ===");
-for (const word of ["approved", "repair", "question", "id", "verdict", "by", "reason"]) {
+for (const word of ["approved", "repair", "question", "id", "verdict", "by", "reason", "text"]) {
   assert.match(brief[1], new RegExp(`\`${word}\``), `the brief names \`${word}\``);
 }
 for (const name of ["app-e2e", "app-e2e-testcases", "app-e2e-maintain", "app-e2e-bug"]) {
   assert.match(fs.readFileSync(skillSource(name), "utf8"), /app-e2e-verify/, `${name} sends cases through app-e2e-verify`);
 }
-// The brief's example output lines: an approval and a repair, each one JSON object with exactly the four fields.
+// The brief's example output lines: an approval and a repair, each one JSON object with exactly the five string
+// fields, `text` a 16-hex code.
 const example = brief[1].split("\n").filter((l) => l.startsWith("{"));
 const examples = example.map((l) => JSON.parse(l));
-for (const o of examples) assert.deepEqual(Object.keys(o).sort(), ["by", "id", "reason", "verdict"]);
+assert.equal(examples.length, 2);
+for (const o of examples) {
+  assert.deepEqual(Object.keys(o).sort(), ["by", "id", "reason", "text", "verdict"]);
+  for (const v of Object.values(o)) assert.equal(typeof v, "string");
+  assert.match(o.text, /^[0-9a-f]{16}$/);
+}
+assert.match(brief[1], /`TC-1a@<code>`|TC-\w+@/, "the brief shows how a case comes with its code");
 assert.ok(examples.some((o) => o.verdict === "approved"), "the brief shows an approved line");
 const verdict = examples.find((o) => o.verdict === "repair");
 assert.ok(verdict, "the brief shows a repair line");
@@ -76,7 +84,8 @@ try {
   // The examples join: the case in the report is the testcases example's, and it covers the PRD's requirement.
   assert.ok(m.cases.length && m.cases.every((c) => c.id in m.results.byCase), "the report example names the case example");
   assert.ok(m.cujs.every((j) => j.proves.length) && m.cases.filter((c) => c.type !== "setup").every((c) => c.covers.length), "Proves and Covers name something");
-  // The verify skill's example line is a verdict `e2e verdicts` records for a case in the examples.
+  // The verify skill's example line is a verdict `e2e verdicts` records for a case in the examples, once its text
+  // is the stitched case's real code (as `--due` would hand it out).
   const jsonl = path.join(path.dirname(dir), "verdicts.jsonl");
   fs.writeFileSync(jsonl, JSON.stringify({ ...verdict, text: caseHash(m, verdict.id) }) + "\n");
   const recorded = recordVerdicts({ dir, file: jsonl });

@@ -37,7 +37,7 @@ Proof and Fails; a failure gets its `R<n>.f<m>` line) and cover that.
 
 Run `npx -y @codedroid/mcp e2e report e2e`; it must print no problems before you go on (fix each
 `file:line: message` and rerun). Then send the case, and any case you edited, through the
-app-e2e-verify skill. An edit to an approved case, or to a requirement it covers, makes it stale:
+app-e2e-verify skill. An edit to an approved case, or to a requirement or control it covers, makes it stale:
 the pages show it.
 
 ## 4. Prove it red

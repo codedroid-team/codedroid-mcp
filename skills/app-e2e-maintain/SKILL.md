@@ -10,7 +10,7 @@ Input and output: `e2e/EXPLORE.md`, `e2e/INVENTORY.md`, `e2e/PRD.md`, `e2e/CUJs.
 first: a label you did not see on screen or in the source is a guess. After any edit to them, run
 `npx -y @codedroid/mcp e2e report e2e` and fix every problem it prints as `file:line: message`;
 never edit the pages it writes. Send every case you add or edit through the app-e2e-verify skill.
-An edit to an approved case, or to a requirement it covers, makes it stale: the pages show it.
+An edit to an approved case, or to a requirement or control it covers, makes it stale: the pages show it.
 
 ## A case failed because the UI changed
 

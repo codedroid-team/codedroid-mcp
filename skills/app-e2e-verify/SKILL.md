@@ -12,17 +12,18 @@ app-e2e-maintain or app-e2e-bug adds or edits.
 
 ## Who judges
 
-One fresh agent per feature that has cases, given the brief below verbatim with `<feature>`, `<ids>`
-(the cases to judge, see the loop) and `<file>` (a new file in a temp folder, outside `e2e/`) filled
-in, and nothing else: not your notes, not why you wrote a case as you did. Where the host cannot
-start another agent, judge in a separate pass: reread the documents and the source from the top,
-follow the brief to the letter, and write `by` as `same`: the pages show who judged.
+One fresh agent per feature with cases due, given the brief below verbatim with `<feature>`, `<ids>`
+(that feature's line from `e2e verdicts --due`, after the colon) and `<file>` (a new file in a temp
+folder, outside `e2e/`) filled in, and nothing else: not your notes, not why you wrote a case as you
+did. Where the host cannot start another agent, judge in a separate pass: reread the documents and
+the source from the top, follow the brief to the letter, and write `by` as `same`: the pages show who judged.
 
 ```text
 === VERIFIER BRIEF ===
 You judge the design of an Android app's end-to-end test cases before anyone runs them, as if
 someone else wrote them. Find the broken app that would still pass them. Judge exactly these cases,
-<ids>, which belong to feature <feature>; do not judge any other case.
+<ids>, which belong to feature <feature>; do not judge any other case. Each comes as `TC-1a@<code>`:
+the code ties your verdict to the text you judged.
 
 Work in the app's repository root: the documents are in its `e2e/` folder, the source is the rest of
 the repository. INVENTORY.md: each screen's controls (C<n>), each with its handler's source file and
@@ -30,11 +31,12 @@ line. PRD.md: features (F<n>) and requirements (R<n>), each with Caps (its contr
 failure lines, R<n>.f<m>) and Proof, how deep its check must go: `screen` where the user acted,
 `elsewhere` (another screen, a notification, a file, the server), `kept` (still true after leaving
 and reopening the app). TESTCASES.md: the cases. A case's Covers line names the requirements and
-failures it checks, with the controls it exercises in brackets (a control in the requirement's Caps
-that the case does not name there is not its to exercise); Tier is smoke, core, deep or edge; Depth
-is the deepest place its Expected lines check. EXPLORE.md: labels seen on the phone. Read the source
-at each covered control's line, and what it calls. Do not read VERIFY.md or any earlier verdict. Do
-not edit any file under `e2e/`. Run nothing on the phone.
+failures it checks, with the controls it exercises in brackets; an entry with no brackets means
+every control in that requirement's Caps. A control in the Caps that a bracketed entry does not name
+is not the case's to exercise. Tier is smoke, core, deep or edge; Depth is the deepest place its
+Expected lines check. EXPLORE.md: labels seen on the phone. Read the source at each covered
+control's line, and what it calls. Do not read earlier verdicts: `VERIFY.md`, `QUALITY.md`,
+`quality.json` or the `.html` pages. Do not edit any file under `e2e/`. Run nothing on the phone.
 
 Judge a case against what it claims: the requirements and failures in its Covers, to the depth its
 Depth line says. It need not reach a requirement's Proof alone: an honest Depth shallower than the
@@ -56,7 +58,8 @@ For each case, in this order:
    gone by then, or on something every state shows.
 4. A failure case asserts the exact message the source shows, and that the user's data survived.
 5. The steps run as written: the start is reachable, every label is in INVENTORY.md or EXPLORE.md,
-   the steps touch each control in its Covers brackets, the cleanup removes what the case made.
+   the steps use each control its Covers entries name (all of a requirement's Caps where an entry
+   has no brackets), the cleanup removes what the case made.
 6. The tier is honest: a `deep` case is an extended scenario (several items, awkward data, a long
    sequence, state carried across reopening).
 
@@ -69,37 +72,37 @@ the evidence with file and line:
 - `question`: only the app's owner can say which behaviour is intended. The reason is the question.
 No other word: `reopen` is the user's.
 
-Write to <file> only this: one JSON object per line, one line per case, with exactly the string
-fields `id` (the case id), `verdict`, `by` (`independent`; `same` if you wrote the cases) and
-`reason` (one line). For example:
-{"id": "TC-05a", "verdict": "approved", "by": "independent", "reason": "R5, which this case checks at kept: an app that lists the note but never stores it (app/src/main/java/notes/NoteRepository.kt:44 inserts it) is rejected by Expected \"e2e-note\" is listed after the app is reopened. R5.f1: an app that shows any error is rejected by Expected \"Couldn't save\", the string at app/src/main/java/notes/EditorFragment.kt:88, and by the title still in the editor."}
-{"id": "TC-12a", "verdict": "repair", "by": "independent", "reason": "R8.f1: e2e-timer has one blank, so the case cannot show that \"Use Skill\" waits for every blank; use a skill with two blanks, fill one, and check \"Use Skill\" is still disabled. An app that enables it once any blank is filled passes now (app/src/main/java/skills/FillInSheet.kt:96 checks every blank)."}
+Write to <file> only this: one JSON object per line, one line per case, with exactly the five string
+fields `id` (the case id), `verdict`, `by` (`independent`; `same` if you wrote the cases), `reason`
+(one line) and `text` (the code after the `@` for that case, copied exactly). For example:
+{"id": "TC-05a", "verdict": "approved", "by": "independent", "reason": "R5, which this case checks at kept: an app that lists the note but never stores it (app/src/main/java/notes/NoteRepository.kt:44 inserts it) is rejected by Expected \"e2e-note\" is listed after the app is reopened. R5.f1: an app that shows any error is rejected by Expected \"Couldn't save\", the string at app/src/main/java/notes/EditorFragment.kt:88, and by the title still in the editor.", "text": "3f9a1c0e7b2d4a68"}
+{"id": "TC-12a", "verdict": "repair", "by": "independent", "reason": "R8.f1: e2e-timer has one blank, so the case cannot show that \"Use Skill\" waits for every blank; use a skill with two blanks, fill one, and check \"Use Skill\" is still disabled. An app that enables it once any blank is filled passes now (app/src/main/java/skills/FillInSheet.kt:96 checks every blank).", "text": "b04e6d2a91c7f358"}
 === END OF VERIFIER BRIEF ===
 ```
 
 ## The loop
 
-1. `npx -y @codedroid/mcp e2e report e2e` lists no problems in `TESTCASES.md` or `PRD.md` (until
-   then `e2e verdicts` refuses every verdict). Start one verifier per feature, each its own `<file>`,
-   with `<ids>` all of that feature's cases except setup and retired ones.
+1. `npx -y @codedroid/mcp e2e report e2e` lists no problems in `TESTCASES.md` or `PRD.md`. Run
+   `npx -y @codedroid/mcp e2e verdicts --due e2e`: one line per feature, `F2: TC-2a@<code> ...`.
+   Start one verifier per line, each its own `<file>`, with that line's cases as `<ids>`.
 2. Record each file: `npx -y @codedroid/mcp e2e verdicts <file> e2e`, then `e2e report`. A refused
-   file (exit 2, `<file>:<line>: <message>` per fault) records nothing: have its verifier correct
-   the output, and record again. A case shown `invalid` has a damaged row in `VERIFY.md`: send it to
-   a fresh verifier and record the new verdict, which supersedes that row.
+   file (exit 2) records nothing. Faults come as `<file>:<line>: <message>`: have the verifier
+   correct its output and record again; a "changed since it was judged" fault means the case goes
+   to a verifier again, never that you edit the code. The one line "the documents have problems":
+   fix them with `e2e report`, then record again.
 3. Each `repair`: change the case to answer every finding in its reason, without weakening another
    check. Add to `Covers:` a control the repaired steps now use; never remove one to escape a
    finding. If the answer is a new case or a Gap line, say so and write that. It shows as `stale`.
-4. Send the next round to a new verifier, never the one that judged before (or, with no agents, a
-   new pass from the top), with `<ids>` only the cases now `stale`, `unverified`, `invalid`, or
-   `repair` with attempts left, and any the user reopened; never an `approved` one or one that used
-   its three attempts (it waits for the user). An attempt is one recorded verdict on a case; a
-   `reopen` is not one. Record its file.
-5. Stop when every case is `approved`, a `question`, or `unresolved` (its three attempts used).
+4. Run `npx -y @codedroid/mcp e2e verdicts --due e2e` again and send each line to a new verifier,
+   never the one that judged before (or, with no agents, a new pass from the top). A case that used
+   its three attempts is not listed: it waits for the user. Every verdict, `question` included,
+   uses an attempt; a `reopen` does not. Record its file.
+5. Stop when the command prints `No case is due for judging.`
 
-A `question` waits for the user; their answer changes the case or the PRD, which makes the case
-stale, and it goes to the next round. A case you still believe is right after a `repair` stays as it
-is: it is the user's call at gate 2. Never argue with the verifier in the documents. Only when the
-user says to give a case more attempts, record this line for it:
+A `question` waits for the user. Write their answer into the PRD requirement it concerns (it is a
+decision about the app): that makes the case stale, and `--due` lists it. A case you still believe
+is right after a `repair` stays as it is: it is the user's call at gate 2. Never argue with the
+verifier in the documents. Only when the user says to give a case more attempts, record this line:
 `{"id": "TC-3a", "verdict": "reopen", "by": "user", "reason": "<what the user said>"}`
 
 ## Gate 2

@@ -199,7 +199,9 @@ After the headline the command prints `N of M cases not approved by the verifier
 <dir>/QUALITY.md` when any judged case is not approved (N counts every case that is not approved, K those the
 verifier has not judged; the bracket is left out when K is 0), or `No case has been judged by the verifier yet.`
 when no case has any verdict. These lines do not change the exit code. `QUALITY.md`'s Verifier
-section ends with `Approved on the first attempt: A. After a repair: B. Not approved: C.`
+section ends with `Approved on the first attempt: A. After a repair: B. Not approved: C.`, where "first
+attempt" is counted per cycle (an approval after a `reopen` on the first new attempt counts), followed by
+`Unreadable rows superseded by a later verdict: N.` when there are any.
 
 Exit codes: 0 when all is well (`--check`: every page is current), 1 when the documents have
 problems (`--check`: a page is stale), 2 for a usage error, a folder that does not exist, or a file
@@ -209,32 +211,65 @@ then. With more than 20 problems it prints a count per kind and the first 20; th
 ### Record the verifier's verdicts
 
 ```bash
+npx -y @codedroid/mcp e2e verdicts --due [dir]
 npx -y @codedroid/mcp e2e verdicts <file> [dir]
 ```
 
-The `app-e2e-verify` skill has a fresh agent judge each case and runs this command on its output.
-`<file>` is the verifier's output: UTF-8 JSON Lines, one object per judged case, each with exactly
-the string fields `id`, `verdict` (`approved`, `repair`, `question` or `reopen`), `by` and `reason`.
-For a verdict, `by` is `independent` (a fresh agent) or `same` (the agent that wrote the cases).
-`reopen` is the user's: written only when the user says to give a case more attempts, as
-`{"id": "TC-3a", "verdict": "reopen", "by": "user", "reason": "<what the user said>"}`. Blank lines are skipped; the file may live anywhere and is only read. The
-command checks every line against one read of `dir` (default `./e2e`) and, only if all are valid,
-appends one row per line to `VERIFY.md`, creating it with its header if needed. It stamps the attempt
-(the next in the case's current cycle; a `reopen` row is `0`), the hash of the case text and the
-requirements it covers, and today's local date. A reason's line breaks become one space and `|` is
-written `\|`. Existing lines are never rewritten, and nothing is written through a link or outside
-`dir`. Nobody edits `VERIFY.md` by hand. A row the reader cannot parse marks its case `invalid` and
-is a problem in `e2e report`; a new verdict recorded for that case supersedes the row, which then is
-no longer a problem. A parse error in a row that names no current judged case stays a problem.
+The `app-e2e-verify` skill has a fresh agent judge each case and runs these commands around it.
+
+`--due` writes nothing. It prints one line per feature that has cases due for judging, the feature id
+and then each due case as `<id>@<code>` in document order (`F2: TC-02a@184125525faa839e
+TC-02b@8629b9ce8edaa8a4`), or `No case is due for judging.`, and exits 0. A case is due when it is
+`unverified`, `stale`, `invalid` or `repair` and its current cycle has attempts left, or when its
+latest row is a `reopen`; never when it is `approved`, a `question` or `unresolved`, and never a
+setup or retired case. A case whose cycle used three attempts waits for the user whatever its status.
+The code is the first 16 hex characters of the sha256 of the judged text: the case's block, the PRD
+blocks of the requirements it covers, and the INVENTORY row of each control it covers (the bracketed
+controls, or the requirement's `Caps:` for a `Covers:` entry without brackets). Line ends and
+trailing spaces do not count.
+
+`<file>` is the verifier's output: UTF-8 JSON Lines (a byte order mark is skipped), one object per
+judged case, each with exactly the string fields `id`, `verdict` (`approved`, `repair`, `question`
+or `reopen`), `by`, `reason` and `text`, the code `--due` gave for that case. The code ties the
+verdict to the text that was judged. For a verdict, `by` is `independent` (a fresh agent) or `same`
+(the agent that wrote the cases). `reopen` is the user's: written only when the user says to give a
+case more attempts, as `{"id": "TC-3a", "verdict": "reopen", "by": "user", "reason": "<what the user
+said>"}`; it judges nothing, so it needs no `text` and one given is ignored. Blank lines are
+skipped; the file may live anywhere and is only read. The command checks every line against one
+read of `dir` (default `./e2e`) and, only if all are valid, appends one row per line to `VERIFY.md`,
+creating it with its header if needed. It stamps the attempt (the next in the case's current cycle;
+a `reopen` row is `0`), the case's code and today's local date. A reason's line breaks become one
+space and `|` is written `\|`. Existing lines are never rewritten, and nothing is written through a
+link or outside `dir`.
+
+A row the reader cannot trust marks its case `invalid` and is a problem in `e2e report`: one it
+cannot parse, one whose attempt does not follow its cycle, or one whose date is not a calendar date.
+Such a row still takes one attempt of the case's cycle. A new verdict recorded for the case
+supersedes the row: it is then no longer a problem, the case's verdict history shows it as `row at
+VERIFY.md line N could not be read (superseded)`, and `QUALITY.md` counts it. A case id defined
+twice in `TESTCASES.md` makes every case with that id `invalid`. A row that names no current judged
+case stays a problem.
 
 On success it prints one line per verdict (`TC-12a: repair (attempt 1 of 3)`, `TC-12a: reopened`)
-and a reminder to run `e2e report`, and exits 0. Otherwise it exits 2 with nothing appended and one
-`<file>:<line>: <message>` per fault: invalid JSON, a missing, extra or non-string field, an id that
-is not a current judged case, a verdict outside the list, `by` other than `user` on a `reopen` or
-other than `independent` or `same` on a verdict, an empty reason, an id twice, a fourth verdict in a cycle (only `reopen`, on the
-user's word, allows more), or `reopen` for a case whose current cycle does not yet hold three attempts (`reopen` is allowed once it does, even if the case text has changed since, so the case shows as stale). It also exits 2, with one
-line, for a missing file or folder, a file with no verdicts, problems in `TESTCASES.md` or `PRD.md`,
-a `VERIFY.md` with no table, or a write failure. It needs no phone, daemon or network.
+and a reminder to run `e2e report`, and exits 0. Exit 2 means nothing was recorded; there are two
+kinds of refusal. Faults in the verdicts, one `<file>:<line>: <message>` each: invalid JSON, a
+missing, extra or non-string field, an id that is not a current judged case, a verdict outside the
+list, `by` other than `user` on a `reopen` or other than `independent` or `same` on a verdict, an
+empty reason or one that is not well-formed Unicode, a `text` that is not 16 hex characters, a
+`text` that is not the case's current code (`TC-1a changed since it was judged (or the text code is
+wrong): judge it again`: the case goes to a verifier again), a verdict that repeats the case's
+latest row (`TC-1a: this verdict is already recorded`), an id twice, a fourth verdict in a cycle
+(only `reopen`, on the user's word, allows more), or `reopen` for a case whose current cycle does
+not yet hold three attempts (`reopen` is allowed once it does, even if the case text has changed
+since). One line otherwise: `the documents have problems: run "e2e report" and fix them first` for
+problems in `TESTCASES.md` or `PRD.md` (fix them, then record again; `--due` refuses the same way),
+a missing file or folder, a file with no verdicts, a `VERIFY.md` with no table or one that ends
+inside an unclosed code fence, or a write failure. If the rows it appended do not read back, it
+restores `VERIFY.md` to its previous bytes (or removes it if this run created it) and says `nothing
+was recorded`. It needs no phone, daemon or network.
+
+`VERIFY.md` is bookkeeping for honest agents, not a lock: anyone who edits it by hand can forge a
+row, so review it like any other file in a pull request.
 
 ### Standalone Claude Code server
 
