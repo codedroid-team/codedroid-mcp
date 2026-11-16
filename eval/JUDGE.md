@@ -13,10 +13,10 @@ Write `judge.jsonl` next to the `e2e/` folder you were given, in that folder's p
 | --- | --- |
 | `key_id` | the row's `id`, copied exactly |
 | `verdict` | `covered`, `partly` or `missed` |
-| `tc_ids` | array of case ids from `TESTCASES.md` that you matched; `[]` when `missed`; at least one when `covered` |
+| `tc_ids` | array of case ids (strings) from `TESTCASES.md` that you matched, required on every line; `[]` when `missed`; at least one when `covered` or `partly`; never a case marked `Retired:` |
 | `kind` | `happy`, `failure`, `recovery`, `limit` or `conflict` |
 | `off_phone` | JSON boolean `true` or `false`, never a string; required on every line |
-| `note` | one short sentence on why; do not quote the key, and name no key text beyond the row id |
+| `note` | a string, required on every line: one short sentence on why; do not quote the key, and name no key text beyond the row id |
 
 Example (invented app):
 
