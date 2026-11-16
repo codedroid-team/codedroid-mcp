@@ -116,6 +116,13 @@ Lovelace with 555-0100", "turn on dark theme in Settings"). It returns a `task_i
   progress only says it is waiting for an answer, so `cancel_task` and ask the user to update the app.
 - When it ends, CodeDroid comes back to the front: `open_app` your app before acting again.
 - It needs CodeDroid signed in on the phone, and it uses the user's CodeDroid account.
+- Once done, a newer CodeDroid app adds `credits`, what the task cost: `status` `charged`, `shadow`
+  (would charge; nothing taken), `unlimited` (counted, not taken) or `not_charged`, with `used`.
+  `pending` means billing is still settling it: call `get_task` again. No `credits` means there is
+  nothing to say (billing off, an older app, or a task stopped or refused). Only `run_task` costs
+  credits; the other tools do not.
+- A task that ends `out_of_credits` or `update_required` did not run: tell the user what its
+  `reply` and `hint` say. Credits are bought, and the app updated, on the phone.
 
 ## Errors
 
