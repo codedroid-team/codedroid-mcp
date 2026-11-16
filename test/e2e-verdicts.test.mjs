@@ -238,6 +238,15 @@ try {
   assert.deepEqual(due(dir), ["No case is due for judging."], "a third failed attempt waits for the user");
   rec(dir, [v("TC-3a", "reopen", "the user allowed more")]);
   assert.deepEqual(due(dir), [`F2: ${at(dir, "TC-3a")}`], "a reopened case is due");
+  // A reopened case is due even when its status reads question (its third attempt was a question).
+  dir = copy();
+  rec(dir, [v("TC-1c", "repair", "R2: 2")]);
+  rec(dir, [v("TC-1c", "question", "R2: which note opens?")]);
+  assert.equal(status(dir, "TC-1c").status, "unresolved");
+  assert.ok(!due(dir).join(" ").includes("TC-1c"));
+  rec(dir, [v("TC-1c", "reopen", "the user answered")]);
+  assert.equal(status(dir, "TC-1c").status, "question");
+  assert.equal(due(dir)[0], `F1: ${at(dir, "TC-1c")}`);
   // A stale case whose cycle used three attempts waits for the user too: the writer would refuse its verdict.
   dir = copy((d) => { const p = path.join(d, "TESTCASES.md"); fs.writeFileSync(p, fs.readFileSync(p, "utf8").replace("Search narrows the list", "Search narrows the list fast")); });
   assert.equal(status(dir, "TC-3a").status, "stale");
