@@ -448,6 +448,39 @@ try {
     assert.equal(fetch(ev).status, 0);
   });
 
+  test("a keyFiles entry that names the clone itself or a folder is refused, naming it, before the clone", () => {
+    const { ev, config } = setup({ "d/A.md": TABLE + "| a | s | e |\n" });
+    for (const entry of ["", ".", "./", "d/", "d/A.md/"]) {
+      writeConfig(ev, { ...config, keyFiles: ["d/A.md", entry] });
+      refused(fetch(ev), `keyFiles entry ${JSON.stringify(entry)}`);
+      assert.ok(!fs.existsSync(path.join(ev, ".cache", "QA")), JSON.stringify(entry));
+      assert.ok(!fs.existsSync(path.join(ev, ".cache", "key.json")), JSON.stringify(entry));
+    }
+  });
+
+  test("a key file that is a folder or a symlink, or sits under a symlinked folder, is refused after checkout, naming it", () => {
+    const { root, up, ev, config } = setup({ "d/A.md": TABLE + "| a | s | e |\n" });
+    const outside = path.join(root, "outside");
+    fs.mkdirSync(outside);
+    fs.writeFileSync(path.join(outside, "secret.md"), TABLE + "| outside row | s | e |\n");
+    fs.symlinkSync(path.join(outside, "secret.md"), path.join(up, "d", "link.md"));
+    fs.symlinkSync(outside, path.join(up, "L"));
+    fs.symlinkSync("A.md", path.join(up, "d", "same.md"));
+    fs.symlinkSync("d", path.join(up, "In"));
+    const sha = commit(up, {});
+    for (const entry of ["d/link.md", "L/secret.md", "d/same.md", "In/A.md", "d", "L"]) {
+      fs.mkdirSync(path.join(ev, ".cache"), { recursive: true });
+      fs.writeFileSync(path.join(ev, ".cache", "key.json"), "{}");
+      writeConfig(ev, { ...config, qaSha: sha, keyFiles: ["d/A.md", entry] });
+      const r = fetch(ev);
+      refused(r, `keyFiles entry ${entry} `, "regular file inside the clone");
+      assert.ok(!fs.existsSync(path.join(ev, ".cache", "key.json")), entry);
+      assert.ok(!r.stdout.includes("outside row") && !r.stderr.includes("outside row"), entry);
+    }
+    writeConfig(ev, { ...config, qaSha: sha });
+    assert.equal(fetch(ev).status, 0);
+  });
+
   test("a refused fetch leaves no older key.json behind", () => {
     const { ev, config } = setup({ "d/A.md": TABLE + "| a | s | e |\n" });
     assert.equal(fetch(ev).status, 0);

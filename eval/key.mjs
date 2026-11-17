@@ -140,6 +140,7 @@ function checkConfig(qa) {
     if (path.isAbsolute(f) || path.isAbsolute(rel) || rel === ".." || rel.startsWith(`..${path.sep}`)) {
       throw new Error(`config.json: keyFiles entry ${f} is outside the clone`);
     }
+    if (rel === "" || f.endsWith("/")) throw new Error(`config.json: keyFiles entry ${JSON.stringify(f)} names a folder, not a file`);
   }
 }
 
@@ -151,6 +152,19 @@ function real(p) {
   } catch {
     return undefined;
   }
+}
+
+/** The first keyFiles entry that is not a regular file inside the clone, reached without a symlink. */
+function notRegular(qa) {
+  const top = real(qa);
+  return config.keyFiles.find((f) => {
+    let p = qa;
+    for (const part of path.relative(qa, path.resolve(qa, f)).split(path.sep)) {
+      p = path.join(p, part);
+      if (!lstat(p) || lstat(p).isSymbolicLink()) return true;
+    }
+    return !lstat(p).isFile() || !real(p)?.startsWith(top + path.sep);
+  });
 }
 
 function fetchKey() {
@@ -204,6 +218,9 @@ function fetchKey() {
   git(["-C", qa, "checkout", "--quiet", config.qaSha]);
   const missing = config.keyFiles.filter((f) => !fs.existsSync(path.join(qa, f)));
   if (missing.length) throw new Error(`missing key files: ${missing.join(", ")}`);
+  // a symlink committed upstream could point outside the clone
+  const bad = notRegular(qa);
+  if (bad !== undefined) throw new Error(`keyFiles entry ${bad} is not a regular file inside the clone`);
   const rows = buildKey(qa, config.keyFiles);
   for (const f of config.keyFiles) console.log(`${rows.filter((r) => r.file === f).length}\t${f}`);
   const key = { qaSha: config.qaSha, keyFiles: config.keyFiles, parser: PARSER, rows };
