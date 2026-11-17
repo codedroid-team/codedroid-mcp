@@ -34,12 +34,14 @@ const test = (name, fn) => {
 const parse = (lines, file = "F.md") => parseKeyFile(lines.join("\n"), file);
 const fields = (rows) => rows.map((r) => [r.id, r.title, r.section, r.steps, r.expected]);
 
-// git and fetch against a local upstream
+// git and fetch against a local upstream; no GIT_* variable of this process reaches them
+const cleanEnv = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_")));
 const git = (cwd, ...args) =>
   execFileSync("git", ["-c", "user.email=eval@example.com", "-c", "user.name=eval", "-c", "commit.gpgsign=false", ...args], {
     cwd,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
+    env: { ...cleanEnv, GIT_OPTIONAL_LOCKS: "0" },
   }).trim();
 const TABLE = "| Item | Steps | Expected |\n|---|---|---|\n";
 function commit(repo, files) {
@@ -65,7 +67,7 @@ function setup(files, root = tmpDir("eval-fetch-")) {
   return { root, up, ev, sha, config };
 }
 const writeConfig = (ev, config) => fs.writeFileSync(path.join(ev, "config.json"), JSON.stringify(config));
-const fetch = (ev, env = {}) => spawnSync(process.execPath, [path.join(ev, "key.mjs"), "fetch"], { cwd: ev, encoding: "utf8", env: { ...process.env, ...env } });
+const fetch = (ev, env = {}) => spawnSync(process.execPath, [path.join(ev, "key.mjs"), "fetch"], { cwd: ev, encoding: "utf8", env: { ...cleanEnv, ...env } });
 /** Another repository whose origin has a commit it has not fetched, so a `git fetch` in it would show. */
 function otherRepo(root) {
   const other = path.join(root, "other");
@@ -81,9 +83,24 @@ function otherRepo(root) {
   git(other, "remote", "add", "origin", origin);
   return other;
 }
-/** What a git command run in `repo` by mistake would change. */
+/** Every path under `dir` with its size (folders as "d"), sorted. */
+function listing(dir) {
+  const out = [];
+  const walk = (d) => {
+    for (const n of fs.readdirSync(d).sort()) {
+      const p = path.join(d, n);
+      const st = fs.lstatSync(p);
+      out.push(`${path.relative(dir, p)} ${st.isDirectory() ? "d" : st.size}`);
+      if (st.isDirectory()) walk(p);
+    }
+  };
+  walk(dir);
+  return out;
+}
+/** What a git command run in `repo` by mistake would change (the file listing is taken before any git query). */
 const repoState = (repo) => ({
-  remotes: git(repo, "for-each-ref", "refs/remotes"),
+  gitFiles: listing(path.join(repo, ".git")),
+  refs: git(repo, "for-each-ref"),
   fetchHead: fs.existsSync(path.join(repo, ".git", "FETCH_HEAD")),
   head: git(repo, "rev-parse", "HEAD"),
   branch: git(repo, "symbolic-ref", "HEAD"),
@@ -315,12 +332,22 @@ try {
     }
   });
 
-  test("a QA path that is a symlink or a file, or whose .git is a file, is damaged and git never runs in the other repository", () => {
+  test("a QA path that is a symlink or a file, or whose .git is a file, a symlink or borrows another repository, is damaged and git never runs in the other repository", () => {
     const links = [
       ["symlink", (qa, other) => fs.symlinkSync(other, qa)],
       ["gitfile", (qa, other) => {
         fs.mkdirSync(qa);
         fs.writeFileSync(path.join(qa, ".git"), `gitdir: ${path.join(other, ".git")}\n`);
+      }],
+      ["git symlink", (qa, other) => {
+        fs.mkdirSync(qa);
+        fs.symlinkSync(path.join(other, ".git"), path.join(qa, ".git"));
+      }],
+      ["commondir", (qa, other) => {
+        // a real .git folder whose refs and objects live in the other repository
+        fs.mkdirSync(path.join(qa, ".git"), { recursive: true });
+        fs.writeFileSync(path.join(qa, ".git", "commondir"), `${path.join(other, ".git")}\n`);
+        fs.writeFileSync(path.join(qa, ".git", "HEAD"), `${git(other, "rev-parse", "HEAD")}\n`);
       }],
       ["file", (qa) => fs.writeFileSync(qa, "x")],
     ];
@@ -339,28 +366,72 @@ try {
     }
   });
 
-  test("GIT_DIR in the environment never sends git to another repository", () => {
-    // no cache yet: the clone and checkout happen in the cache
-    const fresh = setup({ "d/A.md": TABLE + "| a | s | e |\n" });
-    const other1 = otherRepo(fresh.root);
-    const before1 = repoState(other1);
-    const r1 = fetch(fresh.ev, { GIT_DIR: path.join(other1, ".git") });
-    assert.equal(r1.status, 0, r1.stderr);
-    assert.deepEqual(repoState(other1), before1);
-    assert.deepEqual(fields(readKey(fresh.ev).rows), [["K-a-1", "a", "", "s", "e"]]);
+  test("a QA whose git directory is another folder that borrows QA/.git is damaged and that folder is not written", () => {
+    // QA/.git has no HEAD, so git finds root/.git, whose commondir is QA/.git and whose worktree is QA
+    const { root, up, ev } = setup({ "d/A.md": TABLE + "| a | s | e |\n" });
+    const qa = path.join(ev, ".cache", "QA");
+    fs.mkdirSync(path.dirname(qa));
+    git(root, "clone", "-q", up, qa);
+    const borrowed = path.join(root, ".git");
+    fs.mkdirSync(borrowed);
+    for (const f of ["HEAD", "index"]) fs.renameSync(path.join(qa, ".git", f), path.join(borrowed, f));
+    fs.writeFileSync(path.join(borrowed, "commondir"), `${path.join(qa, ".git")}\n`);
+    git(root, "config", "-f", path.join(qa, ".git", "config"), "extensions.worktreeConfig", "true");
+    git(root, "config", "-f", path.join(borrowed, "config.worktree"), "core.worktree", qa);
+    assert.equal(fs.realpathSync(git(qa, "rev-parse", "--show-toplevel")), fs.realpathSync(qa));
+    const before = listing(borrowed);
+    refused(fetch(ev), "damaged", ".cache/QA");
+    assert.deepEqual(listing(borrowed), before);
+    assert.ok(!fs.existsSync(path.join(ev, ".cache", "key.json")));
+  });
 
-    // a healthy cache that must fetch a new pin: the fetch runs in the cache
-    const { root, up, ev, config } = setup({ "d/A.md": TABLE + "| a | s | e |\n" });
-    assert.equal(fetch(ev).status, 0);
-    const sha2 = commit(up, { "d/A.md": TABLE + "| a | s | e |\n| b | s | e |\n" });
-    writeConfig(ev, { ...config, qaSha: sha2 });
+  test("a symlinked .cache folder is refused before anything in it is removed or written", () => {
+    const { root, ev } = setup({ "d/A.md": TABLE + "| a | s | e |\n" });
     const other = otherRepo(root);
-    const before = repoState(other);
-    const r = fetch(ev, { GIT_DIR: path.join(other, ".git"), GIT_WORK_TREE: other, GIT_INDEX_FILE: path.join(other, ".git", "index") });
-    assert.equal(r.status, 0, r.stderr);
-    assert.deepEqual(repoState(other), before);
-    assert.equal(readKey(ev).qaSha, sha2);
-    assert.equal(readKey(ev).rows.length, 2);
+    commit(other, { "M/key.json": "{}\n" });
+    const cache = path.join(ev, ".cache");
+    fs.symlinkSync(path.join(other, "M"), cache);
+    const before = [repoState(other), listing(other)];
+    refused(fetch(ev), ".cache", "symbolic link");
+    assert.deepEqual([repoState(other), listing(other)], before);
+    assert.equal(fs.readFileSync(path.join(other, "M", "key.json"), "utf8"), "{}\n");
+    assert.ok(fs.lstatSync(cache).isSymbolicLink());
+  });
+
+  test("GIT_* variables in the environment never send git to another repository or out of the cache", () => {
+    const hostile = (other) => ({
+      GIT_DIR: path.join(other, ".git"),
+      GIT_WORK_TREE: other,
+      GIT_INDEX_FILE: path.join(other, ".git", "index"),
+      GIT_COMMON_DIR: path.join(other, ".git"),
+      GIT_OBJECT_DIRECTORY: path.join(other, ".git", "objects"),
+      GIT_ALTERNATE_OBJECT_DIRECTORIES: path.join(other, ".git", "objects"),
+      GIT_NAMESPACE: "evil",
+    });
+    for (const only of [null, "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY", "GIT_NAMESPACE"]) {
+      for (const cached of [false, true]) {
+        const label = `${only ?? "all"}, ${cached ? "healthy cache" : "no cache"}`;
+        const { root, up, ev, config } = setup({ "d/A.md": TABLE + "| a | s | e |\n" });
+        let rows = 1;
+        if (cached) {
+          // a healthy cache that must fetch a new pin
+          assert.equal(fetch(ev).status, 0, label);
+          writeConfig(ev, { ...config, qaSha: commit(up, { "d/A.md": TABLE + "| a | s | e |\n| b | s | e |\n" }) });
+          rows = 2;
+        }
+        const other = otherRepo(root);
+        const env = hostile(other);
+        const before = repoState(other);
+        const r = fetch(ev, only ? { [only]: env[only] } : env);
+        assert.equal(r.status, 0, `${label}: ${r.stderr}`);
+        assert.deepEqual(repoState(other), before, label);
+        assert.equal(readKey(ev).rows.length, rows, label);
+        const qa = path.join(ev, ".cache", "QA");
+        assert.equal(git(qa, "rev-parse", "HEAD"), readKey(ev).qaSha, label);
+        assert.equal(git(qa, "status", "--porcelain"), "", label);
+        assert.ok(!git(qa, "for-each-ref").includes("refs/namespaces/"), label);
+      }
+    }
   });
 
   test("a keyFiles entry outside the clone is refused, naming it, before anything is read", () => {

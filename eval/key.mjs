@@ -144,11 +144,21 @@ function checkConfig(qa) {
 }
 
 const lstat = (p) => fs.lstatSync(p, { throwIfNoEntry: false });
+/** The resolved path, or undefined when `p` is empty or does not exist. */
+function real(p) {
+  try {
+    return p ? fs.realpathSync(p) : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 function fetchKey() {
   const cache = path.join(here, ".cache");
   const qa = path.join(cache, "QA");
   const keyFile = path.join(cache, "key.json");
+  // through a symlinked cache folder the removal and writes below would land in another folder
+  if (lstat(cache)?.isSymbolicLink()) throw new Error(`${cache} is a symbolic link; replace it with a folder, then run: node eval/key.mjs fetch`);
   // a refused or failed fetch must not leave an older key looking current
   fs.rmSync(keyFile, { force: true });
   checkConfig(qa);
@@ -168,11 +178,21 @@ function fetchKey() {
   // a symlink, a .git file or an empty or half-made folder would let git -C act on another repository
   const damaged = () => new Error(`the cache at ${qa} is damaged (not a complete clone); delete ${qa} and run: node eval/key.mjs fetch`);
   if (!lstat(qa).isDirectory() || !lstat(path.join(qa, ".git"))?.isDirectory()) throw damaged();
-  let top = "";
+  // only read-only rev-parse runs until the git directory, common directory included, is QA/.git itself
+  // (a commondir file in QA/.git would send fetch and checkout to another repository)
+  let top, gitDir, commonDir;
   try {
-    top = git(["-C", qa, "rev-parse", "--show-toplevel"]);
+    [top, gitDir, commonDir] = git(["-C", qa, "rev-parse", "--show-toplevel", "--absolute-git-dir", "--git-common-dir"]).split("\n");
   } catch {}
-  if (!top || fs.realpathSync(top) !== fs.realpathSync(qa) || !gitOk(["-C", qa, "rev-parse", "--verify", "--quiet", "HEAD^{commit}"])) {
+  const dotGit = real(path.join(qa, ".git"));
+  if (
+    !top ||
+    real(top) !== real(qa) ||
+    real(gitDir) !== dotGit ||
+    !commonDir ||
+    real(path.resolve(qa, commonDir)) !== dotGit ||
+    !gitOk(["-C", qa, "rev-parse", "--verify", "--quiet", "HEAD^{commit}"])
+  ) {
     throw damaged();
   }
   const has = () => gitOk(["-C", qa, "cat-file", "-e", `${config.qaSha}^{commit}`]);
