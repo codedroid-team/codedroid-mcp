@@ -14,14 +14,14 @@ const DOCS = ["INVENTORY.md", "PRD.md", "CUJs.md", "TESTCASES.md"];
 export function runE2eReport({ dir, check = false }) {
   if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) return { code: 2, lines: [`No such folder: ${dir}`] };
   const root = fs.realpathSync(dir);
-  if (!DOCS.some((n) => fs.lstatSync(path.join(root, n), { throwIfNoEntry: false }))) {
-    return { code: 2, lines: [`No e2e documents in ${dir}: expected INVENTORY.md, PRD.md, CUJs.md or TESTCASES.md`] };
-  }
   // A source the reader cannot open is exit 2, like a folder that does not exist; 1 means the documents have problems.
   const cannotRead = (e) => {
     if (!e.code) throw e;
     return { code: 2, lines: [`Cannot read ${path.relative(root, e.path ?? root) || "."}: ${e.code}`] };
   };
+  let docs;
+  try { docs = DOCS.some((n) => fs.lstatSync(path.join(root, n), { throwIfNoEntry: false })); } catch (e) { return cannotRead(e); }
+  if (!docs) return { code: 2, lines: [`No e2e documents in ${dir}: expected INVENTORY.md, PRD.md, CUJs.md or TESTCASES.md`] };
 
   if (check) {
     let stale;

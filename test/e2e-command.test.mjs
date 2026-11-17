@@ -311,6 +311,16 @@ if (process.getuid?.() !== 0) {
   } finally {
     fs.chmodSync(path.join(locked, "PRD.md"), 0o644);
   }
+  fs.chmodSync(locked, 0);
+  try {
+    for (const mode of [[], ["--check"]]) {
+      r = run("report", locked, ...mode);
+      assert.equal(r.status, 2, r.stdout + r.stderr);
+      assert.equal(r.stdout.trim(), "Cannot read INVENTORY.md: EACCES", "a folder that cannot be searched");
+    }
+  } finally {
+    fs.chmodSync(locked, 0o755);
+  }
   const shotLocked = copy();
   const shot = path.join(shotLocked, "reports/2026-01-02/TC-1a.png");
   fs.chmodSync(shot, 0);
