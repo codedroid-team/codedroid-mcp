@@ -105,6 +105,34 @@ try {
   assert.deepEqual(crlf.cases.map((c) => c.verify.hash), m.cases.map((c) => c.verify.hash));
   assert.equal(crlf.cases[0].verify.status, "approved");
 
+  // A requirement is its own line and the indented lines below it: the next non-blank line at the margin ends it.
+  const codes = (x) => x.cases.map((c) => c.verify.hash);
+  const statuses = (x) => x.cases.map((c) => c.verify.status);
+  const tail = (words) => readE2e(copy((d) => sub(d, "PRD.md", "  Fails: none in source\n\n### F2", `  Fails: none in source\n${words}\n\n### F2`)));
+  for (const x of [tail("Tail note: first wording."), tail("Tail note: second wording.")]) {
+    assert.deepEqual(x.problems, []);
+    assert.deepEqual(codes(x), codes(m), "a margin line after F1's last requirement is not part of R3");
+    assert.deepEqual(statuses(x), statuses(m));
+  }
+  const nonGoal = (why) => readE2e(copy((d) => sub(d, "PRD.md", '"Save" disabled\n- R2', `"Save" disabled\n- Non-goal: C6 · ${why}\n- R2`)));
+  for (const x of [nonGoal("first reason"), nonGoal("second reason")]) {
+    assert.deepEqual(x.problems, []);
+    assert.deepEqual(codes(x), codes(m), "a Non-goal line right after R1 is not part of R1");
+  }
+  const indented = (words) => readE2e(copy((d) => sub(d, "PRD.md", "its text.\n  Caps: C1, C3", `its text.\n  ${words}\n  Caps: C1, C3`)));
+  const [ia, ib] = [indented("Note: first wording."), indented("Note: second wording.")];
+  assert.deepEqual(ib.problems, []);
+  assert.deepEqual(ia.cases.map((c, i) => c.verify.hash !== ib.cases[i].verify.hash), [false, false, true, false, false, false], "an indented line belongs to R2: only TC-1c covers it");
+  assert.equal(ib.cases[2].verify.status, "stale");
+  const unreadable = readE2e(copy((d) => sub(d, "PRD.md", "- R2 · A tap", "- **R2** · A tap")));
+  const r1 = unreadable.requirements.find((r) => r.id === "R1");
+  assert.equal(unreadable.files["PRD.md"].text.split("\n")[r1.lines[1]], "- **R2** · A tap on a note opens it with its text.", "R1 ends right before an unreadable requirement line");
+  assert.ok(!caseText(unreadable, "TC-1a").includes("R2"));
+  // The parser ends a requirement at the same line: fields below a margin line are not the requirement's.
+  const cut = readE2e(copy((d) => sub(d, "PRD.md", "removes it from the list.\n  Caps: C5", "removes it from the list.\nA margin line.\n  Caps: C5")));
+  assert.ok(cut.problems.some((p) => p.message === "R3 has no Caps: line"));
+  assert.deepEqual(cut.requirements.find((r) => r.id === "R3").lines, [20, 20]);
+
   // Setup and retired cases are never judged.
   const odd = readE2e(copy((d) => {
     fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n### TC-9s · P1 · Sign in\nFeature: all · Type: setup\nRun mode: phone\n\n### TC-9r · P1 · Gone\nRetired: removed in 2.0\n");

@@ -167,7 +167,7 @@ export function readE2e(dir) {
     let feature = null;
     let req = null;
     let inFails = false;
-    const bounds = []; // lines where a requirement's block can end
+    const bounds = []; // lines at the margin: each ends the requirement above it
     const finish = () => {
       if (!req) return;
       if (!req.has.caps) problem("PRD.md", req.line, `${req.id} has no Caps: line`);
@@ -180,21 +180,19 @@ export function readE2e(dir) {
     for (const { n, t } of prd) {
       let h;
       const hd = heading(t);
-      if (hd || /^[-*] Non-goal:/.test(t) || /^- R\d/.test(t)) bounds.push(n);
+      // Only indented lines belong to a requirement: any line at the margin ends it, here and in its block.
+      if (/^\S/.test(t)) { finish(); bounds.push(n); }
       if (hd && (h = t.match(/^### (F\d+) · (.+?) · (P\d+)\s*$/))) {
-        finish();
         defined("PRD.md", n, h[1]);
         if (!oneOf(h[3], PRIORITIES)) problem("PRD.md", n, `${h[1]} priority must be ${words(PRIORITIES)}`);
         feature = h[1];
         m.features.push({ id: h[1], name: h[2], priority: h[3], line: n });
       } else if (hd) {
-        finish();
         if (hd.level === 3 ? /^F\d/.test(hd.text) : /^F\d+(?:\s|$)/.test(hd.text)) problem("PRD.md", n, UNREADABLE.feature);
         feature = null;
       } else if (/^\s+[-*] Non-goal:/.test(t)) {
         problem("PRD.md", n, "Non-goal line must start at the beginning of the line");
       } else if ((h = t.match(/^[-*] Non-goal:\s*(.*)$/))) {
-        finish();
         const cut = h[1].indexOf("·");
         const caps = list(cut < 0 ? h[1] : h[1].slice(0, cut));
         const reason = cut < 0 ? "" : h[1].slice(cut + 1).trim();
@@ -205,10 +203,8 @@ export function readE2e(dir) {
       } else if (feature && (h = t.match(/^( {0,3})(?:[-*+•–]|\d+[.)])\s+[*_\s]*[RrＲｒ][0-9０-９]+(\S*)( · )?/)) && (!h[1] || (!req && !h[2] && h[3])) && !/^- (R\d+) · /.test(t)) {
         // Another list form, or a lower-case or full-width R. Indented, only "R<n> · " outside a requirement:
         // other indented items are prose, and inside a requirement they belong to it.
-        finish();
         problem("PRD.md", n, UNREADABLE.requirement);
       } else if ((h = t.match(/^- (R\d+) · (.*)$/))) {
-        finish();
         defined("PRD.md", n, h[1]);
         if (!feature) problem("PRD.md", n, `${h[1]} is under no feature`);
         req = { id: h[1], feature, text: h[2].trim(), caps: [], proof: null, fails: [], line: n, lines: [n, 0], has: {} };
