@@ -215,7 +215,7 @@ try {
   // Every part of the documents is on exactly one page: feature prose, a requirement's other lines, a heading that is
   // not a feature, the CUJs intro, a group's prose, prose after the last journey, the test cases intro, prose between
   // cases. Planted beside each, <u> is escaped.
-  const MARKS = ["MARK_WHAT", "MARK_SCREENS", "MARK_GATES", "MARK_HARM", "MARK_FTAIL", "MARK_REQ", "MARK_UNASSIGNED", "MARK_CUJSTART", "MARK_CUJGROUP", "MARK_ROBUST", "MARK_TCINTRO", "MARK_TCMID", "MARK_INCUJ", "MARK_INCASE"];
+  const MARKS = ["MARK_WHAT", "MARK_SCREENS", "MARK_GATES", "MARK_HARM", "MARK_FTAIL", "MARK_REQ", "MARK_UNASSIGNED", "MARK_CUJSTART", "MARK_CUJGROUP", "MARK_ROBUST", "MARK_TCINTRO", "MARK_TCMID", "MARK_INCUJ", "MARK_INCASE", "MARK_CUJMID"];
   const u = (m) => `${m} <u>x</u>`;
   const shown = render(copy((d) => {
     sub(d, "PRD.md", "### F1 · Notes · P0\n", `### F1 · Notes · P0\nWhat: ${u("MARK_WHAT")}\nScreens: ${u("MARK_SCREENS")}\nGates: ${u("MARK_GATES")}\nHarm: ${u("MARK_HARM")}\n\n`);
@@ -228,15 +228,18 @@ try {
     sub(d, "TESTCASES.md", "# Notes test cases\n", `# Notes test cases\n\n${u("MARK_TCINTRO")}\n`);
     sub(d, "TESTCASES.md", "### TC-3a", `## Search\n${u("MARK_TCMID")}\n\n### TC-3a`);
     sub(d, "CUJs.md", "- The note shows in the list.", `- ${u("MARK_INCUJ")}`);
+    sub(d, "CUJs.md", "### CUJ-2", `### Note\n${u("MARK_CUJMID")}\n\n### CUJ-2`);
     sub(d, "TESTCASES.md", "Expected: the title is in the list.", `Expected: ${u("MARK_INCASE")}`);
   }));
-  for (const m of MARKS) assert.deepEqual(Object.keys(shown).filter((p) => shown[p].includes(m)), [{ MARK_CUJSTART: "CUJs.html", MARK_CUJGROUP: "CUJs.html", MARK_ROBUST: "CUJs.html", MARK_TCINTRO: "TESTCASES.html", MARK_TCMID: "TESTCASES.html", MARK_INCUJ: "CUJs.html", MARK_INCASE: "TESTCASES.html" }[m] ?? "PRD.html"], m);
+  for (const m of MARKS) assert.deepEqual(Object.keys(shown).filter((p) => shown[p].includes(m)), [{ MARK_CUJSTART: "CUJs.html", MARK_CUJGROUP: "CUJs.html", MARK_ROBUST: "CUJs.html", MARK_TCINTRO: "TESTCASES.html", MARK_TCMID: "TESTCASES.html", MARK_INCUJ: "CUJs.html", MARK_INCASE: "TESTCASES.html", MARK_CUJMID: "CUJs.html" }[m] ?? "PRD.html"], m);
   for (const [p, h] of Object.entries(shown)) assert.ok(!h.includes("<u>"), `raw <u> on ${p}`);
   assert.equal((Object.values(shown).join("").match(/&lt;u&gt;x&lt;\/u&gt;/g) ?? []).length, MARKS.length, "each planted <u> shown once, escaped");
   const f1 = shown["PRD.html"].split('<section class="card" id="F1">')[1].split('<article class="card" id="R1">')[0];
   for (const m of ["MARK_WHAT", "MARK_SCREENS", "MARK_GATES", "MARK_HARM", "MARK_FTAIL"]) assert.ok(f1.includes(m), `${m} in the F1 card above its requirements`);
   assert.ok(shown["PRD.html"].split('<article class="card" id="R1">')[1].split("</article>")[0].includes("MARK_REQ"), "the requirement's other line in its card");
   const cu = shown["CUJs.html"];
+  assert.ok(cu.indexOf('id="CUJ-1"') < cu.indexOf("MARK_CUJMID") && cu.indexOf("MARK_CUJMID") < cu.indexOf('id="CUJ-2"'), "text between journeys above the next one");
+  assert.ok(f1.includes("<strong>What:</strong> MARK_WHAT"), "a label starts its own paragraph, in bold");
   assert.ok(cu.indexOf("MARK_CUJSTART") < cu.indexOf("MARK_CUJGROUP") && cu.indexOf("MARK_CUJGROUP") < cu.indexOf('id="CUJ-1"') && cu.lastIndexOf('id="CUJ-3"') < cu.indexOf("MARK_ROBUST"), "CUJs prose in document order");
   const tc = shown["TESTCASES.html"];
   assert.ok(tc.indexOf("MARK_TCINTRO") < tc.indexOf('id="F1"') && tc.indexOf('id="TC-2a"') < tc.indexOf("MARK_TCMID") && tc.indexOf("MARK_TCMID") < tc.indexOf('id="TC-3a"'), "test cases prose in document order");
