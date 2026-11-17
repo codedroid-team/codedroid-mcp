@@ -58,7 +58,8 @@ Harm: "Delete skill" on the skill sheet's menu.
 - Non-goal: C19 · needs a second account
 ```
 
-Each requirement carries three lines, read from the handlers in the source, not from the labels:
+A requirement line starts exactly `- R<n> · ` (a hyphen, no bold, no number). Each requirement
+carries three lines, read from the handlers in the source, not from the labels:
 - `Caps:` the `INVENTORY.md` capabilities it uses; `Caps: none` for a requirement with no control
   in the inventory (install, upgrade, a system-level check). Never leave it empty.
 - `Proof:` how far its effect reaches: `screen` (only this screen changes), `elsewhere` (it shows
@@ -81,7 +82,8 @@ Each requirement carries three lines, read from the handlers in the source, not 
   limit the account never hits) goes under Non-goals with why.
 - Data the tests cannot name `e2e-...` (a public feed, a catalog, a server's own items): say in
   Constraints which items are the test's own, and how the cases make and remove them.
-- A feature with no requirement is out of scope: say so under Non-goals.
+- A feature with no requirement is out of scope: say so in the Non-goals prose. A `- Non-goal:`
+  line names capabilities (`C<n>`), never a feature.
 - Every capability in `INVENTORY.md` is in some requirement's `Caps:`, or in a Non-goal line (the
   example above, under the Non-goals heading): `- Non-goal: C40, C41 · why`. A capability you will
   not test is named there with its reason; one in both places is a problem. The quality page lists
@@ -98,8 +100,10 @@ update path. Say who runs each.
 ## Rules
 
 - A requirement about a behavior `EXPLORE.md` only inferred (marked `?`, or written from a hunch
-  rather than seen or read in the source) is checked in the source before it goes in, or marked `?`
-  for the first run to confirm. A guessed behavior becomes a case that fails for the wrong reason.
+  rather than seen or read in the source) is checked in the source before it goes in, or marked
+  for the first run to confirm by a `?` at the end of its text, never in its id:
+  `- R9 · The list keeps its order after a restart?`. A guessed behavior becomes a case that
+  fails for the wrong reason.
 - Every requirement must be observable on the phone. If nothing on screen can show it, say how it
   will be checked instead, or make it a non-goal.
 - Never force-stop, clear or uninstall com.codedroid.agent.

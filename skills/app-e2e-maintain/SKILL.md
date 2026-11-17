@@ -53,7 +53,8 @@ missing cases.
 ## Documents from before these formats
 
 The command then lists many problems of the same few kinds. Bring the documents up in their order,
-rerunning `npx -y @codedroid/mcp e2e report e2e` after each until it prints no problems:
+rerunning `npx -y @codedroid/mcp e2e report e2e` after each; after the last step it must print no
+problems:
 1. `INVENTORY.md` from the UI source, as app-e2e-explore writes it; Seen from what `EXPLORE.md` and
    earlier reports show, `?` for the rest.
 2. Each requirement's Caps, Proof and Fails, from the source.
@@ -65,14 +66,18 @@ rerunning `npx -y @codedroid/mcp e2e report e2e` after each until it prints no p
    `- Gap: <ref> · reason` line (`R4`, `R1.f2`, `F1 deep` or `R3 depth`, as app-e2e-testcases writes
    it); a capability the PRD left out on purpose becomes a
    `- Non-goal: C<n> · reason` line. The quality page's "Left open" list is then what remains to write.
+6. Rename a report folder whose date is not zero-padded to YYYY-MM-DD (`2026-11-9` to
+   `2026-11-09`). In the newest `reports/<date>/REPORT.md`, rewrite the results table so its first
+   two columns are `Case` and `Result`, with the ids and results copied from the old table and
+   nothing invented. Leave the older reports as they are.
 
-Existing approvals stay. Tell the user the documents were brought up to date and show them
-`e2e/QUALITY.html`.
+Show the user the diff and `e2e/QUALITY.html` before anything is committed; the approvals follow
+the rule below.
 
 ## Changing an approved file
 
-`CUJs.md` and `TESTCASES.md` carry an `Approved:` line. Show the user what you changed (the diff),
-and update the line only when they approve; until then say the file has unapproved changes.
+After you change a file that has an `Approved:` line, show the user the diff. The line stays only
+if they approve the change; otherwise say the file has unapproved changes.
 
 ## Never
 

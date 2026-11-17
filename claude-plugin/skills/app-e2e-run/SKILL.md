@@ -84,7 +84,8 @@ cleanup changed the screen.
   `<a href="TC-12a.png"><img src="TC-12a.png" alt="TC-12a" width="300"></a>` (width 120 inside
   a table row). A plain `![TC-12a](TC-12a.png)` shows a phone screenshot at full size.
 - Every case in one table, with exactly these columns; it must be the report's only table that
-  starts with Case and Result. Result is `pass`, `fail` or `not run`; "passed after N tries" goes in
+  starts with Case and Result (a failure's own section is prose, or a table with other first
+  columns). Result is `pass`, `fail` or `not run`; "passed after N tries" goes in
   Notes, earlier failed attempts are listed under the table with their cause.
 
 ```markdown
@@ -104,9 +105,11 @@ add a case for it to `TESTCASES.md`, run it twice, and say in the report that it
 the run left that only "clear all" would remove: list it under cleanup, don't clear it.
 
 Then run `npx -y @codedroid/mcp e2e report e2e`. Exit 1 means the documents have problems, printed
-as `file:line: message`: fix them and rerun until it prints none. It writes `REPORT.html` beside the
-report and refreshes `QUALITY.html`; never edit those, and commit them with the report. Give the
-user the path of `REPORT.html`.
+as `file:line: message`: fix them and rerun until it prints none. If the documents were written
+before these formats, stop: with the user's OK, follow the app-e2e-maintain skill's "Documents
+from before these formats" first. Never rewrite approved documents at the end of a run on your own.
+It writes `REPORT.html` beside the report and refreshes `QUALITY.html`; never edit those, and
+commit them with the report. Give the user the path of `REPORT.html`.
 
 ## Never
 

@@ -51,9 +51,12 @@ Steps:
 
 - Number by CUJ (TC-12a for CUJ-12); the number is compared as a number, so TC-01a is for CUJ-1
   and zero-padded ids are fine. `Run mode:` is `phone`, `task` when the case makes CodeDroid's
-  own agent run something, or `manual` (the PRD's scale).
+  own agent run something, or `manual` (the PRD's scale), and nothing else: a manual case's reason
+  goes on its own line, `Why manual: <reason>`.
 - `Covers:` the requirement and failure ids it checks, each with the capabilities its Steps tap
-  or its Expected lines check, in brackets, taken from that requirement's `Caps:`.
+  or its Expected lines check, in brackets, taken from that requirement's `Caps:`. An entry with no
+  brackets counts every control in that `Caps:`. Keep `Covers:` on one line: a wrapped line is
+  not read.
 - `Tier:` the kind of scenario. `smoke`: the screen or control is there and opens. `core`: the
   main action on the plain path. `deep`: an extended scenario of the main action: several items,
   large or awkward data, a long sequence of steps, or state carried across leaving and reopening
@@ -67,7 +70,10 @@ Steps:
   that reopens the app (`adb` `shell am force-stop <package>` of the app under test, `open_app`) and
   checks again.
 - Every Fails line of a P0 or P1 requirement is in some case's `Covers:`, usually an `edge` case
-  (cut the network, cancel, bad input, reach the limit), or has a Gap line.
+  (cut the network, cancel, bad input, reach the limit), or has a Gap line. Turning the phone's
+  network off cuts CodeDroid's link too: write such a case only when the phone is on USB with the
+  `adb` tool and the same step turns the network back on; otherwise give the failure a `- Gap:`
+  line that says so.
 - Every P0 feature has at least one `deep` case, or a `Gap: F<n> deep` line.
 - A gap is a line `- Gap: <ref> · <reason>` under a `## Gaps` heading at the end of the file.
   `<ref>` is a requirement id (`R4`), a failure id (`R1.f2`), or a feature id and the word deep

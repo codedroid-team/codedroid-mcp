@@ -78,6 +78,9 @@ user can act on, including those only some states show (an error, an empty list,
   is data (an episode page, a mini player) takes a string that stays on it, or a placeholder such
   as `<episode title>`; notes go in the table, not the heading.
 - One row per control: a menu's items are one row each, never one row for the menu.
+- Each screen heading has at least one control row; a screen with nothing to act on is left out.
+  Rows sit directly under their screen's heading, with no sub-heading inside a screen: a menu's
+  or a dialog's controls are rows of the screen that opens it.
 - Does and Source come from the handler (the click listener and what it calls), with file:line,
   never from the label: a "Save" may upload, store locally or only close the sheet. A control the
   framework supplies (Navigate up, a tab bar) cites the file that declares it (the menu or layout
