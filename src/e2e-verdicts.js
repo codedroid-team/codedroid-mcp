@@ -7,7 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { readE2e } from "./e2e-model.js";
 import { BYS, USER, VERDICTS, cycleOf } from "./e2e-verify.js";
-import { escapesRoot } from "./e2e-write.js";
+import { escapesRoot, notRegular } from "./e2e-write.js";
 
 const FIELDS = ["id", "verdict", "by", "reason", "text"]; // `text` is not needed on a reopen, which judges nothing
 const DUE = ["unverified", "stale", "invalid", "repair"];
@@ -77,6 +77,7 @@ export function recordVerdicts({ dir, file, now = new Date() }) {
   const root = fs.realpathSync(dir);
   const full = path.join(root, "VERIFY.md");
   if (escapesRoot(root, full)) return fail(`Refusing to write VERIFY.md: it is a link or leads outside ${dir}`);
+  if (notRegular(full)) return fail("Refusing to write VERIFY.md: it is not a regular file");
   const fence = model.problems.find((p) => p.file === "VERIFY.md" && p.message === "code fence opened here is never closed");
   if (fence) return fail(`VERIFY.md line ${fence.line} opens a code fence that is never closed: rows written after it could not be read`);
   const date = today(now);

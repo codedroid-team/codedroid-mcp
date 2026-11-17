@@ -13,6 +13,7 @@ import { caseHash } from "../src/e2e-verify.js";
 import { dueCases, recordVerdicts } from "../src/e2e-verdicts.js";
 
 const fixture = new URL("./fixtures/e2e-sample", import.meta.url).pathname;
+const bin = new URL("../src/index.js", import.meta.url).pathname; // so the test runs from any folder
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "e2e-verdicts-"));
 const home = fs.mkdtempSync(path.join(os.tmpdir(), "e2e-verdicts-home-"));
 let n = 0;
@@ -36,7 +37,7 @@ const put = (dir, objs) => {
 const rec = (dir, objs) => recordVerdicts({ dir, file: put(dir, objs), now: NOW });
 const verifyBytes = (dir) => fs.readFileSync(path.join(dir, "VERIFY.md"));
 const status = (dir, id) => readE2e(dir).cases.find((c) => c.id === id).verify;
-const e2eReport = (dir) => spawnSync(process.execPath, ["src/index.js", "e2e", "report", dir], { encoding: "utf8", timeout: 10000, env: { ...process.env, HOME: home, USERPROFILE: home } });
+const e2eReport = (dir) => spawnSync(process.execPath, [bin, "e2e", "report", dir], { encoding: "utf8", timeout: 10000, env: { ...process.env, HOME: home, USERPROFILE: home } });
 
 try {
   // A valid file: rows appended, readE2e reads the statuses.
@@ -332,20 +333,33 @@ try {
   assert.equal(r.code, 2);
   assert.match(r.lines[0], /^Refusing to write VERIFY\.md: it is a link or leads outside /);
   assert.equal(fs.readFileSync(outside, "utf8"), "keep\n");
+  // A VERIFY.md that is not a regular file is refused before anything is read from or written to it.
+  for (const [what, make] of [["a folder", (p) => fs.mkdirSync(p)], ["a named pipe", (p) => spawnSync("mkfifo", [p])]]) {
+    dir = copy((d) => { fs.rmSync(path.join(d, "VERIFY.md")); make(path.join(d, "VERIFY.md")); });
+    const listing = fs.readdirSync(dir).sort();
+    const f = put(dir, [v("TC-3b", "repair")]);
+    const b = spawnSync(process.execPath, [bin, "e2e", "verdicts", f, dir], { encoding: "utf8", timeout: 10000, env: { ...process.env, HOME: home, USERPROFILE: home } });
+    assert.deepEqual([b.status, b.stdout], [2, "Refusing to write VERIFY.md: it is not a regular file\n"], `${what}: ${b.error ?? b.stderr}`);
+    assert.deepEqual(fs.readdirSync(dir).sort(), listing, `${what}: nothing written`);
+  }
 
   // The real binary: HOME stays empty; usage errors.
   dir = copy();
   const file = put(dir, [v("TC-3b", "repair")]);
-  const run = (...args) => spawnSync(process.execPath, ["src/index.js", "e2e", ...args], { encoding: "utf8", timeout: 10000, env: { ...process.env, HOME: home, USERPROFILE: home } });
+  const run = (...args) => spawnSync(process.execPath, [bin, "e2e", ...args], { encoding: "utf8", timeout: 10000, env: { ...process.env, HOME: home, USERPROFILE: home } });
   let b = run("verdicts", file, dir);
   assert.equal(b.status, 0, b.stderr);
   assert.equal(b.stdout, 'TC-3b: repair (attempt 1 of 3)\nRun "e2e report" to update the pages.\n');
   assert.deepEqual(fs.readdirSync(home), []);
-  for (const args of [["verdicts"], ["verdicts", file, dir, "extra"], ["verdicts", "--due", dir, "extra"]]) {
+  // Unknown flags are usage errors, as for e2e report: a misspelled --due, a value on it, a short flag, report's --check.
+  for (const args of [["verdicts"], ["verdicts", file, dir, "extra"], ["verdicts", "--due", dir, "extra"], ["verdicts", "--deu", dir], ["verdicts", "--due=yes", dir], ["verdicts", "-x", file, dir], ["verdicts", "--check", file, dir], ["verdicts", file, dir, "--check"]]) {
     b = run(...args);
     assert.equal(b.status, 2);
-    assert.equal(b.stderr, "Usage: codedroid-mcp e2e verdicts <file> [dir] | codedroid-mcp e2e verdicts --due [dir]\n");
+    assert.equal(b.stderr, "Usage: codedroid-mcp e2e verdicts <file> [dir] | codedroid-mcp e2e verdicts --due [dir]\n", args.join(" "));
   }
+  assert.equal(fs.readFileSync(path.join(dir, "VERIFY.md"), "utf8").split("\n").filter((l) => l.startsWith("| TC-3b |")).length, 1, "no usage error recorded anything");
+  b = run("report", dir, "--due");
+  assert.deepEqual([b.status, b.stderr], [2, "Usage: codedroid-mcp e2e report [dir] [--check]\n"], "--due is not a report flag");
   // --due through the binary: writes nothing, exit 0; the documents' problems refuse it with exit 2.
   dir = copy();
   const dueBefore = fs.readdirSync(dir).sort();
@@ -354,7 +368,7 @@ try {
   assert.equal(b.stdout, dueCases(readE2e(dir)).join("\n") + "\n");
   assert.match(b.stdout, /^F1: TC-1c@[0-9a-f]{16}\nF2: TC-3b@[0-9a-f]{16}\n$/);
   assert.deepEqual(fs.readdirSync(dir).sort(), dueBefore);
-  b = spawnSync(process.execPath, [path.resolve("src/index.js"), "e2e", "verdicts", "--due"], { cwd: path.dirname(dir), encoding: "utf8", timeout: 10000, env: { ...process.env, HOME: home, USERPROFILE: home } });
+  b = spawnSync(process.execPath, [bin, "e2e", "verdicts", "--due"], { cwd: path.dirname(dir), encoding: "utf8", timeout: 10000, env: { ...process.env, HOME: home, USERPROFILE: home } });
   assert.equal(b.status, 0, "reads ./e2e");
   assert.match(b.stdout, /^F1: TC-1c@/);
   fs.appendFileSync(path.join(dir, "TESTCASES.md"), "\n### TC-1c · P1 · duplicate\n");

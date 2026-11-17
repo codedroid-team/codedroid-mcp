@@ -276,7 +276,7 @@ read of `dir` (default `./e2e`) and, only if all are valid, appends one row per 
 creating it with its header if needed. It stamps the attempt (the next in the case's current cycle;
 a `reopen` row is `0`), the case's code and today's local date. A reason's line breaks become one
 space and `|` is written `\|`. Existing lines are never rewritten, and nothing is written through a
-link or outside `dir`.
+link, outside `dir`, or over a `VERIFY.md` that is not a regular file (a folder, a named pipe).
 
 A row the reader cannot trust marks its case `invalid` and is a problem in `e2e report`: one it
 cannot parse, one whose attempt does not follow its cycle, or one whose date is not a calendar date.
@@ -299,7 +299,7 @@ latest row (`TC-1a: this verdict is already recorded`), an id twice, a fourth ve
 not yet hold three attempts (`reopen` is allowed once it does, even if the case text has changed
 since). One line otherwise: `the documents have problems: run "e2e report" and fix them first` for
 problems in `TESTCASES.md` or `PRD.md` (fix them, then record again; `--due` refuses the same way),
-a missing file or folder, a file with no verdicts, a `VERIFY.md` with no table or one that ends
+a usage error (an unknown flag too), a missing file or folder, a file with no verdicts, a `VERIFY.md` with no table or one that ends
 inside an unclosed code fence, or a write failure. If the rows it appended do not read back, it
 restores `VERIFY.md` to its previous bytes (or removes it if this run created it) and says `nothing
 was recorded`. It needs no phone, daemon or network.
