@@ -10,3 +10,9 @@ export function escapesRoot(root, full) {
   if (real !== root && !real.startsWith(root + path.sep)) return true;
   try { return fs.lstatSync(full).isSymbolicLink(); } catch { return false; /* not there yet */ }
 }
+
+/** True when `full` exists and is neither a regular file nor a link (a folder, a named pipe): never written over. */
+export function notRegular(full) {
+  const st = fs.lstatSync(full, { throwIfNoEntry: false });
+  return !!st && !st.isFile() && !st.isSymbolicLink();
+}

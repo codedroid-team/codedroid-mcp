@@ -5,12 +5,11 @@ description: Explore an Android app before testing it end to end with CodeDroid 
 
 # Explore the app
 
-Output: `e2e/EXPLORE.md` and `e2e/INVENTORY.md` in the app's repo.
-Change nothing on the phone in this step beyond
-navigating, with one exception: a screen that needs data to exist (a subscription, a deck, a
-queue) may get one item named `e2e-...`, removed before the walk ends. Opening content to look at
-it (a video, a feed preview) counts as navigating; stop any playback after. A screen you could not
-reach is marked `?` and confirmed in the first run.
+Output: `e2e/EXPLORE.md` and `e2e/INVENTORY.md` in the app's repo. Change nothing on the phone in
+this step beyond navigating, with one exception: a screen that needs data to exist (a subscription,
+a deck, a queue) may get one item named `e2e-...`, removed before the walk ends. Opening content to
+look at it (a video, a feed preview) counts as navigating; stop any playback after. A screen you
+could not reach is marked `?` and confirmed in the first run.
 
 ## Read before touching the phone
 
@@ -36,17 +35,15 @@ reach is marked `?` and confirmed in the first run.
 - Each control's exact selector: its `text` or its `content_description`, and which one it is.
 - Where state shows. In Compose apps `disabled`, `checked` and `selected` sit on the clickable
   parent line, and the words on an indented child line.
-- Traps: a selected tab is not clickable, so a tap on it is refused; the keyboard covers the tab
-  bar once a field takes focus; `get_screen` cuts text at 120 characters; lists longer than the
-  screen hide rows (search beats scrolling); content that loads a moment after a tab opens; one
-  spot that is a different control in different states; a dialog that closes itself and leaves a
-  different control under the next tap; times written with a narrow no-break space before
-  "a.m." or "PM".
+- Traps: a selected tab is not clickable, so a tap on it is refused; the keyboard covers the tab bar
+  once a field takes focus; `get_screen` cuts text at 120 characters; lists longer than the screen
+  hide rows (search beats scrolling); content that loads a moment after a tab opens; one spot that
+  is a different control in different states; a dialog that closes itself and leaves a different
+  control under the next tap; times written with a narrow no-break space before "a.m." or "PM".
 - Controls one tap from harm: delete, clear all, remove, sign out, purchase. Tests must never tap
   them on data the test did not make.
-- One-time sheets and first-run screens a fresh account sees, and what dismisses them,
-  including system permission screens that block the app until granted (all files access,
-  notifications).
+- One-time sheets and first-run screens a fresh account sees, and what dismisses them, including
+  system permission screens that block the app until granted (all files access, notifications).
 - Screens restored from the back stack: go to a tab, change its data elsewhere, come back.
   A stale list there is a finding, and a case needs to know which state it starts in.
 - What a fresh install leaves that only "clear all" removes (search history), so cases can say so.
@@ -78,6 +75,9 @@ user can act on, including those only some states show (an error, an empty list,
   is data (an episode page, a mini player) takes a string that stays on it, or a placeholder such
   as `<episode title>`; notes go in the table, not the heading.
 - One row per control: a menu's items are one row each, never one row for the menu.
+- Each screen heading has at least one control row; a screen with nothing to act on is left out.
+  Rows sit directly under their screen's heading, with no sub-heading inside a screen: a menu's
+  or a dialog's controls are rows of the screen that opens it.
 - Does and Source come from the handler (the click listener and what it calls), with file:line,
   never from the label: a "Save" may upload, store locally or only close the sheet. A control the
   framework supplies (Navigate up, a tab bar) cites the file that declares it (the menu or layout

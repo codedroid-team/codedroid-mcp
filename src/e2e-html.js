@@ -5,14 +5,13 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { readE2e } from "./e2e-model.js";
-import { quality } from "./e2e-quality.js";
+import { modes, pct, quality } from "./e2e-quality.js";
 import { CSS } from "./e2e-html-style.js";
 import { esc, inline, md } from "./e2e-markdown.js";
 
 const PRD = "PRD.html", CUJS = "CUJs.html", TCS = "TESTCASES.html", QUAL = "QUALITY.html";
 const chip = (t, kind = "") => `<span class="chip ${kind}">${esc(t)}</span>`;
-const bar = (n, d) => `<div class="bar"><span style="width:${d ? Math.round((100 * n) / d) : 0}%"></span></div>`;
-const pct = (n, d) => (d ? `${Math.round((100 * n) / d)}%` : "–");
+const bar = (n, d) => `<div class="bar"><span style="width:${d ? Math.floor((100 * n) / d) : 0}%"></span></div>`;
 const table = (head, rows) => `<div class="scroll"><table><thead><tr>${head.map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table></div>`;
 const tr = (cells, attr = "") => `<tr${attr}>${cells.map((c) => `<td>${c}</td>`).join("")}</tr>`;
 const TONE = { approved: "pass", repair: "warn", unresolved: "warn", question: "ask", invalid: "fail" };
@@ -21,8 +20,8 @@ const MIME = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg" 
 
 // `extra` is more [name, sha256] pairs for a page, such as the screenshots a report page embeds.
 const sources = (model, extra = []) => esc([...Object.entries(model.files).map(([n, f]) => [n, f.sha256]), ...extra].sort(([a], [b]) => (a < b ? -1 : 1)).map(([n, h]) => `${n}:${h}`).join(" "));
-// Only a path of the shape the model accepts becomes a page name (and so a key and an href).
-const reportPage = (model) => (/^reports\/[A-Za-z0-9._-]+\/REPORT\.md$/.test(model.results.report ?? "") ? model.results.report.replace(/\.md$/, ".html") : null);
+// Only a report that was read, at a path of the shape the model accepts, becomes a page name (and so a key and an href).
+const reportPage = (model) => (model.files[model.results.report] && /^reports\/[A-Za-z0-9._-]+\/REPORT\.md$/.test(model.results.report) ? model.results.report.replace(/\.md$/, ".html") : null);
 /** The screenshots beside the used report that belong to a case: { id, name, buf }, by file name. A link is never read. */
 function screenshots(model) {
   const f = model.files[model.results.report];
@@ -35,7 +34,7 @@ function screenshots(model) {
     const stem = name.slice(0, -ext.length);
     const id = ids.find((x) => stem === x || stem.startsWith(`${x}-`) || stem.startsWith(`${x}_`));
     if (!MIME[ext] || !id || !fs.lstatSync(path.join(dir, name)).isFile()) continue;
-    out.push({ id, name, buf: fs.readFileSync(path.join(dir, name)) });
+    try { out.push({ id, name, buf: fs.readFileSync(path.join(dir, name)) }); } catch (e) { const rel = `${path.dirname(model.results.report)}/${name}`; model.problems.push({ file: rel, line: 0, message: `${rel} cannot be read: ${e.code}` }); }
   }
   return out;
 }
@@ -57,26 +56,93 @@ function section(model, name, line, drop) {
   return md(out.join("\n"), { base: 3 });
 }
 
-/** The PRD's own prose: everything except the feature blocks and the title. */
+const FEATURE = /^### F\d+ · .+? · P\d+\s*$/; // as the model reads it; any other heading ends a feature block
+/** `What: x` at the start of a line starts its own paragraph with the label in bold. */
+const label = (t) => t.replace(/^([A-Z][A-Za-z ]{0,30}):(?=\s)/, "\n**$1:**");
+
+/** A requirement's own lines other than Caps, Proof, Fails and failure items: kept for its card. */
+const own = (t) => !/^\s+(Caps|Proof|Fails):/.test(t) && !/^\s+[-*+] R\d+\.f\d+ · /.test(t);
+const indent = (ls) => Math.min(...ls.filter((l) => l.trim()).map((l) => l.match(/^\s*/)[0].length));
+const dedent = (ls) => (ls.some((l) => l.trim()) ? md(ls.map((l) => label(l.slice(indent(ls)))).join("\n")) : "");
+
+/** The PRD's own prose: everything except the feature blocks, the title and the requirements under no feature
+ * (`extra` holds those requirements' other lines, for their cards). */
 function prdProse(model) {
   const f = model.files["PRD.md"];
-  if (!f) return { title: "Product requirements", html: "" };
-  const keep = [];
-  let skip = false, fence = false, title = null;
-  for (const t of f.text.split(/\r?\n/)) {
+  if (!f) return { title: "Product requirements", html: "", extra: new Map() };
+  const outside = new Map(model.requirements.filter((r) => !model.features.some((x) => x.id === r.feature)).map((r) => [r.line, r.id]));
+  const keep = [], extra = new Map();
+  let skip = false, fence = false, title = null, req = null;
+  for (const [i, t] of f.text.split(/\r?\n/).entries()) {
     if (/^\s*```/.test(t)) fence = !fence;
     else if (!fence) {
-      if (/^### F\d+ · /.test(t)) { skip = true; continue; }
-      if (/^#{1,2} /.test(t)) skip = false;
+      if (FEATURE.test(t)) { skip = true; req = null; continue; }
+      if (/^#{1,6} /.test(t)) { skip = false; req = null; }
       if (title === null && /^# /.test(t)) { title = t.slice(2).trim(); continue; }
+      if (outside.has(i + 1)) { req = outside.get(i + 1); extra.set(req, []); continue; }
+      if (/^\S/.test(t)) req = null; // a line at the margin ends the requirement
     }
-    if (!skip) keep.push(t);
+    if (req) { if (own(t)) extra.get(req).push(t); } else if (!skip) keep.push(t);
   }
-  const text = keep.join("\n").replace(/^## Features\s*$(?=(?:\s*\n)*(?:#|$(?![\s\S])))/m, "");
-  return { title: title ?? "Product requirements", html: md(text, { base: 1 }) };
+  const text = keep.join("\n").replace(/^## Features\s*$(?=(?:\s*\n)*(?:#{1,2} |$(?![\s\S])))/m, "");
+  return { title: title ?? "Product requirements", html: md(text), extra: new Map([...extra].map(([id, ls]) => [id, dedent(ls)])) };
+}
+
+/** A feature block's own lines (`prose`) and each requirement's lines other than Caps, Proof, Fails and failure items. */
+function featureBlock(model, f) {
+  const lines = model.files["PRD.md"].text.split(/\r?\n/);
+  const starts = new Map(model.requirements.map((r) => [r.line, r.id]));
+  const prose = [], extra = new Map();
+  let fence = false, req = null;
+  for (let n = f.line + 1; n <= lines.length; n++) {
+    const t = lines[n - 1];
+    if (/^\s*```/.test(t)) fence = !fence;
+    else if (!fence && /^#{1,6} /.test(t)) break;
+    if (!fence && starts.has(n)) { req = starts.get(n); extra.set(req, []); continue; }
+    if (!fence && /^\S/.test(t)) req = null; // a line at the margin ends the requirement
+    if (!req) prose.push(fence ? t : label(t));
+    else if (own(t)) extra.get(req).push(t);
+  }
+  return { prose: md(prose.join("\n")), extra: new Map([...extra].map(([id, ls]) => [id, dedent(ls)])) };
+}
+
+/** The text of CUJs.md or TESTCASES.md outside its items (`items` holds their heading lines), as HTML, each in
+ * document order: `top` before the first item or feature group, `groups` under each `## F<n>` group heading, `before`
+ * the text just above an item (by its heading line), `rest` the text after the last item. The title line is dropped:
+ * the page has its own h1. */
+function loose(model, name, items) {
+  const f = model.files[name];
+  const out = { top: "", groups: new Map(), before: new Map(), rest: "" };
+  if (!f) return out;
+  const parts = [{ group: null, head: null, lines: [], next: null }];
+  let fence = false, skip = false, titled = false;
+  for (const [i, t] of f.text.split(/\r?\n/).entries()) {
+    if (/^\s*```/.test(t)) fence = !fence;
+    else if (!fence && /^#{1,3} /.test(t)) {
+      skip = items.has(i + 1);
+      if (skip) { parts.at(-1).next ??= i + 1; continue; }
+      if (!titled && /^# /.test(t)) { titled = true; continue; }
+      titled = true;
+      const g = t.match(/^## (F\d+)\b/);
+      parts.push({ group: g ? g[1] : null, head: t, lines: [], next: null });
+      continue;
+    }
+    if (!skip) parts.at(-1).lines.push(t);
+  }
+  const known = (p) => p.group && model.features.some((x) => x.id === p.group);
+  const html = (ps) => md(ps.flatMap((p) => [...(p.head && !known(p) ? [p.head] : []), ...p.lines]).join("\n"));
+  let k = 0;
+  while (k < parts.length && !known(parts[k])) if (parts[k++].next !== null) break;
+  out.top = html(parts.slice(0, k));
+  const rest = parts.slice(k);
+  for (const x of model.features) out.groups.set(x.id, html(rest.filter((p) => p.group === x.id && known(p))));
+  for (const p of rest) if (!known(p) && p.next !== null) out.before.set(p.next, html([p]));
+  out.rest = html(rest.filter((p) => !known(p) && p.next === null));
+  return out;
 }
 
 export function renderPages(model, q) {
+  const found = reportPage(model) ? screenshots(model) : []; // first: one it cannot read is a problem every page shows
   const byCase = model.results.byCase;
   const hasReport = !!model.results.report;
   const caps = new Map(model.capabilities.map((c) => [c.id, c]));
@@ -131,7 +197,7 @@ export function renderPages(model, q) {
     const nav = [[QUAL, "Quality"], [PRD, "PRD"], [CUJS, "CUJs"], [TCS, "Test cases"]]
       .map(([f, label]) => `<a href="${esc(root + f)}"${f === cur ? ' aria-current="page"' : ""}>${label}</a>`);
     nav.push(rp ? `<a href="${esc(rp === cur ? path.basename(rp) : root + rp)}"${rp === cur ? ' aria-current="page"' : ""}>Report</a>` : "<span>Report (none yet)</span>");
-    const banner = q.ok ? "" : `<p class="banner" role="alert">The documents have problems, so the counts may be wrong. <a href="${cur === QUAL ? "" : esc(root + QUAL)}#problems">See the ${q.problems.length} problem${q.problems.length === 1 ? "" : "s"}</a>.</p>`;
+    const banner = !q.problems.length ? "" : `<p class="banner" role="alert">The documents have problems, so the counts may be wrong. <a href="${cur === QUAL ? "" : esc(root + QUAL)}#problems">See the ${q.problems.length} problem${q.problems.length === 1 ? "" : "s"}</a>.</p>`;
     return {
       link,
       html: `<!doctype html>
@@ -155,18 +221,23 @@ export function renderPages(model, q) {
   const caseLine = (link, c) => `<li>${link(c.id)} ${esc(c.title)} ${c.mode === "manual" ? chip("manual") : ""} ${result(c.id)} ${verdictChip(c)}</li>`;
   const caseList = (link, cs) => (cs.length ? `<ul class="plain">${cs.map((c) => caseLine(link, c)).join("")}</ul>` : chip("no case", "warn"));
   const featureOf = (id) => model.features.find((f) => f.id === id);
+  const noCuj = (link) => (q.requirements.no_cuj.length
+    ? `<section class="card"><h2>Requirements no journey proves</h2>\n<ul class="plain">${q.requirements.no_cuj.map((id) => `<li>${link(id)} ${inline(reqs.get(id).text)}</li>`).join("")}</ul></section>`
+    : "");
 
   const prd = page(PRD, "", "PRD", (link) => {
-    const { title, html } = prdProse(model);
+    const { title, html, extra: outsideExtra } = prdProse(model);
     const seen = new Set();
     const featureCard = (f, rs) => {
       const k = q.by_feature.find((x) => x.id === f?.id)?.requirements;
       const idAttr = f ? ` id="${esc(f.id)}"` : "";
+      const block = f ? featureBlock(model, f) : { prose: "", extra: outsideExtra };
       return `<section class="card"${idAttr}><div class="head"><h2>${f ? `${esc(f.id)} · ${esc(f.name)}` : "Requirements outside a feature"}</h2><span class="chips">${f ? chip(f.priority) : ""}</span></div>
-${k ? `<p class="muted">${k.with_case} of ${k.total} requirements have a case, ${k.at_depth} tested deep enough.</p>` : ""}
-${rs.map((r) => reqCard(r)).join("\n")}</section>`;
+${k ? `<p class="muted">${k.with_case} of ${k.total} requirements have a case, ${k.at_depth} with a case deep enough.</p>` : ""}
+${block.prose}
+${rs.map((r) => reqCard(r, block.extra.get(r.id) ?? "")).join("\n")}</section>`;
     };
-    const reqCard = (r) => {
+    const reqCard = (r, extra) => {
       const cs = casesFor(r.id);
       const capsHtml = r.caps.map((id) => {
         const c = caps.get(id);
@@ -178,6 +249,7 @@ ${rs.map((r) => reqCard(r)).join("\n")}</section>`;
       const fails = r.fails.map((f) => `<li id="${esc(f.id)}">${link(f.id)} ${inline(f.text)} ${casesFor(f.id).length ? casesFor(f.id).map((c) => `${link(c.id)} ${verdictChip(c)}`).join(" ") : chip("no case", "warn")}</li>`);
       return `<article class="card" id="${esc(r.id)}"><div class="head"><h3>${esc(r.id)}</h3><span class="chips">${chip(`proof: ${r.proof ?? "?"}`)}${cs.length ? "" : chip("no case", "warn")}</span></div>
 <p>${inline(r.text)}</p>
+${extra}
 <dl class="meta"><dt>Controls</dt><dd>${capsHtml.length ? `<ul class="plain">${capsHtml.join("")}</ul>` : '<span class="muted">none listed</span>'}</dd>
 <dt>Cases</dt><dd>${caseList(link, cs)}</dd>
 <dt>Can fail when</dt><dd>${fails.length ? `<ul class="plain">${fails.join("")}</ul>` : '<span class="muted">none in source</span>'}</dd></dl></article>`;
@@ -202,11 +274,15 @@ ${section(model, "CUJs.md", j.line, /^Proves:/)}</article>`;
     const live = model.cujs.filter((j) => j.retired === null);
     const gone = model.cujs.filter((j) => j.retired !== null);
     const groups = [...model.features.map((f) => [f, live.filter((j) => j.feature === f.id)]), [null, live.filter((j) => !featureOf(j.feature))]];
+    const text = loose(model, "CUJs.md", new Set(model.cujs.map((j) => j.line)));
     const retiredCard = (j) => `<article class="card" id="${esc(j.id)}"><div class="head"><h3>${esc(j.id)} · ${esc(j.title)}</h3><span class="chips">${chip("retired")}</span></div><p class="muted">${esc(j.retired)}</p></article>`;
     return `<h1>Critical user journeys</h1>
 ${pending("CUJs.md")}<p class="lede">${live.length} journeys, each tied to the requirements it proves and the cases that run it.${gone.length ? ` ${gone.length} retired, not counted.` : ""}</p>
-${groups.filter(([, js]) => js.length).map(([f, js]) => `<h2${f ? ` id="${esc(f.id)}"` : ""}>${f ? `${link(f.id)} · ${esc(f.name)}` : "Other journeys"}</h2>\n${js.map(card).join("\n")}`).join("\n")}
-${gone.length ? `<h2>Retired</h2>\n${gone.map(retiredCard).join("\n")}` : ""}`;
+${noCuj(link)}
+${text.top}
+${groups.filter(([f, js]) => js.length || text.groups.get(f?.id)).map(([f, js]) => `<h2${f ? ` id="${esc(f.id)}"` : ""}>${f ? `${link(f.id)} · ${esc(f.name)}` : "Other journeys"}</h2>\n${f ? text.groups.get(f.id) : ""}\n${js.map((j) => (text.before.get(j.line) ?? "") + card(j)).join("\n")}`).join("\n")}
+${text.rest}
+${gone.length ? `<h2>Retired</h2>\n${gone.map((j) => (text.before.get(j.line) ?? "") + retiredCard(j)).join("\n")}` : ""}`;
   });
 
   const tcs = page(TCS, "", "Test cases", (link) => {
@@ -222,10 +298,13 @@ ${section(model, "TESTCASES.md", c.line, /^(Feature|Covers|Tier|Run mode):/)}${v
     const gone = model.cases.filter((c) => c.retired !== null);
     const retiredCard = (c) => `<article class="card" id="${esc(c.id)}"><div class="head"><h3>${esc(c.id)} · ${esc(c.title)}</h3><span class="chips">${chip("retired")}</span></div><p class="muted">${esc(c.retired)}</p></article>`;
     const groups = [...model.features.map((f) => [f, live.filter((c) => c.feature === f.id)]), [null, live.filter((c) => !featureOf(c.feature))]];
+    const text = loose(model, "TESTCASES.md", new Set(model.cases.map((c) => c.line)));
     return `<h1>Test cases</h1>
-${pending("TESTCASES.md")}<p class="lede">${q.cases.total} cases: ${q.cases.by_mode.phone} phone, ${q.cases.by_mode.task} task, ${q.cases.by_mode.manual} manual${q.cases.setup ? `, ${q.cases.setup} setup` : ""}.${gone.length ? ` ${gone.length} retired, not counted.` : ""}${hasReport ? "" : " No report yet, so no results."}</p>
-${groups.filter(([, cs]) => cs.length).map(([f, cs]) => `<h2${f ? ` id="${esc(f.id)}"` : ""}>${f ? `${link(f.id)} · ${esc(f.name)}` : "Other cases"}</h2>\n${cs.map(card).join("\n")}`).join("\n")}
-${gone.length ? `<h2>Retired</h2>\n${gone.map(retiredCard).join("\n")}` : ""}`;
+${pending("TESTCASES.md")}<p class="lede">${q.cases.total} cases: ${modes(q.cases)}${q.cases.setup ? `, ${q.cases.setup} setup` : ""}.${gone.length ? ` ${gone.length} retired, not counted.` : ""}${hasReport ? "" : " No report yet, so no results."}</p>
+${text.top}
+${groups.filter(([f, cs]) => cs.length || text.groups.get(f?.id)).map(([f, cs]) => `<h2${f ? ` id="${esc(f.id)}"` : ""}>${f ? `${link(f.id)} · ${esc(f.name)}` : "Other cases"}</h2>\n${f ? text.groups.get(f.id) : ""}\n${cs.map((c) => (text.before.get(c.line) ?? "") + card(c)).join("\n")}`).join("\n")}
+${text.rest}
+${gone.length ? `<h2>Retired</h2>\n${gone.map((c) => (text.before.get(c.line) ?? "") + retiredCard(c)).join("\n")}` : ""}`;
   });
 
   const qual = page(QUAL, "", "Test quality", (link) => {
@@ -277,18 +356,19 @@ ${c.set_aside ? `<p class="muted">Percentages count the ${scope} controls in sco
 <div class="tiles">
 ${atile("controls have an approved case", c.approved, c.with_case, scope)}
 ${atile("requirements have an approved case", q.requirements.approved, q.requirements.with_case, q.requirements.total)}
-${atile("requirements tested deep enough by approved cases", q.requirements.at_depth_approved, q.requirements.at_depth, q.requirements.total, "tested deep enough by any case")}
+${atile("requirements with an approved case deep enough", q.requirements.at_depth_approved, q.requirements.at_depth, q.requirements.total, "with a case deep enough")}
 ${atile("failures have an approved case", q.failures.approved, q.failures.with_case, q.failures.total)}
 ${tile("controls are in a feature", c.in_feature, scope)}
 ${tile("requirements and failures acknowledged as gaps", 0, 0, `${q.requirements.acknowledged + q.failures.acknowledged}`)}
 ${tile("left open", 0, 0, `${q.open.length}`)}
-${tile("controls exercised in the last report", c.exercised, scope)}
-${tile("controls passing in the last report", c.passing, scope)}
+${tile("controls exercised in the last report", c.exercised, scope, q.report ? undefined : "no report yet")}
+${tile("controls passing in the last report", c.passing, scope, q.report ? undefined : "no report yet")}
 ${tile("controls not seen on the phone", 0, 0, `${c.not_seen} of ${scope}`)}
 ${tile("cases", 0, 0, `${q.cases.total}`)}
 ${q.cases.retired || q.cujs.retired ? tile("retired, not counted", 0, 0, `${q.cases.retired} cases, ${q.cujs.retired} journeys`) : ""}
 </div>
 ${verifier}
+${noCuj(link)}
 ${open}
 ${acknowledged}
 <h2>Not covered by a runnable case</h2>
@@ -297,10 +377,11 @@ ${aside}
 <h2>By feature</h2>
 ${table(["Feature", "Controls: approved / with a case", "Requirements: approved / with a case"],
       q.by_feature.map((f) => { const k = f.capabilities, r = f.requirements; return tr([`${link(f.id)} · ${esc(f.name)} ${chip(f.priority)}`, `${pct(k.approved, k.total)} / ${pct(k.with_case, k.total)}`, `${pct(r.approved, r.total)} / ${pct(r.with_case, r.total)}`]); }))}
-${table(["Feature", "Tested deep enough: approved / any case", "Failures: approved / with a case"],
+${table(["Feature", "Deep enough: approved / any case", "Failures: approved / with a case"],
       q.by_feature.map((f) => { const r = f.requirements, x = f.failures; return tr([`${link(f.id)} · ${esc(f.name)}`, `${pct(r.at_depth_approved, r.total)} / ${pct(r.at_depth, r.total)}`, `${pct(x.approved, x.total)} / ${pct(x.with_case, x.total)}`]); }))}
 ${table(["Feature", "Exercised in report", "Passing in report", "Cases smoke / core / deep / edge"],
       q.by_feature.map((f) => { const k = f.capabilities, t = f.tiers; return tr([`${link(f.id)} · ${esc(f.name)}`, pct(k.exercised, k.total), pct(k.passing, k.total), `${t.smoke}/${t.core}/${t.deep}/${t.edge}`]); }))}
+<p class="muted">A control used by requirements of two features is counted in both rows, so the rows can add up to more than the headline.</p>
 <h2>By journey</h2>
 ${table(["Journey", "Requirements", "Cases", "Controls with a case", "Exercised in report", "Passing in report"],
       q.by_cuj.map((j) => { const k = j.capabilities; return tr([`${link(j.id)} · ${esc(j.title)}`, j.requirements.map(link).join(", "), String(j.cases.length), pct(k.with_case, k.total), pct(k.exercised, k.total), pct(k.passing, k.total)]); }))}
@@ -313,7 +394,6 @@ ${inventory}`;
   if (rp) {
     const f = model.files[model.results.report];
     const date = path.basename(path.dirname(model.results.report));
-    const found = screenshots(model);
     const shots = new Map();
     for (const { id, name, buf } of found) shots.set(id, [...(shots.get(id) ?? []), { name, uri: `data:${MIME[path.extname(name).toLowerCase()]};base64,${buf.toString("base64")}` }]);
     pages[rp] = page(rp, "../../", `Test report ${date}`, (link) => {
@@ -339,6 +419,6 @@ export function stalePages(dir) {
   const rp = reportPage(model);
   const wants = (rel) => `<meta name="e2e-sources" content="${sources(model, rel === rp ? shotSources(model, screenshots(model)) : [])}">`;
   return pagePaths(model).filter((rel) => {
-    try { return !fs.readFileSync(path.join(dir, rel), "utf8").includes(wants(rel)); } catch { return true; }
+    try { return !fs.lstatSync(path.join(dir, rel)).isFile() || !fs.readFileSync(path.join(dir, rel), "utf8").includes(wants(rel)); } catch { return true; }
   });
 }

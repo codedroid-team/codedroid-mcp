@@ -11,7 +11,7 @@ import path from "node:path";
 import { readE2e } from "../src/e2e-model.js";
 import { recordVerdicts } from "../src/e2e-verdicts.js";
 import { caseHash } from "../src/e2e-verify.js";
-import { quality, qualityJson, qualityMd } from "../src/e2e-quality.js";
+import { pct, quality, qualityJson, qualityMd } from "../src/e2e-quality.js";
 
 const fixture = new URL("./fixtures/e2e-sample", import.meta.url).pathname;
 const tmps = [];
@@ -38,12 +38,12 @@ try {
 
   // Capabilities: C1-C6. C1-C5 are in a requirement's Caps (C6 in none). Runnable cases cover C4 (TC-1a),
   // C1+C3 (TC-1c), C2 (TC-3a, TC-3b); C5 only by the manual TC-2a. Reports: TC-1a/1b/1c/3a pass, TC-3b fail.
-  // not_seen: C5 ("no: ...") and C6 ("?").
-  assert.deepEqual(q.capabilities, { total: 6, in_feature: 5, with_case: 4, approved: 1, exercised: 4, passing: 4, not_seen: 2, set_aside: 0 });
+  // C2 is exercised but not passing: TC-3b on it failed. not_seen: C5 ("no: ...") and C6 ("?").
+  assert.deepEqual(q.capabilities, { total: 6, in_feature: 5, with_case: 4, approved: 1, exercised: 4, passing: 3, not_seen: 2, set_aside: 0 });
   assert.deepEqual(q.set_aside, []);
   // Requirements R1-R4: R3 only has the manual case. Proof: R1 kept (TC-1a kept), R2 screen (TC-1c screen),
   // R4 elsewhere (TC-3a, TC-3b only screen), so at_depth is below with_case.
-  assert.deepEqual(q.requirements, { total: 4, with_case: 3, approved: 1, at_depth: 2, at_depth_approved: 1, acknowledged: 0, depth_acknowledged: 0 });
+  assert.deepEqual(q.requirements, { total: 4, with_case: 3, approved: 1, at_depth: 2, at_depth_approved: 1, acknowledged: 0, depth_acknowledged: 0, no_cuj: [] });
   // Failures R1.f1, R1.f2 (TC-1b), R2.f1 (no case).
   assert.deepEqual(q.failures, { total: 3, with_case: 2, approved: 2, acknowledged: 0 });
   assert.deepEqual(q.cases, {
@@ -62,7 +62,7 @@ try {
     },
     {
       id: "F2", name: "Search", priority: "P1",
-      capabilities: { total: 1, in_feature: 1, with_case: 1, approved: 0, exercised: 1, passing: 1, not_seen: 0 }, // C2; TC-3a unresolved, TC-3b unverified
+      capabilities: { total: 1, in_feature: 1, with_case: 1, approved: 0, exercised: 1, passing: 0, not_seen: 0 }, // C2: TC-3b failed; TC-3a unresolved, TC-3b unverified
       requirements: { total: 1, with_case: 1, approved: 0, at_depth: 0, at_depth_approved: 0, acknowledged: 0, depth_acknowledged: 0 },
       failures: { total: 0, with_case: 0, approved: 0, acknowledged: 0 },
       tiers: { smoke: 1, core: 0, deep: 0, edge: 1 }, // TC-3a smoke, TC-3b edge
@@ -82,7 +82,7 @@ try {
     },
     {
       id: "CUJ-3", title: "Find a note by title", requirements: ["R4"], cases: ["TC-3a", "TC-3b"],
-      capabilities: { total: 1, in_feature: 1, with_case: 1, approved: 0, exercised: 1, passing: 1, not_seen: 0 }, // C2; TC-3a unresolved, TC-3b unverified
+      capabilities: { total: 1, in_feature: 1, with_case: 1, approved: 0, exercised: 1, passing: 0, not_seen: 0 }, // C2: TC-3b failed; TC-3a unresolved, TC-3b unverified
     },
   ]);
 
@@ -104,24 +104,48 @@ try {
   assert.match(md, /Edit note/);
   assert.match(md, /C5.*Delete note.*manual case only/);
   assert.match(md, /C6.*Share.*not in any feature/);
-  assert.match(md, /67%/); // F1 requirements with_case 2 of 3
+  assert.match(md, /66%/); // F1 requirements with_case 2 of 3, rounded down
   assert.match(md, /–/); // F2 failures: zero denominator
 
   // JSON.
-  const now = new Date("2026-01-03T04:05:06.000Z");
-  const raw = qualityJson(q, model, now);
+  const raw = qualityJson(q, model);
   assert.ok(raw.startsWith('{\n  "'), "two-space indented");
   const j = JSON.parse(raw);
-  assert.equal(j.generated, "2026-01-03T04:05:06.000Z");
+  assert.ok(!("generated" in j), "no timestamp");
+  const twice = [copy(), copy()].map((d) => { const m = readE2e(d); return qualityJson(quality(m), m); });
+  assert.equal(twice[0], twice[1], "two copies of the same folder give the same quality.json");
   assert.deepEqual(j.sources, Object.fromEntries(Object.entries(model.files).map(([n, f]) => [n, f.sha256])), "sources: name relative to the folder, sha256 only");
   assert.deepEqual(j.capabilities, q.capabilities);
   assert.ok(Object.keys(j.sources).includes("TESTCASES.md"));
 
-  // No reports folder: nothing exercised or passing.
-  const noRep = quality(readE2e(copy((d) => fs.rmSync(path.join(d, "reports"), { recursive: true }))));
+  // No reports folder: nothing exercised or passing, and the rows say there is no report rather than 0%.
+  const noRepModel = readE2e(copy((d) => fs.rmSync(path.join(d, "reports"), { recursive: true })));
+  const noRep = quality(noRepModel);
   assert.equal(noRep.capabilities.exercised, 0);
   assert.equal(noRep.capabilities.passing, 0);
   assert.equal(noRep.capabilities.with_case, 4);
+  const noRepMd = qualityMd(noRep, noRepModel);
+  assert.match(noRepMd, /\| Controls exercised in the last report \| no report yet \|/);
+  assert.match(noRepMd, /\| Controls passing in the last report \| no report yet \|/);
+  assert.match(md, /\| Controls exercised in the last report \| 4 of 6 \(66%\) \|/, "with a report: the count");
+
+  // Labels and rounding. Percentages round down; 100% only when all, 0% only when none, <1% below 1%.
+  assert.match(md, /\| Requirements with a case deep enough \| 2 of 4 \(50%\) \|/);
+  assert.doesNotMatch(md, /tested deep enough/);
+  assert.deepEqual([pct(199, 200), pct(1, 201), pct(200, 200), pct(0, 7), pct(2, 3), pct(1, 100), pct(0, 0)], ["99%", "<1%", "100%", "0%", "66%", "1%", "–"]);
+  assert.match(md, /## By feature\n[\s\S]*?\n\nA control used by requirements of two features is counted in both rows, so the rows can add up to more than the headline\.\n/);
+  // Cases with no valid run mode: the split says how many.
+  const noModeModel = readE2e(copy((d) => sub(d, "TESTCASES.md", "Tier: core · Depth: screen\nRun mode: task\n", "Tier: core · Depth: screen\n")));
+  assert.match(qualityMd(quality(noModeModel), noModeModel), /\| Cases \| 6 \(4 phone, 0 task, 1 manual, 1 with no run mode\) \|/);
+  assert.match(md, /\| Cases \| 6 \(4 phone, 1 task, 1 manual\) \|/, "nothing appended when the parts add up");
+  // A requirement with no valid Proof: is never deep enough, and is not called too shallow either (it is a problem).
+  for (const bad of ["  Proof: deep\n", ""]) {
+    const np = quality(readE2e(copy((d) => sub(d, "PRD.md", "  Caps: C1, C3\n  Proof: screen\n", `  Caps: C1, C3\n${bad}`))));
+    assert.equal(np.ok, false);
+    assert.equal(np.requirements.at_depth, 1, `R2 with ${JSON.stringify(bad)}: only R1 is deep enough`);
+    assert.equal(np.by_feature[0].requirements.at_depth, 1);
+    assert.ok(!np.open.some((o) => o.ref === "R2"), "R2 is not listed as too shallow");
+  }
 
   // A failing case is exercised but not passing: TC-3a not run, TC-3b fail leaves C2 exercised, not passing.
   const rep = quality(readE2e(copy((d) => {
@@ -166,7 +190,7 @@ try {
   const aside = (edit) => quality(readE2e(copy((d) => fs.appendFileSync(path.join(d, "PRD.md"), "\n- Non-goal: C6 · sharing needs a second phone\n"))));
   const as = aside();
   assert.equal(as.ok, true);
-  assert.deepEqual(as.capabilities, { total: 6, in_feature: 5, with_case: 4, approved: 1, exercised: 4, passing: 4, not_seen: 1, set_aside: 1 });
+  assert.deepEqual(as.capabilities, { total: 6, in_feature: 5, with_case: 4, approved: 1, exercised: 4, passing: 3, not_seen: 1, set_aside: 1 });
   assert.deepEqual(as.untested.map((u) => u.id), ["C5"]);
   assert.deepEqual(as.set_aside, [{ id: "C6", screen: `"Edit note" (NoteEditorFragment)`, control: 'description "Share"', reason: "sharing needs a second phone" }]);
   const asModel = readE2e(copy((d) => fs.appendFileSync(path.join(d, "PRD.md"), "\n- Non-goal: C6 · sharing needs a second phone\n")));
@@ -194,7 +218,7 @@ try {
   const gq = quality(gapModel);
   assert.equal(gq.ok, true);
   assert.deepEqual(gq.open, []);
-  assert.deepEqual(gq.requirements, { total: 4, with_case: 3, approved: 1, at_depth: 2, at_depth_approved: 1, acknowledged: 1, depth_acknowledged: 1 });
+  assert.deepEqual(gq.requirements, { total: 4, with_case: 3, approved: 1, at_depth: 2, at_depth_approved: 1, acknowledged: 1, depth_acknowledged: 1, no_cuj: [] });
   assert.deepEqual(gq.failures, { total: 3, with_case: 2, approved: 2, acknowledged: 1 });
   assert.deepEqual(gq.by_feature.map((f) => [f.id, f.deep_cases, f.deep_gap, f.requirements.acknowledged, f.failures.acknowledged]), [["F1", 1, null, 1, 1], ["F2", 0, "one screen", 0, 0]]);
   assert.deepEqual(gq.gaps, [
@@ -270,8 +294,12 @@ try {
   assert.equal(edited(["TESTCASES.md", "Covers: R4\nTier: edge · Depth: screen", "Covers: R4\nTier: edge · Depth: elsewhere"]).requirements.at_depth, 3);
   // Order does not matter: R1 (kept) is covered by TC-1a (kept, first in the file) and an added shallow TC-1e (screen, last).
   assert.equal(withAdded(block("TC-1e", "F1", "R1", "phone")).requirements.at_depth, 2); // R1 and R2, as in the fixture
-  // C2 by TC-3a pass + TC-3b fail (the fixture as is): passing. By TC-3a not run + TC-3b fail: exercised, not passing.
-  assert.equal(q.capabilities.passing, 4);
+  // A control passes only when a case on it passed and none failed. C2 by TC-3a pass + TC-3b fail (the fixture
+  // as is): exercised, not passing. A case not run neither helps nor hurts: TC-3a pass + TC-3b not run is passing.
+  assert.equal(q.capabilities.passing, 3);
+  assert.equal(edited(["reports/2026-01-02/REPORT.md", "| TC-3b | fail |", "| TC-3b | not run |"]).capabilities.passing, 4);
+  assert.equal(q.by_feature[1].capabilities.passing, 0, "the same rule per feature");
+  assert.equal(q.by_cuj[2].capabilities.passing, 0, "the same rule per journey");
   const nf = edited(["reports/2026-01-02/REPORT.md", "| TC-3a | pass |", "| TC-3a | not run |"]);
   assert.equal(nf.capabilities.exercised, 4);
   assert.equal(nf.capabilities.passing, 3);
@@ -328,9 +356,9 @@ try {
   // Approved counters: only TC-1a (R1, C4, kept) and TC-1b (R1.f1 (C4), R1.f2) are approved and runnable.
   assert.deepEqual([q.capabilities.approved, q.requirements.approved, q.requirements.at_depth_approved, q.failures.approved], [1, 1, 1, 2]);
   assert.ok(q.capabilities.approved < q.capabilities.with_case && q.requirements.at_depth_approved < q.requirements.at_depth);
-  assert.match(md, /\| Controls with an approved case \| 1 of 6 \(17%\) \|\n\| Controls with a case \| 4 of 6 \(67%\) \|/);
+  assert.match(md, /\| Controls with an approved case \| 1 of 6 \(16%\) \|\n\| Controls with a case \| 4 of 6 \(66%\) \|/);
   assert.match(md, /\| Requirements with an approved case \| 1 of 4 \(25%\) \|/);
-  assert.match(md, /\| Failures with an approved case \| 2 of 3 \(67%\) \|/);
+  assert.match(md, /\| Failures with an approved case \| 2 of 3 \(66%\) \|/);
   assert.match(md, /## Verifier\n\n- TC-1c · repair · R2: an app that opens an empty note passes; Expected only checks the screen title\.\n- TC-2a · question · Is a confirmation dialog[^\n]*\n- TC-3a · unresolved · R4: Expected names[^\n]*\n- Not judged yet \(1\): TC-3b\n\nJudged by an independent agent: 4\. By the same agent: 1\.\nApproved on the first attempt: 1\. After a repair: 1\. Not approved: 4\.\n\n## Left open/);
   assert.deepEqual([j.verify, j.not_approved], [q.verify, q.not_approved]);
 
@@ -363,7 +391,7 @@ try {
   assert.equal(one.verify.approved, 3);
   assert.equal(one.verify.approved_first, 2);
   assert.deepEqual(approvedCounters(one), [2, 2, 1, 2]);
-  assert.deepEqual(one.by_feature[1].capabilities, { total: 1, in_feature: 1, with_case: 1, approved: 1, exercised: 1, passing: 1, not_seen: 0 });
+  assert.deepEqual(one.by_feature[1].capabilities, { total: 1, in_feature: 1, with_case: 1, approved: 1, exercised: 1, passing: 0, not_seen: 0 });
   assert.equal(one.by_cuj[2].capabilities.approved, 1);
   // ...and approving the repair case TC-1c (attempt 2, after a repair) approves C1, C3 and R2, deep enough (Proof screen).
   const rep2 = vq((d) => approve(d, "TC-1c"));
@@ -420,6 +448,50 @@ try {
   assert.deepEqual(su2.not_approved, q.not_approved);
   // A case added without a verdict is judged and unverified.
   assert.equal(withAdded(block("TC-1d", "F1", "R1", "phone")).verify.unverified, 2);
+
+  // Requirements no journey proves: a retired CUJ proves nothing; without CUJs.md nothing is listed.
+  const ncModel = readE2e(copy((d) => sub(d, "CUJs.md", "Proves: R4\n", "Proves: R4\nRetired: 2026-01-01 - merged\n")));
+  const nc = quality(ncModel);
+  assert.deepEqual(nc.requirements.no_cuj, ["R4"]);
+  assert.equal(nc.ok, true, "not a problem");
+  assert.ok(!nc.open.some((o) => o.kind === "cuj" || o.what.includes("journey")), "not part of open");
+  assert.deepEqual(nc.open, q.open);
+  const ncMd = qualityMd(nc, ncModel);
+  assert.match(ncMd, /## Requirements no journey proves\n\n- R4 · Typing in search narrows the list to matching titles\.\n\n## Left open/);
+  assert.doesNotMatch(qualityMd(q, model), /no journey proves/, "no section when every requirement has a journey");
+  assert.deepEqual(quality(readE2e(copy((d) => { fs.rmSync(path.join(d, "CUJs.md")); fs.rmSync(path.join(d, "TESTCASES.md")); fs.rmSync(path.join(d, "reports"), { recursive: true }); }))).requirements.no_cuj, [], "CUJs.md not written yet");
+
+  // Each report cell of QUALITY.md, on a folder where every one of them has its own value.
+  // In scope C1-C9 (C10 set aside). F1/R1: C1-C4, F2: R2 C5+C6, R3 C7. C1 pass, C2 fail, C3 pass, C4 not run,
+  // C5+C6 pass, C7 manual only. Not seen in scope: C7, C8, C9. Gaps: R1.f2, R1.f3, R3.
+  const cells = fs.mkdtempSync(path.join(os.tmpdir(), "e2e-quality-"));
+  tmps.push(cells);
+  const put = (f, t) => { fs.mkdirSync(path.dirname(path.join(cells, f)), { recursive: true }); fs.writeFileSync(path.join(cells, f), t); };
+  put("INVENTORY.md", `## S1 · MainActivity · "Main"\n| Id | Control | Does | Source | States | Seen |\n| --- | --- | --- | --- | --- | --- |\n${
+    Array.from({ length: 10 }, (_, i) => `| C${i + 1} | text "c${i + 1}" | does | a.kt:1 | | ${[7, 8, 9, 10].includes(i + 1) ? "no: hidden" : "yes"} |`).join("\n")}\n`);
+  put("PRD.md", "### F1 · A · P1\n- R1 · one\n  Caps: C1, C2, C3, C4\n  Proof: screen\n  Fails:\n  - R1.f1 · f1\n  - R1.f2 · f2\n  - R1.f3 · f3\n"
+    + "### F2 · B · P1\n- R2 · two\n  Caps: C5, C6\n  Proof: screen\n  Fails:\n  - R2.f1 · f\n- R3 · three\n  Caps: C7\n  Proof: screen\n  Fails: none in source\n\n## Non-goals\n- Non-goal: C10 · later\n");
+  put("CUJs.md", "## F1 · A\n### CUJ-1 · j · P1 · phone\nProves: R1\n## F2 · B\n### CUJ-2 · k · P1 · phone\nProves: R2, R3\n");
+  const tcBlock = (id, f, covers, mode) => `### ${id} · P1 · t\nFeature: ${f} · Type: happy\nCovers: ${covers}\nTier: core · Depth: screen\nRun mode: ${mode}\n\n`;
+  put("TESTCASES.md", tcBlock("TC-1a", "F1", "R1 (C1)", "phone") + tcBlock("TC-1b", "F1", "R1 (C2)", "phone") + tcBlock("TC-1c", "F1", "R1 (C3)", "task")
+    + tcBlock("TC-1d", "F1", "R1.f1 (C4)", "task") + tcBlock("TC-2a", "F2", "R2", "phone") + tcBlock("TC-2b", "F2", "R3", "manual")
+    + "## Gaps\n- Gap: R1.f2 · a\n- Gap: R1.f3 · b\n- Gap: R3 · c\n");
+  put("reports/2026-01-02/REPORT.md", "| Case | Result |\n| --- | --- |\n| TC-1a | pass |\n| TC-1b | fail |\n| TC-1c | pass |\n| TC-1d | not run |\n| TC-2a | pass |\n| TC-2b | not run |\n");
+  const cm = readE2e(cells);
+  const cq = quality(cm);
+  assert.equal(cq.ok, true, JSON.stringify(cq.problems));
+  const cmd = qualityMd(cq, cm).split("\n");
+  for (const row of [
+    "| Controls exercised in the last report | 5 of 9 (55%) |",
+    "| Controls passing in the last report | 4 of 9 (44%) |",
+    "| Controls not seen on the phone | 3 of 9 |",
+    "| Failures acknowledged as gaps | 2 of 4 |",
+    "| Requirements acknowledged as gaps | 1 of 3 |",
+    "| Cases | 6 (3 phone, 2 task, 1 manual) |",
+  ]) assert.ok(cmd.includes(row), row);
+  const col = (start, k) => cmd.find((l) => l.startsWith(start)).split("|").map((x) => x.trim())[k];
+  assert.deepEqual([col("| F1 · A |", 4), col("| F1 · A |", 5), col("| F2 · B |", 4), col("| F2 · B |", 5)], ["75%", "50%", "66%", "66%"], "per feature: Exercised, Passing");
+  assert.deepEqual([col("| CUJ-1 |", 6), col("| CUJ-1 |", 7), col("| CUJ-2 |", 7)], ["75%", "50%", "66%"], "per journey: Exercised, Passing");
 
   console.log("ok e2e-quality");
 } finally {

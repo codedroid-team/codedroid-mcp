@@ -21,7 +21,7 @@ No `e2e/` yet? Say so and offer the app-e2e skill, which writes the cases first.
 | "Run TC-12a" / "TC-12a and TC-14" | Those ids |
 | "Run CUJ-05" / "the history journey" | Every case numbered for that CUJ (TC-05a, TC-05b...) |
 | "Test the skills feature" / "F3" | Every case whose `Feature:` is that feature |
-| "Smoke test" / "run the P0s" | Every P0 case |
+| "Smoke test" / "run the P0s" | Every P0 case except manual ones |
 | "Rerun what failed" | The cases the latest report lists as failed |
 | "Is TC-07 flaky?" | That case three times in a row |
 | "Did my change break anything?" | Below: the cases a change touches |

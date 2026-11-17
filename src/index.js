@@ -210,8 +210,10 @@ async function main() {
   if (command === "e2e") {
     const sub = args._[1];
     const usage = sub === "verdicts" ? "Usage: codedroid-mcp e2e verdicts <file> [dir] | codedroid-mcp e2e verdicts --due [dir]" : "Usage: codedroid-mcp e2e report [dir] [--check]";
+    const flags = sub === "verdicts" ? ["--due"] : ["--check"];
+    const unknown = process.argv.slice(2).some((a) => a.startsWith("-") && !flags.includes(a) && a !== "--help");
     const due = sub === "verdicts" && !!args.due;
-    if ((sub !== "report" && sub !== "verdicts") || (sub === "report" || due ? args._.length > 3 : args._.length < 3 || args._.length > 4)) {
+    if ((sub !== "report" && sub !== "verdicts") || unknown || (sub === "report" || due ? args._.length > 3 : args._.length < 3 || args._.length > 4)) {
       process.stderr.write(`${usage}\n`);
       process.exitCode = 2;
       return;

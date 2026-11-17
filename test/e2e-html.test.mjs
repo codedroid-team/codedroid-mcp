@@ -145,6 +145,10 @@ try {
   assert.ok(h.includes("<td><code>x | y</code></td><td>z</td>"));
   assert.ok(h.includes("&lt;b&gt;raw&lt;/b&gt;") && h.includes("&gt; quote &lt;i&gt;"));
   assert.ok(md("```\nopen").includes("<pre>"), "unclosed fence still renders");
+  // An escaped pipe stays in its cell; a row with more cells than the header keeps them in the last column.
+  const t2 = md("| H | I |\n| - | - |\n| x \\| y | z |\n| a | b | c | d |");
+  assert.ok(t2.includes("<tr><td>x | y</td><td>z</td></tr>"), t2);
+  assert.ok(t2.includes("<tr><td>a</td><td>b | c | d</td></tr>"), t2);
   // A source not written yet: its page still renders and says so, and QUALITY.html lists what is pending.
   const early = render(copy((d) => { for (const f of ["PRD.md", "CUJs.md", "TESTCASES.md", "reports"]) fs.rmSync(path.join(d, f), { recursive: true }); }));
   assert.ok(early["PRD.html"].includes("PRD.md is not written yet."));
@@ -188,7 +192,9 @@ try {
   assert.ok(gq2.includes("Acknowledged gaps") && gq2.includes("&lt;i&gt;cannot&lt;/i&gt; be staged") && gq2.includes("one screen"), "acknowledged section, escaped");
   assert.ok(gq2.includes('href="PRD.html#R2.f1"'), "gap ref links to the PRD");
   assert.ok(!gq2.includes("R2.f1</a> · a note deleted"), "an acknowledged failure is not in the open list");
-  assert.ok(!gapPages["TESTCASES.html"].includes("Gap:"), "gap lines are not shown as case text");
+  const gapCards = gapPages["TESTCASES.html"].split('<article class="card"').slice(1).map((a) => a.split("</article>")[0]);
+  assert.ok(gapCards.length && gapCards.every((a) => !a.includes("Gap:")), "gap lines are not shown as case text");
+  assert.ok(gapPages["TESTCASES.html"].indexOf("Gap: R2.f1 · &lt;i&gt;cannot&lt;/i&gt; be staged") > gapPages["TESTCASES.html"].lastIndexOf("</article>"), "the Gaps section is shown as prose, after the last case");
   // Too shallow: listed as open with the depths; a depth Gap moves it to the acknowledged list.
   assert.ok(qual.includes("shallow") && qual.includes("must be checked at elsewhere; the deepest case checks screen"), "shallow item");
   const dp = render(copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n## Gaps\n- Gap: R4 depth · <b>one</b> screen\n")))["QUALITY.html"];
@@ -233,7 +239,7 @@ try {
   // QUALITY.html: approved tiles lead, with-a-case numbers are secondary text; Verifier section.
   assert.ok(/1 of 6<\/b><small>controls have an approved case[^]*?4 of 6 have a case/.test(qual), "capabilities tile");
   assert.ok(/1 of 4<\/b><small>requirements have an approved case[^]*?3 of 4 have a case/.test(qual));
-  assert.ok(qual.includes("requirements tested deep enough by approved cases") && qual.includes("failures have an approved case") && qual.includes("2 of 3 have a case"));
+  assert.ok(qual.includes("requirements with an approved case deep enough") && qual.includes("failures have an approved case") && qual.includes("2 of 3 have a case"));
   assert.ok(!qual.includes("<small>capabilities have a case") && !qual.includes("<small>failures have a case"), "no separate with-a-case tiles");
   const ver = qual.slice(qual.indexOf('id="verifier"'));
   assert.ok(ver.includes("approved") && ver.includes("independent agent") && ver.includes("same agent"));
@@ -303,8 +309,157 @@ try {
   const noVerdictQ = render(copy((d) => fs.rmSync(path.join(d, "VERIFY.md"))))["QUALITY.html"];
   assert.ok(noVerdictQ.includes("No test case has been judged by the verifier yet.") && !noVerdictQ.includes("The verifier approved"), "no-verdict opening");
   assert.ok(qual.includes("The verifier approved 2 of 6 test cases;"), "opening with verdicts");
-  assert.ok(qual.includes("2 of 4 tested deep enough by any case") && qual.includes("<th>Controls: approved / with a case</th>"), "tile secondary text and table headers");
+  assert.ok(qual.includes("2 of 4 with a case deep enough") && qual.includes("<th>Controls: approved / with a case</th>"), "tile secondary text and table headers");
   assert.ok(!/capabilit/i.test(qual.replace(/<style>[^]*?<\/style>/, "").replace(/<[^>]*>/g, " ")), "people-facing text says controls");
+  // Labels and percentages match QUALITY.md: rounded down, "with a case deep enough", no report yet without one.
+  for (const p of Object.values(pages)) assert.ok(!p.includes("tested deep enough") && !p.includes("Tested deep enough"), "no 'tested deep enough'");
+  assert.ok(qual.includes("<small>requirements with an approved case deep enough (25%)</small>") && qual.includes('<small class="sub">2 of 4 with a case deep enough</small>'), "tile label");
+  assert.ok(qual.includes("<b>4 of 6</b><small>controls exercised in the last report (66%)</small>"), "rounded down");
+  assert.ok(qual.includes("<th>Deep enough: approved / any case</th>"), "per-feature column");
+  assert.ok(/F1<\/a> · Notes [^\n]*?<td>25% \/ 75%<\/td><td>33% \/ 66%<\/td>/.test(qual) && /F1<\/a> · Notes<\/td><td>75%<\/td><td>75%<\/td>/.test(qual), "F1 rows rounded down like QUALITY.md");
+  assert.ok(qual.includes("A control used by requirements of two features is counted in both rows"), "per-feature note");
+  assert.ok(prd.includes("2 of 3 requirements have a case, 2 with a case deep enough."), "feature card wording");
+  const noRepQ = none["QUALITY.html"];
+  assert.ok(noRepQ.includes("<b>no report yet</b><small>controls exercised in the last report</small>") && noRepQ.includes("<b>no report yet</b><small>controls passing in the last report</small>"), "no report yet");
+  assert.ok(!noRepQ.includes("0 of 6"), "no 0 of 6 without a report");
+  const noMode = render(copy((d) => sub(d, "TESTCASES.md", "Tier: core · Depth: screen\nRun mode: task\n", "Tier: core · Depth: screen\n")))["TESTCASES.html"];
+  assert.ok(noMode.includes("6 cases: 4 phone, 0 task, 1 manual, 1 with no run mode."), "cases with no run mode counted on TESTCASES.html");
+  // Every part of the documents is on exactly one page: feature prose, a requirement's other lines, a heading that is
+  // not a feature, the CUJs intro, a group's prose, prose after the last journey, the test cases intro, prose between
+  // cases. Planted beside each, <u> is escaped.
+  const MARKS = ["MARK_WHAT", "MARK_SCREENS", "MARK_GATES", "MARK_HARM", "MARK_FTAIL", "MARK_REQ", "MARK_UNASSIGNED", "MARK_CUJSTART", "MARK_CUJGROUP", "MARK_ROBUST", "MARK_TCINTRO", "MARK_TCMID", "MARK_INCUJ", "MARK_INCASE", "MARK_CUJMID"];
+  const u = (m) => `${m} <u>x</u>`;
+  const shown = render(copy((d) => {
+    sub(d, "PRD.md", "### F1 · Notes · P0\n", `### F1 · Notes · P0\nWhat: ${u("MARK_WHAT")}\nScreens: ${u("MARK_SCREENS")}\nGates: ${u("MARK_GATES")}\nHarm: ${u("MARK_HARM")}\n\n`);
+    sub(d, "PRD.md", "  Fails: none in source\n\n### F2", `  Fails: none in source\n${u("MARK_FTAIL")}\n\n### F2`);
+    sub(d, "PRD.md", "  Proof: kept\n", `  Proof: kept\n  Why: ${u("MARK_REQ")}\n`);
+    sub(d, "PRD.md", "## Non-goals", `### Unassigned\n- S9 ${u("MARK_UNASSIGNED")}\n\n## Non-goals`);
+    sub(d, "CUJs.md", "# Notes CUJs\n", `# Notes CUJs\n\nStart state: ${u("MARK_CUJSTART")}\n`);
+    sub(d, "CUJs.md", "## F1 · Notes\n", `## F1 · Notes\n${u("MARK_CUJGROUP")}\n`);
+    fs.appendFileSync(path.join(d, "CUJs.md"), `\n## Robustness\n- ${u("MARK_ROBUST")}\n`);
+    sub(d, "TESTCASES.md", "# Notes test cases\n", `# Notes test cases\n\n${u("MARK_TCINTRO")}\n`);
+    sub(d, "TESTCASES.md", "### TC-3a", `## Search\n${u("MARK_TCMID")}\n\n### TC-3a`);
+    sub(d, "CUJs.md", "- The note shows in the list.", `- ${u("MARK_INCUJ")}`);
+    sub(d, "CUJs.md", "### CUJ-2", `### Note\n${u("MARK_CUJMID")}\n\n### CUJ-2`);
+    sub(d, "TESTCASES.md", "Expected: the title is in the list.", `Expected: ${u("MARK_INCASE")}`);
+  }));
+  for (const m of MARKS) assert.deepEqual(Object.keys(shown).filter((p) => shown[p].includes(m)), [{ MARK_CUJSTART: "CUJs.html", MARK_CUJGROUP: "CUJs.html", MARK_ROBUST: "CUJs.html", MARK_TCINTRO: "TESTCASES.html", MARK_TCMID: "TESTCASES.html", MARK_INCUJ: "CUJs.html", MARK_INCASE: "TESTCASES.html", MARK_CUJMID: "CUJs.html" }[m] ?? "PRD.html"], m);
+  for (const [p, h] of Object.entries(shown)) assert.ok(!h.includes("<u>"), `raw <u> on ${p}`);
+  assert.equal((Object.values(shown).join("").match(/&lt;u&gt;x&lt;\/u&gt;/g) ?? []).length, MARKS.length, "each planted <u> shown once, escaped");
+  const f1 = shown["PRD.html"].split('<section class="card" id="F1">')[1].split('<article class="card" id="R1">')[0];
+  for (const m of ["MARK_WHAT", "MARK_SCREENS", "MARK_GATES", "MARK_HARM", "MARK_FTAIL"]) assert.ok(f1.includes(m), `${m} in the F1 card above its requirements`);
+  assert.ok(shown["PRD.html"].split('<article class="card" id="R1">')[1].split("</article>")[0].includes("MARK_REQ"), "the requirement's other line in its card");
+  const cu = shown["CUJs.html"];
+  assert.ok(cu.indexOf('id="CUJ-1"') < cu.indexOf("MARK_CUJMID") && cu.indexOf("MARK_CUJMID") < cu.indexOf('id="CUJ-2"'), "text between journeys above the next one");
+  assert.ok(f1.includes("<strong>What:</strong> MARK_WHAT"), "a label starts its own paragraph, in bold");
+  assert.ok(cu.indexOf("MARK_CUJSTART") < cu.indexOf("MARK_CUJGROUP") && cu.indexOf("MARK_CUJGROUP") < cu.indexOf('id="CUJ-1"') && cu.lastIndexOf('id="CUJ-3"') < cu.indexOf("MARK_ROBUST"), "CUJs prose in document order");
+  const tc = shown["TESTCASES.html"];
+  assert.ok(tc.indexOf("MARK_TCINTRO") < tc.indexOf('id="F1"') && tc.indexOf('id="TC-2a"') < tc.indexOf("MARK_TCMID") && tc.indexOf("MARK_TCMID") < tc.indexOf('id="TC-3a"'), "test cases prose in document order");
+  assert.ok(prd.includes("<h1>Notes PRD</h1>") && prd.includes('<section class="prose"><h2>Goal</h2>'), "PRD prose headings start at h2, under the page's h1");
+  assert.ok(shown["PRD.html"].includes("<h3>Unassigned</h3>"), "a heading that is not a feature is shown");
+  // A requirement under no feature is shown once, in the "Requirements outside a feature" card with its other lines;
+  // no requirement's Caps, Proof, Fails or failure lines are shown again as text.
+  const LOOSE = `- R9 · MARK_LOOSE a loose requirement.\n  Caps: C6\n  Proof: screen\n  Why: MARK_LOOSEWHY\n  Fails:\n  - R9.f1 · MARK_LOOSEFAIL\n`;
+  for (const [label, from, to] of [
+    ["under a heading that is not a feature", "## Non-goals", `### Unassigned\n${LOOSE}\n## Non-goals`],
+    ["before the first feature", "## Features\n", `## Features\n${LOOSE}`],
+    ["under a feature heading that cannot be read", "### F2 · Search · P1", `### F2 · Search\n${LOOSE}`],
+  ]) {
+    const lp = render(copy((d) => sub(d, "PRD.md", from, to)))["PRD.html"];
+    for (const m of ["MARK_LOOSE ", "MARK_LOOSEWHY", "MARK_LOOSEFAIL"]) assert.equal(lp.split(m).length - 1, 1, `${label}: ${m} once`);
+    const card = lp.split('<article class="card" id="R9">')[1]?.split("</article>")[0] ?? "";
+    assert.ok(lp.includes("Requirements outside a feature") && card.includes("MARK_LOOSEWHY") && card.includes("MARK_LOOSEFAIL"), label);
+    assert.ok(!/Caps:|Proof:|Fails:|R\d\.f\d ·/.test(lp.replace(/<style>[\s\S]*?<\/style>/, "")), `${label}: no Caps, Proof, Fails or failure line as text`);
+    if (label.includes("cannot be read")) assert.equal(lp.split("Typing in search narrows").length - 1, 1, "R4 once");
+  }
+  // A fenced block with a "#" line inside a feature block stays in the block, above its requirements.
+  const fenced = render(copy((d) => sub(d, "PRD.md", "### F1 · Notes · P0\n", "### F1 · Notes · P0\n```\n# MARK_FENCE\n```\n")))["PRD.html"];
+  const fenceCard = fenced.split('<section class="card" id="F1">')[1].split("</section>")[0];
+  assert.ok(fenceCard.includes("# MARK_FENCE") && fenceCard.indexOf("MARK_FENCE") < fenceCard.indexOf('id="R1"') && fenceCard.includes('id="R3"'), "fence in the F1 card");
+  assert.equal(fenced.split("MARK_FENCE").length - 1, 1, "fence shown once");
+  // Text under a "## F<n>" group heading that names no feature, and text above a retired journey or case, is shown once.
+  const odd = render(copy((d) => {
+    fs.appendFileSync(path.join(d, "CUJs.md"), "\n## Old\nMARK_ABOVECUJ\n\n### CUJ-9 · Old · P2 · phone\nRetired: 2026-01-01 - merged\n\n## F7 · Later\nMARK_CUJF7\n");
+    fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n## Old\nMARK_ABOVETC\n\n### TC-9a · P2 · Old\nRetired: 2026-01-01 - merged\n\n## F7 · Later\nMARK_TCF7\n");
+  }));
+  for (const [m, p] of [["MARK_CUJF7", "CUJs.html"], ["MARK_ABOVECUJ", "CUJs.html"], ["MARK_TCF7", "TESTCASES.html"], ["MARK_ABOVETC", "TESTCASES.html"]]) {
+    assert.deepEqual(Object.keys(odd).filter((k) => odd[k].includes(m)), [p], m);
+    assert.equal(odd[p].split(m).length - 1, 1, `${m} once`);
+  }
+  assert.ok(odd["CUJs.html"].includes("<h2>F7 · Later</h2>"), "the heading of a group that names no feature");
+  assert.ok(odd["CUJs.html"].indexOf("MARK_ABOVECUJ") < odd["CUJs.html"].indexOf('id="CUJ-9"') && odd["TESTCASES.html"].indexOf("MARK_ABOVETC") < odd["TESTCASES.html"].indexOf('id="TC-9a"'), "above the retired card");
+  // Requirements no journey proves: listed on QUALITY.html and at the top of CUJs.html, only when there are any.
+  const nj = render(copy((d) => sub(d, "CUJs.md", "Proves: R4\n", "Proves: R4\nRetired: 2026-01-01 - merged\n")));
+  for (const p of ["QUALITY.html", "CUJs.html"]) {
+    const sec = nj[p].split("Requirements no journey proves")[1]?.split("</ul>")[0] ?? "";
+    assert.ok(sec.includes('href="PRD.html#R4"') && sec.includes("Typing in search narrows the list"), `${p} lists R4`);
+    assert.ok(!sec.includes("R3"), `${p} lists only R4`);
+  }
+  assert.ok(nj["CUJs.html"].indexOf("Requirements no journey proves") < nj["CUJs.html"].indexOf('id="CUJ-1"'), "at the top of CUJs.html");
+  assert.ok(!qual.includes("no journey proves") && !cujs.includes("no journey proves"), "no list when every requirement has a journey");
+  // Every document field that reaches a page is escaped. Each field gets its own marker; a folder or file name
+  // cannot hold "/", so there the marker is not closed.
+  let n = 0;
+  const marks = [];
+  const mk = (close = true) => { const m = `MARK-${++n}`; marks.push(m); return `<u>${m}${close ? "</u>" : ""}`; };
+  const planted = copy((d) => {
+    const r = path.join(d, "reports/2026-01-02");
+    sub(d, "INVENTORY.md", '## S1 · NotesListFragment · "Notes"', `## S1 · Src${mk()} · "Notes${mk()}"`);
+    sub(d, "INVENTORY.md", '| C6 | description "Share" | hands the note text to the share sheet | app/src/main/java/notes/EditorFragment.kt:141 | | ? |', `| C6 | ${mk()} | ${mk()} | ${mk()} | ${mk()} | ? ${mk()} |`);
+    sub(d, "PRD.md", "# Notes PRD\n", `# Notes PRD ${mk()}\n`);
+    sub(d, "PRD.md", "## Goal\nKeep short notes on the phone.", `## Goal ${mk()}\nKeep short notes ${mk()} &lt;b&gt; it's`);
+    sub(d, "PRD.md", "### F1 · Notes · P0\n", `### F1 · Notes${mk()} · P0\nWhat: ${mk()}\n`);
+    sub(d, "PRD.md", "- R1 · A saved note appears in the list with its title.", `- R1 · A saved note ${mk()}`);
+    sub(d, "PRD.md", "  Caps: C4\n  Proof: kept\n", `  Caps: C4, ${mk()}\n  Proof: kept\n  Why: ${mk()}\n`);
+    sub(d, "PRD.md", "  Proof: screen\n", `  Proof: screen${mk()}\n`);
+    sub(d, "PRD.md", "an empty title leaves", `an empty ${mk()} title leaves`);
+    fs.appendFileSync(path.join(d, "PRD.md"), `- Non-goal: C6 · ${mk()}\n`);
+    sub(d, "CUJs.md", "# Notes CUJs\n", `# Notes CUJs\n\n${mk()}\n`);
+    sub(d, "CUJs.md", "## F1 · Notes\n", `## F1 · Notes\n${mk()}\n`);
+    sub(d, "CUJs.md", "Write a note and find it again", `Write a note${mk()}`);
+    sub(d, "CUJs.md", "Proves: R1, R2\n", `Proves: R1, R2, ${mk()}\n`);
+    sub(d, "CUJs.md", "Proves: R4\n", "Proves: R3\n");
+    sub(d, "PRD.md", "Typing in search narrows", `Typing ${mk()} narrows`);
+    sub(d, "CUJs.md", "- The note shows in the list.", `- The note shows ${mk()}\n- and stays ${mk()}`);
+    fs.appendFileSync(path.join(d, "CUJs.md"), `\n### CUJ-9 · Old · P2 · phone\nRetired: ${mk()}\n\n## Robustness\n- ${mk()}\n`);
+    sub(d, "TESTCASES.md", "# Notes test cases\n", `# Notes test cases\n\n${mk()}\n`);
+    sub(d, "TESTCASES.md", "A saved note is still there", `A saved note ${mk()}`);
+    sub(d, "TESTCASES.md", '1. Tap "New note", type a title, tap "Save".', `1. Tap ${mk()}\n2. Then ${mk()}`);
+    sub(d, "TESTCASES.md", "Feature: F1 · Type: negative", `Feature: F1 · Type: negative${mk()}`);
+    sub(d, "TESTCASES.md", "Tier: core · Depth: screen\nRun mode: task", `Tier: core${mk()} · Depth: screen\nRun mode: task${mk()}`);
+    fs.appendFileSync(path.join(d, "TESTCASES.md"), `\n### TC-9a · P2 · Old\nRetired: ${mk()}\n\n## Gaps\n${mk()}\n- Gap: R2.f1 · ${mk()}\n`);
+    sub(d, "reports/2026-01-02/REPORT.md", "shows `a | b` blank", `shows ${mk()}`);
+    sub(d, "reports/2026-01-02/REPORT.md", "| P1 | Saving with no connection keeps the text |", `| P1 | Saving ${mk()} |`);
+    sub(d, "reports/2026-01-02/REPORT.md", "| 12 | 2026-01-02 |", `| 12 ${mk()} | 2026-01-02 |`);
+    fs.appendFileSync(path.join(d, "reports/2026-01-02/REPORT.md"), `\n${mk()}\n`);
+    fs.copyFileSync(path.join(r, "TC-1a.png"), path.join(r, `TC-1a-${mk(false)}.png`));
+    const odd = path.join(d, `reports/zz${mk(false)}`);
+    fs.mkdirSync(odd);
+    fs.writeFileSync(path.join(odd, "REPORT.md"), "| Case | Result |\n| --- | --- |\n");
+  });
+  const hp = render(planted);
+  for (const [p, h] of Object.entries(hp)) assert.ok(!h.includes("<u>"), `raw <u> on ${p}`);
+  const all = Object.values(hp).join("");
+  assert.deepEqual(marks.filter((m) => !all.includes(`&lt;u&gt;${m}`)), [], "every planted field is on a page, escaped");
+  assert.ok(all.includes("&amp;lt;b&amp;gt;") && all.includes("it&#39;s"), "& and ' escaped too");
+  // Screenshots: a link is never read, whether it leads outside the folder or to a document inside it.
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), "e2e-html-out-"));
+  tmps.push(outside);
+  fs.writeFileSync(path.join(outside, "secret.png"), "outside-secret-bytes");
+  const linked = copy((d) => {
+    fs.symlinkSync(path.join(outside, "secret.png"), path.join(d, "reports/2026-01-02/TC-1b.png"));
+    fs.symlinkSync(path.join(d, "PRD.md"), path.join(d, "reports/2026-01-02/TC-1c.png"));
+  });
+  const lr = render(linked)["reports/2026-01-02/REPORT.html"];
+  for (const f of [path.join(outside, "secret.png"), path.join(linked, "PRD.md")]) assert.ok(!lr.includes(fs.readFileSync(f).toString("base64")), `${f} not embedded`);
+  assert.equal((lr.match(/data:image\/png;base64,/g) ?? []).length, 1, "only TC-1a.png");
+  // Screenshot ids: TC-10's shot is not TC-1's, and a retired case's shot is not embedded.
+  const ids = render(copy((d) => {
+    fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n### TC-1 · P1 · One\nFeature: F1 · Type: happy\nCovers: R1\nTier: core · Depth: screen\nRun mode: phone\n");
+    sub(d, "TESTCASES.md", "Run mode: task", "Run mode: task\nRetired: 2026-01-01 - merged");
+    for (const f of ["TC-1.png", "TC-10.png", "TC-10-a.png", "TC-1c.png"]) fs.copyFileSync(path.join(d, "reports/2026-01-02/TC-1a.png"), path.join(d, "reports/2026-01-02", f));
+  }))["reports/2026-01-02/REPORT.html"];
+  assert.deepEqual([...ids.matchAll(/<span class="muted">([^<]*)<\/span><\/figcaption>/g)].map((m) => m[1]), ["TC-1.png", "TC-1a.png"]);
   console.log("e2e-html ok");
 } finally {
   for (const d of tmps) fs.rmSync(d, { recursive: true, force: true });

@@ -20,8 +20,12 @@ const phone = JSON.parse(fs.readFileSync(new URL("./fixtures/phone-tools.json", 
 const local = [createAdbTool({ env: {} }).definition, createDevicesTool({}).definition, createStatusTool({}).definition, createInstallTool({}).definition, createSetupPhoneTool().definition];
 const tools = new Set([...phone, ...local].map((t) => t.name));
 const params = new Set([...phone, ...local].flatMap((t) => Object.keys(t.inputSchema.properties ?? {})));
-// What the phone's replies carry: error codes and the `after` observation.
-const replyWords = new Set(["stale_node", "not_found", "needs_setup", "bad_args", "screen_changed"]);
+// What the phone's replies carry: error codes, the `after` observation, and how get_task's task
+// ended (`ended`) and what it cost (`credits.status`).
+const replyWords = new Set([
+  "stale_node", "not_found", "needs_setup", "bad_args", "screen_changed",
+  "out_of_credits", "update_required", "not_charged",
+]);
 
 for (const name of SKILLS) {
   const source = fs.readFileSync(skillSource(name), "utf8");

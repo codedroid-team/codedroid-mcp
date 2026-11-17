@@ -30,6 +30,8 @@ report which checks adb would have made.
 
 ## Each case
 
+A `manual` case is never run: give it a `not run` row with its `Why manual:` reason, and never
+follow its steps.
 1. Put the app in the case's start state: `open_app`, then Back to its first screen. If Back does
    not get there, `adb` `shell am force-stop <package>` (the app under test, never
    com.codedroid.agent) and `open_app` again.
@@ -73,7 +75,8 @@ cleanup changed the screen.
 
 ## The report
 
-`e2e/reports/<date>/REPORT.md`:
+`e2e/reports/<date>/REPORT.md`. A run that stops early still writes it, with `not run` for the
+cases it did not reach: a dated report folder with no `REPORT.md` is a problem.
 
 - A header: build, device, account, date; passed / failed / not run. Without adb, say what the run
   could not check: the installed build, the crash buffer, the screenshot files.
@@ -84,7 +87,8 @@ cleanup changed the screen.
   `<a href="TC-12a.png"><img src="TC-12a.png" alt="TC-12a" width="300"></a>` (width 120 inside
   a table row). A plain `![TC-12a](TC-12a.png)` shows a phone screenshot at full size.
 - Every case in one table, with exactly these columns; it must be the report's only table that
-  starts with Case and Result. Result is `pass`, `fail` or `not run`; "passed after N tries" goes in
+  starts with Case and Result (a failure's own section is prose, or a table with other first
+  columns). Result is `pass`, `fail` or `not run`; "passed after N tries" goes in
   Notes, earlier failed attempts are listed under the table with their cause.
 
 ```markdown
@@ -100,13 +104,18 @@ cleanup changed the screen.
 After fixing a case, rerun it and every case that `Needs:` it, and report the last result with
 "passed after N tries". Rerun the whole suite only when a fix changed a shared step (the start
 state, a common cleanup) or before a release verdict. A bug you find mid-run that no case covers:
-add a case for it to `TESTCASES.md`, run it twice, and say in the report that it was added. Anything
-the run left that only "clear all" would remove: list it under cleanup, don't clear it.
+add a case for it to `TESTCASES.md` (if it is approved, the app-e2e-maintain skill's "Changing an
+approved file" applies), run it twice, and say in the report that it was added. Anything the run left that
+only "clear all" would remove: list it under cleanup, don't clear it.
 
-Then run `npx -y @codedroid/mcp e2e report e2e`. Exit 1 means the documents have problems, printed
-as `file:line: message`: fix them and rerun until it prints none. It writes `REPORT.html` beside the
-report and refreshes `QUALITY.html`; never edit those, and commit them with the report. Give the
-user the path of `REPORT.html`.
+Then run `npx -y @codedroid/mcp e2e report e2e` (documents in another folder: pass that folder in
+place of `e2e`; `Unknown command: e2e` means the release is older than these skills: tell the user
+and go on without it). Exit 1 means the documents have problems, printed as `file:line: message`:
+fix them and rerun until it prints none. If the documents were written
+before these formats, stop: with the user's OK, follow the app-e2e-maintain skill's "Documents
+from before these formats" first. Never rewrite approved documents at the end of a run on your own.
+It writes `REPORT.html` beside the report and refreshes `QUALITY.html`; never edit those, and
+commit them with the report. Give the user the path of `REPORT.html`.
 
 ## Never
 

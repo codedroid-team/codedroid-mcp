@@ -21,14 +21,18 @@ Load each step's skill when you reach it; this table is not the step.
 
 After each step's document is written, run `npx -y @codedroid/mcp e2e report e2e` from the repo
 root. It must print no problems before you go on: exit 1 means it found some, printed as
-`file:line: message`; fix every one and rerun. It writes `QUALITY.md`, `quality.json` and HTML pages into `e2e/`
+`file:line: message`; fix every one and rerun. If it prints `Unknown command: e2e`, the installed
+`@codedroid/mcp` release is older than these skills: tell the user, and go on without the command
+(write the documents as the skills say; give the user the Markdown at the gates). It writes `QUALITY.md`, `quality.json` and HTML pages into `e2e/`
 (`PRD.html`, `CUJs.html`, `TESTCASES.html`, `QUALITY.html`, `REPORT.html` beside the report the numbers read: the newest folder named `e2e/reports/<date>/`).
 The Markdown stays the source: never edit a generated file, and commit them with the Markdown.
 `VERIFY.md` is written only by `npx -y @codedroid/mcp e2e verdicts`; never edit it either. At
 both gates give the user the page, not the Markdown, and `e2e/QUALITY.html` for what is not
-covered; at gate 2 the page to look at is its "Left open" list, what no runnable case or `Gap:`
-line settles. You read `QUALITY.md` (the same content, plain text); before `TESTCASES.md` exists the
-open count is the work ahead, not a defect. The `Approved:` line still goes on the Markdown.
+covered; at gate 2 the page to look at is its "Left open" list: requirements with no runnable case,
+requirements whose deepest case is shallower than their Proof, failure lines of P0 and P1 features
+with no runnable case, and P0 features with no deep case, each until a case or a `Gap:` line settles it. You read `QUALITY.md` (the same content, plain text); before `TESTCASES.md` exists the
+open count is the work ahead, not a defect. The `Approved:` line still goes on the Markdown; after
+writing it, run the command once more so the pages match.
 
 Once `e2e/` exists, the everyday jobs have their own skills: app-e2e-rerun (run some cases: by id,
 CUJ, priority, last failures, a change; a flaky check; two builds), app-e2e-bug (a case that
@@ -38,8 +42,9 @@ covers driving the phone; read it first if you have not.
 ## Where everything lives
 
 `e2e/` at the root of the app's repo (or the folder the user names), committed and reviewed like
-code. On start, read what is already there. Test documents somewhere else (a gitignored folder,
-another format, an older run's own runner)? Say where they are and ask: move them into `e2e/`
+code. When the documents live in another folder, pass that folder to the command in every step in
+place of `e2e`. On start, read what is already there. Test documents somewhere else (a gitignored
+folder, another format, an older run's own runner)? Say where they are and ask: move them into `e2e/`
 (their approvals carry over) or keep working where they are. Don't silently write a second set. A document is approved when its first line reads
 `Approved: <date> by the user`; write that line only after the user says so. An approved step is
 done: say so and go on from the first step that is not. A document without the line is a draft:

@@ -5,6 +5,7 @@
  * Run: node test/e2e-hardening.test.mjs
  */
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -171,6 +172,22 @@ try {
   assert.ok(renderPages(used.m, used.q)["QUALITY.html"].includes("Results come from reports/2026-11-12/REPORT.md."));
   assert.deepEqual(Object.keys(renderPages(used.m, used.q)).filter((k) => k.startsWith("reports/")), ["reports/2026-11-12/REPORT.html"]);
   assert.ok(qualityMd(all(mk({})).q, all(mk({})).m).includes("There is no report yet"));
+  // Only the first Case/Result table is read; a second one, or a table with no separator row, is a problem.
+  const R1 = "reports/2026-11-12/REPORT.md";
+  m = model({ [R1]: `# R\n\n| Case | Result | Step |\n| --- | --- | --- |\n${fail} 2 |\n\n## All\n\n` + REP(pass) });
+  assert.deepEqual(m.results.byCase, { "TC-1a": "fail" });
+  assert.deepEqual(m.problems, [{ file: R1, line: 11, message: "REPORT.md has two Case/Result tables: keep one" }]);
+  m = model({ [R1]: "| Case | Result |\n| TC-1a | fail |\n" });
+  assert.deepEqual([m.results.byCase, m.problems], [{}, [{ file: R1, line: 1, message: "Case/Result table has no separator row" }]]);
+  // A folder named like a date that is not one is a problem and not used; a newer dated folder with no REPORT.md is a problem.
+  for (const bad of ["2026-13-45", "2026-02-30"]) {
+    m = model(folders([["2026-11-12", pass], [bad, fail]]));
+    assert.equal(m.results.report, R1, bad);
+    assert.deepEqual(m.problems, [{ file: "reports", line: 0, message: `report folder "${bad}" is not a date` }], bad);
+  }
+  m = model({ ...folders([["2026-11-12", pass]]), "reports/2026-11-13/TC-1a.png": "x", "reports/2026-11-01/TC-1a.png": "x", "reports/2026-11-14-smoke/TC-1a.png": "x" });
+  assert.equal(m.results.report, R1);
+  assert.deepEqual(m.problems, [{ file: "reports", line: 0, message: `reports/2026-11-13 has no REPORT.md: the numbers come from ${R1}` }]);
 
   // G3: nothing is read through a link, and no outside content reaches a page, QUALITY.md or quality.json.
   const outside = fs.mkdtempSync(path.join(os.tmpdir(), "e2e-out-"));
@@ -211,6 +228,19 @@ try {
   const viaLink = path.join(outside, "dir-link");
   fs.symlinkSync(mk({}), viaLink);
   assert.deepEqual(probs(viaLink), []);
+  // A dated report folder that is a link to another report folder inside the e2e folder is a link too.
+  const sameDir = mk({ "reports/2026-11-12/REPORT.md": REP(pass) });
+  fs.symlinkSync(path.join(sameDir, "reports/2026-11-12"), path.join(sameDir, "reports/2026-12-01"));
+  m = readE2e(sameDir);
+  assert.equal(m.results.report, "reports/2026-11-12/REPORT.md");
+  assert.deepEqual(m.problems.map((p) => p.message), ["reports/2026-12-01/REPORT.md is a link or leads outside the folder: not read"]);
+
+  // A source that is neither a regular file nor a folder where one is expected is a problem and is never opened.
+  const odd = (rel, make) => { const d = mk({ "reports/2026-11-12/REPORT.md": REP(pass) }); fs.rmSync(path.join(d, rel), { recursive: true }); make(path.join(d, rel)); return probs(d); };
+  assert.deepEqual(odd("PRD.md", (p) => fs.mkdirSync(p)), ["PRD.md:0 PRD.md is not a regular file: not read"]);
+  assert.deepEqual(odd("PRD.md", (p) => assert.equal(spawnSync("mkfifo", [p]).status, 0)), ["PRD.md:0 PRD.md is not a regular file: not read"]);
+  assert.deepEqual(odd("reports/2026-11-12/REPORT.md", (p) => fs.mkdirSync(p)), ["reports/2026-11-12/REPORT.md:0 reports/2026-11-12/REPORT.md is not a regular file: not read"]);
+  assert.deepEqual(odd("reports", (p) => fs.writeFileSync(p, "x")), ["reports:0 reports is not a folder: not read"]);
 
   // G4: no path in anything written; the same folder gives the same bytes by absolute and relative path.
   const here = mk({ "reports/2026-11-12/REPORT.md": REP(pass) });
