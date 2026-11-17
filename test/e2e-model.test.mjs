@@ -368,6 +368,8 @@ try {
   assert.deepEqual([twice.requirements[0].caps, twice.requirements[0].proof, twice.requirements[0].fails.length], [["C4"], "kept", 2]);
   assert.deepEqual(twice.cujs[2].proves, ["R4"]);
   assert.deepEqual([twice.cases[5].feature, twice.cases[5].tier, twice.cases[5].depth, twice.cases[5].mode], ["F2", "edge", "screen", "phone"]);
+  const depthFirst = readE2e(copy((d) => sub(d, "TESTCASES.md", "Tier: deep · Depth: kept", "Depth: kept\nTier: deep · Depth: screen")));
+  assert.deepEqual([depthFirst.problems, depthFirst.cases[0].depth], [[{ file: "TESTCASES.md", line: 7, message: "TC-1a has two Depth: lines" }], "kept"]);
 
   // INVENTORY: no control row is dropped silently.
   const invProblems = (edit) => readE2e(copy(edit)).problems.filter((x) => x.file === "INVENTORY.md").map((x) => `${x.line}: ${x.message}`);
