@@ -9,6 +9,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { readE2e } from "../src/e2e-model.js";
+import { quality } from "../src/e2e-quality.js";
 import { skillSource } from "../src/skill.js";
 
 const NAMES = ["app-e2e", "app-e2e-explore", "app-e2e-prd", "app-e2e-cujs", "app-e2e-testcases", "app-e2e-run", "app-e2e-maintain", "app-e2e-bug"];
@@ -88,6 +89,13 @@ const INLINE = [
   ["app-e2e-testcases", "A setup case proves nothing: it needs only its `Run mode:` line, and `Covers:`, `Tier:` and `Depth:` are left out.", "Feature: all · Type: setup\nRun mode: phone\n"],
   ["app-e2e-testcases", "Keep `Covers:` on one line: a wrapped line is not read.", "Covers: R3 (C1)\n"],
   ["app-e2e-bug", "Its `REPORT.md` has the results table as app-e2e-run writes it, with one row for this case (both runs in its Notes).", "| TC-1a | fail | failed both runs |\n"],
+  ["app-e2e-run", "A `manual` case is never run: give it a `not run` row with its `Why manual:` reason, and never follow its steps.", "| TC-2a | not run | needs the previous release |"],
+  ["app-e2e-maintain", "Then delete the feature's heading and requirements from `PRD.md`, its control rows and any screen left with no row from `INVENTORY.md`, its controls from any `- Non-goal:` line (a line left with none goes), its `- Gap:` lines, and its requirement ids from any other journey's `Proves:`; retired cases and journeys may still name them.", "Retired: 2026-01-01 - the screen was removed\nFeature: F2 · Type: happy\nCovers: R7 (C9)"],
+  ["app-e2e", "at gate 2 the page to look at is its \"Left open\" list: requirements with no runnable case, requirements whose deepest case is shallower than their Proof, failure lines of P0 and P1 features with no runnable case, and P0 features with no deep case, each until a case or a `Gap:` line settles it.", "- Gap: R3.f2 · the phone must be offline"],
+  ["app-e2e-testcases", "\"Left open\" lists requirements with no runnable case, requirements whose deepest case is shallower than their Proof, failure lines of P0 and P1 features with no runnable case, and P0 features with no deep case, each with no Gap line", "- Gap: R3.f2 · the phone must be offline"],
+  ["app-e2e-maintain", "its \"Left open\" list (requirements with no runnable case, requirements whose deepest case is shallower than their Proof, failure lines of P0 and P1 features with no runnable case, P0 features with no deep case; none with a Gap line)", "- Gap: R3.f2 · the phone must be offline"],
+  ["app-e2e-testcases", "Write it as a `manual` case with `Why manual: the phone must be offline`, and give the failure a `- Gap:` line too, since a manual case settles nothing", "Covers: R3.f2 (C1)\nTier: edge · Depth: screen\nRun mode: manual\nWhy manual: the phone must be offline"],
+  ["app-e2e-testcases", "the blocked or confirmed behavior is a failure of that requirement, so add a failure line `R<n>.f<m>` for it in `PRD.md`, with its exact words, then give that failure a case or a `- Gap:` line.", "  - R3.f1 · \"Save\" stays disabled while the title is empty"],
 ];
 const flat = (s) => s.replace(/\s+/g, " ");
 const pattern = (taught) => new RegExp(taught.replace(/`/g, "").split(/<[^>]+>/).map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".+"));
@@ -100,10 +108,13 @@ const INLINE_FILES = {
 | C42 | text "Print" | prints | Notes.kt:4 | | no: no printer |
 `,
   "PRD.md": `### F1 · Notes · P0
+Gates: "Save" disabled while the title is empty.
 - R3 · A saved note is listed.
   Caps: C1
   Proof: kept
-  Fails: none in source
+  Fails:
+  - R3.f1 · "Save" stays disabled while the title is empty
+  - R3.f2 · with no connection, "Couldn't save" shows
 - R9 · The list keeps its order after a restart?
   Caps: none
   Proof: screen
@@ -133,6 +144,19 @@ Covers: R3 (C1)
 Tier: core · Depth: screen
 Run mode: phone
 
+### TC-1b · P0 · An empty title cannot be saved
+Feature: F1 · Type: negative
+Covers: R3.f1 (C1)
+Tier: edge · Depth: screen
+Run mode: phone
+
+### TC-1c · P0 · Saving with no connection
+Feature: F1 · Type: negative
+Covers: R3.f2 (C1)
+Tier: edge · Depth: screen
+Run mode: manual
+Why manual: the phone must be offline
+
 ### TC-2a · P1 · An upgrade keeps the order
 Feature: F1 · Type: happy
 Covers: R9
@@ -146,13 +170,16 @@ Run mode: phone
 
 ### TC-3a · P2 · An old case
 Retired: 2026-01-01 - the screen was removed
+Feature: F2 · Type: happy
+Covers: R7 (C9)
 
 ## Gaps
 - Gap: F1 deep · why
 - Gap: R3 depth · why
 - Gap: R9 · reason
+- Gap: R3.f2 · the phone must be offline
 `,
-  "reports/2026-01-01/REPORT.md": "| Case | Result |\n| --- | --- |\n| TC-1a | pass |\n",
+  "reports/2026-01-01/REPORT.md": "| Case | Result | Notes |\n| --- | --- | --- |\n| TC-1a | pass | |\n| TC-2a | not run | needs the previous release |\n",
   "reports/2026-01-01-bug-TC-1a/REPORT.md": "| Case | Result | Notes |\n| --- | --- | --- |\n| TC-1a | fail | failed both runs |\n",
 };
 const inlineDir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "e2e-skill-inline-")), "e2e");
@@ -169,7 +196,8 @@ try {
   }
   const m = readE2e(inlineDir);
   assert.deepEqual(m.problems.map((p) => `${p.file}:${p.line}: ${p.message}`), []);
-  assert.deepEqual(m.gaps.map((g) => [g.ref, g.kind]), [["F1", "deep"], ["R3", "depth"], ["R9", "requirement"]]);
+  assert.deepEqual(m.gaps.map((g) => [g.ref, g.kind]), [["F1", "deep"], ["R3", "depth"], ["R9", "requirement"], ["R3.f2", "failure"]]);
+  assert.deepEqual(quality(m).open, [], "nothing is left open");
   assert.deepEqual(m.cases.filter((c) => c.retired).map((c) => c.id), ["TC-3a"]);
   assert.deepEqual(m.cases.filter((c) => c.type === "setup").map((c) => [c.id, c.mode]), [["TC-00", "phone"]]);
   assert.deepEqual([m.results.report, m.cases.find((c) => c.id === "TC-2a").mode], ["reports/2026-01-01/REPORT.md", "manual"]);
