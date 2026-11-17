@@ -245,6 +245,36 @@ try {
   assert.ok(tc.indexOf("MARK_TCINTRO") < tc.indexOf('id="F1"') && tc.indexOf('id="TC-2a"') < tc.indexOf("MARK_TCMID") && tc.indexOf("MARK_TCMID") < tc.indexOf('id="TC-3a"'), "test cases prose in document order");
   assert.ok(prd.includes("<h1>Notes PRD</h1>") && prd.includes('<section class="prose"><h2>Goal</h2>'), "PRD prose headings start at h2, under the page's h1");
   assert.ok(shown["PRD.html"].includes("<h3>Unassigned</h3>"), "a heading that is not a feature is shown");
+  // A requirement under no feature is shown once, in the "Requirements outside a feature" card with its other lines;
+  // no requirement's Caps, Proof, Fails or failure lines are shown again as text.
+  const LOOSE = `- R9 · MARK_LOOSE a loose requirement.\n  Caps: C6\n  Proof: screen\n  Why: MARK_LOOSEWHY\n  Fails:\n  - R9.f1 · MARK_LOOSEFAIL\n`;
+  for (const [label, from, to] of [
+    ["under a heading that is not a feature", "## Non-goals", `### Unassigned\n${LOOSE}\n## Non-goals`],
+    ["before the first feature", "## Features\n", `## Features\n${LOOSE}`],
+    ["under a feature heading that cannot be read", "### F2 · Search · P1", `### F2 · Search\n${LOOSE}`],
+  ]) {
+    const lp = render(copy((d) => sub(d, "PRD.md", from, to)))["PRD.html"];
+    for (const m of ["MARK_LOOSE ", "MARK_LOOSEWHY", "MARK_LOOSEFAIL"]) assert.equal(lp.split(m).length - 1, 1, `${label}: ${m} once`);
+    const card = lp.split('<article class="card" id="R9">')[1]?.split("</article>")[0] ?? "";
+    assert.ok(lp.includes("Requirements outside a feature") && card.includes("MARK_LOOSEWHY") && card.includes("MARK_LOOSEFAIL"), label);
+    assert.ok(!/Caps:|Proof:|Fails:|R\d\.f\d ·/.test(lp.replace(/<style>[\s\S]*?<\/style>/, "")), `${label}: no Caps, Proof, Fails or failure line as text`);
+    if (label.includes("cannot be read")) assert.equal(lp.split("Typing in search narrows").length - 1, 1, "R4 once");
+  }
+  // A fenced block with a "#" line inside a feature block stays in the block, above its requirements.
+  const fenced = render(copy((d) => sub(d, "PRD.md", "### F1 · Notes · P0\n", "### F1 · Notes · P0\n```\n# MARK_FENCE\n```\n")))["PRD.html"];
+  const fenceCard = fenced.split('<section class="card" id="F1">')[1].split("</section>")[0];
+  assert.ok(fenceCard.includes("# MARK_FENCE") && fenceCard.indexOf("MARK_FENCE") < fenceCard.indexOf('id="R1"') && fenceCard.includes('id="R3"'), "fence in the F1 card");
+  assert.equal(fenced.split("MARK_FENCE").length - 1, 1, "fence shown once");
+  // Text under a "## F<n>" group heading that names no feature, and text above a retired journey or case, is shown once.
+  const odd = render(copy((d) => {
+    fs.appendFileSync(path.join(d, "CUJs.md"), "\n## F7 · Later\nMARK_CUJF7\n\nMARK_ABOVECUJ\n\n### CUJ-9 · Old · P2 · phone\nRetired: 2026-01-01 - merged\n");
+    fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n## F7 · Later\nMARK_TCF7\n\nMARK_ABOVETC\n\n### TC-9a · P2 · Old\nRetired: 2026-01-01 - merged\n");
+  }));
+  for (const [m, p] of [["MARK_CUJF7", "CUJs.html"], ["MARK_ABOVECUJ", "CUJs.html"], ["MARK_TCF7", "TESTCASES.html"], ["MARK_ABOVETC", "TESTCASES.html"]]) {
+    assert.deepEqual(Object.keys(odd).filter((k) => odd[k].includes(m)), [p], m);
+    assert.equal(odd[p].split(m).length - 1, 1, `${m} once`);
+  }
+  assert.ok(odd["CUJs.html"].indexOf("MARK_ABOVECUJ") < odd["CUJs.html"].indexOf('id="CUJ-9"') && odd["TESTCASES.html"].indexOf("MARK_ABOVETC") < odd["TESTCASES.html"].indexOf('id="TC-9a"'), "above the retired card");
   // Requirements no journey proves: listed on QUALITY.html and at the top of CUJs.html, only when there are any.
   const nj = render(copy((d) => sub(d, "CUJs.md", "Proves: R4\n", "Proves: R4\nRetired: 2026-01-01 - merged\n")));
   for (const p of ["QUALITY.html", "CUJs.html"]) {

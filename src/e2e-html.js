@@ -58,23 +58,32 @@ const FEATURE = /^### F\d+ · .+? · P\d+\s*$/; // as the model reads it; any ot
 /** `What: x` at the start of a line starts its own paragraph with the label in bold. */
 const label = (t) => t.replace(/^([A-Z][A-Za-z ]{0,30}):(?=\s)/, "\n**$1:**");
 
-/** The PRD's own prose: everything except the feature blocks and the title. */
+/** A requirement's own lines other than Caps, Proof, Fails and failure items: kept for its card. */
+const own = (t) => !/^\s+(Caps|Proof|Fails):/.test(t) && !/^\s+[-*+] R\d+\.f\d+ · /.test(t);
+const indent = (ls) => Math.min(...ls.filter((l) => l.trim()).map((l) => l.match(/^\s*/)[0].length));
+const dedent = (ls) => (ls.some((l) => l.trim()) ? md(ls.map((l) => label(l.slice(indent(ls)))).join("\n")) : "");
+
+/** The PRD's own prose: everything except the feature blocks, the title and the requirements under no feature
+ * (`extra` holds those requirements' other lines, for their cards). */
 function prdProse(model) {
   const f = model.files["PRD.md"];
-  if (!f) return { title: "Product requirements", html: "" };
-  const keep = [];
-  let skip = false, fence = false, title = null;
-  for (const t of f.text.split(/\r?\n/)) {
+  if (!f) return { title: "Product requirements", html: "", extra: new Map() };
+  const outside = new Map(model.requirements.filter((r) => !model.features.some((x) => x.id === r.feature)).map((r) => [r.line, r.id]));
+  const keep = [], extra = new Map();
+  let skip = false, fence = false, title = null, req = null;
+  for (const [i, t] of f.text.split(/\r?\n/).entries()) {
     if (/^\s*```/.test(t)) fence = !fence;
     else if (!fence) {
-      if (FEATURE.test(t)) { skip = true; continue; }
-      if (/^#{1,6} /.test(t)) skip = false;
+      if (FEATURE.test(t)) { skip = true; req = null; continue; }
+      if (/^#{1,6} /.test(t)) { skip = false; req = null; }
       if (title === null && /^# /.test(t)) { title = t.slice(2).trim(); continue; }
+      if (outside.has(i + 1)) { req = outside.get(i + 1); extra.set(req, []); continue; }
+      if (/^\S/.test(t)) req = null; // a line at the margin ends the requirement
     }
-    if (!skip) keep.push(t);
+    if (req) { if (own(t)) extra.get(req).push(t); } else if (!skip) keep.push(t);
   }
   const text = keep.join("\n").replace(/^## Features\s*$(?=(?:\s*\n)*(?:#{1,2} |$(?![\s\S])))/m, "");
-  return { title: title ?? "Product requirements", html: md(text) };
+  return { title: title ?? "Product requirements", html: md(text), extra: new Map([...extra].map(([id, ls]) => [id, dedent(ls)])) };
 }
 
 /** A feature block's own lines (`prose`) and each requirement's lines other than Caps, Proof, Fails and failure items. */
@@ -90,10 +99,8 @@ function featureBlock(model, f) {
     if (!fence && starts.has(n)) { req = starts.get(n); extra.set(req, []); continue; }
     if (!fence && /^\S/.test(t)) req = null; // a line at the margin ends the requirement
     if (!req) prose.push(fence ? t : label(t));
-    else if (!/^\s+(Caps|Proof|Fails):/.test(t) && !/^\s+[-*+] R\d+\.f\d+ · /.test(t)) extra.get(req).push(t);
+    else if (own(t)) extra.get(req).push(t);
   }
-  const indent = (ls) => Math.min(...ls.filter((l) => l.trim()).map((l) => l.match(/^\s*/)[0].length));
-  const dedent = (ls) => (ls.some((l) => l.trim()) ? md(ls.map((l) => label(l.slice(indent(ls)))).join("\n")) : "");
   return { prose: md(prose.join("\n")), extra: new Map([...extra].map(([id, ls]) => [id, dedent(ls)])) };
 }
 
@@ -197,12 +204,12 @@ export function renderPages(model, q) {
     : "");
 
   const prd = page(PRD, "", "PRD", (link) => {
-    const { title, html } = prdProse(model);
+    const { title, html, extra: outsideExtra } = prdProse(model);
     const seen = new Set();
     const featureCard = (f, rs) => {
       const k = q.by_feature.find((x) => x.id === f?.id)?.requirements;
       const idAttr = f ? ` id="${esc(f.id)}"` : "";
-      const block = f ? featureBlock(model, f) : { prose: "", extra: new Map() };
+      const block = f ? featureBlock(model, f) : { prose: "", extra: outsideExtra };
       return `<section class="card"${idAttr}><div class="head"><h2>${f ? `${esc(f.id)} · ${esc(f.name)}` : "Requirements outside a feature"}</h2><span class="chips">${f ? chip(f.priority) : ""}${notVerified}</span></div>
 ${k ? `<p class="muted">${k.with_case} of ${k.total} requirements have a case, ${k.at_depth} with a case deep enough.</p>` : ""}
 ${block.prose}
