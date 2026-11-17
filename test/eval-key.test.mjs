@@ -385,6 +385,32 @@ try {
     assert.ok(!fs.existsSync(path.join(ev, ".cache", "key.json")));
   });
 
+  test("a cache whose core.worktree points at another clean clone is damaged and that clone's work tree is not written", () => {
+    const { root, up, ev, config } = setup({ "d/A.md": TABLE + "| a | s | e |\n" });
+    assert.equal(fetch(ev).status, 0);
+    const c1 = config.qaSha;
+    writeConfig(ev, { ...config, qaSha: commit(up, { "d/A.md": TABLE + "| a2 | s | e |\n", "d/B.md": TABLE + "| b | s | e |\n" }) });
+    // a clean clone at the commit QA's index holds, so status in it would look clean
+    const other = path.join(root, "other-clone");
+    git(root, "clone", "-q", up, other);
+    git(other, "reset", "-q", "--hard", c1);
+    const qa = path.join(ev, ".cache", "QA");
+    git(root, "-C", qa, "config", "core.worktree", other);
+    const work = () =>
+      listing(other)
+        .filter((l) => !l.startsWith(".git"))
+        .map((l) => {
+          const f = path.join(other, l.slice(0, l.lastIndexOf(" ")));
+          return fs.lstatSync(f).isFile() ? `${l} ${fs.readFileSync(f, "utf8")}` : l;
+        });
+    const before = [git(other, "rev-parse", "HEAD"), work()];
+    assert.equal(git(other, "status", "--porcelain"), "");
+    refused(fetch(ev), "damaged", ".cache/QA");
+    assert.deepEqual([git(other, "rev-parse", "HEAD"), work()], before);
+    assert.equal(git(other, "status", "--porcelain"), "");
+    assert.ok(!fs.existsSync(path.join(ev, ".cache", "key.json")));
+  });
+
   test("a symlinked .cache folder is refused before anything in it is removed or written", () => {
     const { root, ev } = setup({ "d/A.md": TABLE + "| a | s | e |\n" });
     const other = otherRepo(root);
