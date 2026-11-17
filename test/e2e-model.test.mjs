@@ -112,7 +112,7 @@ try {
   assert.equal(noReport.results.report, null);
   assert.deepEqual(noReport.results.byCase, {});
   p = readE2e(copy((d) => fs.writeFileSync(path.join(d, "reports/2026-01-02/REPORT.md"), "| Build | Date |\n| --- | --- |\n| 1 | x |\n"))).problems;
-  assert.deepEqual(p.map((x) => x.message), ["REPORT.md has no Case/Result table"]);
+  assert.deepEqual(p.map((x) => x.message), ['REPORT.md has no Case/Result table: its results table must start with the columns "Case" and "Result"']);
 
   // An old-style folder: PRD.md and TESTCASES.md only, no new lines.
   const old = readE2e(copy((d) => {

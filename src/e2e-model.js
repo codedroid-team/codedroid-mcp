@@ -73,6 +73,13 @@ export function leavesFolder(root, rel) {
   return real !== root && !real.startsWith(root + path.sep);
 }
 
+/** For a name shaped YYYY-MM-DD: whether it is a calendar day. Undefined for any other name. */
+const isDay = (f) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(f)) return undefined;
+  const d = new Date(`${f}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().startsWith(f);
+};
+
 /** The heading's level and text, or null. */
 const heading = (t) => { const h = t.match(/^(#{1,6}) (.*)$/); return h ? { level: h[1].length, text: h[2] } : null; };
 
@@ -102,6 +109,7 @@ export function readE2e(dir) {
       return null;
     }
     if (leavesFolder(root, name)) { problem(name, 0, LINKED(name)); return null; }
+    if (!fs.lstatSync(p).isFile()) { problem(name, 0, `${name} is not a regular file: not read`); return null; } // a pipe would hang
     const buf = fs.readFileSync(p);
     const text = buf.toString("utf8").replace(/^\uFEFF/, "");
     m.files[name] = { path: p, sha256: crypto.createHash("sha256").update(buf).digest("hex") };
@@ -364,6 +372,7 @@ export function readE2e(dir) {
   let names = [];
   if (lexists(rdir)) {
     if (leavesFolder(root, "reports")) problem("reports", 0, LINKED("reports"));
+    else if (!fs.lstatSync(rdir).isDirectory()) problem("reports", 0, "reports is not a folder: not read");
     else names = fs.readdirSync(rdir).sort();
   }
   const withReport = names.filter((f) => lexists(path.join(rdir, f, "REPORT.md")));
@@ -373,21 +382,29 @@ export function readE2e(dir) {
     if (!/^[A-Za-z0-9._-]+$/.test(f)) problem("reports", 0, `report folder "${f}" is skipped: use only letters, digits, dot, dash and underscore`);
     else if (leavesFolder(root, rel)) problem(rel, 0, LINKED(rel));
     else if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(f) && !/^\d{4}-\d{2}-\d{2}$/.test(f)) problem("reports", 0, `report folder "${f}" must be named YYYY-MM-DD`);
+    else if (isDay(f) === false) problem("reports", 0, `report folder "${f}" is not a date`);
     else folders.push(f);
   }
-  const dated = folders.filter((f) => /^\d{4}-\d{2}-\d{2}$/.test(f));
+  const dated = folders.filter((f) => isDay(f));
   const used = (dated.length ? dated : folders).at(-1);
+  for (const f of names) {
+    if (used && f > used && isDay(f) && !withReport.includes(f) && fs.lstatSync(path.join(rdir, f)).isDirectory()) problem("reports", 0, `reports/${f} has no REPORT.md: the numbers come from reports/${used}/REPORT.md`);
+  }
   if (used) {
     const name = `reports/${used}/REPORT.md`;
     m.results.report = name;
     const rep = read(name) ?? [];
     let at = -1;
-    for (let i = 0; i < rep.length && at < 0; i++) {
+    for (let i = 0; i < rep.length; i++) {
       if (!rep[i].t.trim().startsWith("|")) continue;
       const c = splitCells(rep[i].t);
-      if (c[0] === "Case" && c[1] === "Result") at = i;
+      if (c[0] !== "Case" || c[1] !== "Result") continue;
+      if (at < 0) at = i;
+      else problem(name, rep[i].n, "REPORT.md has two Case/Result tables: keep one");
     }
-    if (at < 0) problem(name, 0, "REPORT.md has no Case/Result table");
+    const sep = at < 0 ? "" : rep[at + 1]?.t.trim() ?? "";
+    if (at < 0) { if (m.files[name]) problem(name, 0, 'REPORT.md has no Case/Result table: its results table must start with the columns "Case" and "Result"'); } // one not read is a problem already
+    else if (!sep.startsWith("|") || !splitCells(sep).every((c) => /^:?-+:?$/.test(c))) problem(name, rep[at].n, "Case/Result table has no separator row");
     else {
       for (let i = at + 2; i < rep.length && rep[i].t.trim().startsWith("|"); i++) {
         const [id, res] = splitCells(rep[i].t);
