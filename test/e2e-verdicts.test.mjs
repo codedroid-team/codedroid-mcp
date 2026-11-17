@@ -342,6 +342,13 @@ try {
     assert.deepEqual([b.status, b.stdout], [2, "Refusing to write VERIFY.md: it is not a regular file\n"], `${what}: ${b.error ?? b.stderr}`);
     assert.deepEqual(fs.readdirSync(dir).sort(), listing, `${what}: nothing written`);
   }
+  // --due refuses the same VERIFY.md, with the same message, instead of listing every case as due.
+  for (const [what, make] of [["a link", (p) => fs.symlinkSync(outside, p)], ["a folder", (p) => fs.mkdirSync(p)], ["a named pipe", (p) => spawnSync("mkfifo", [p])]]) {
+    dir = copy((d) => { fs.rmSync(path.join(d, "VERIFY.md")); make(path.join(d, "VERIFY.md")); });
+    const want = what === "a link" ? `Refusing to write VERIFY.md: it is a link or leads outside ${dir}\n` : "Refusing to write VERIFY.md: it is not a regular file\n";
+    const b = spawnSync(process.execPath, [bin, "e2e", "verdicts", "--due", dir], { encoding: "utf8", timeout: 10000, env: { ...process.env, HOME: home, USERPROFILE: home } });
+    assert.deepEqual([b.status, b.stdout], [2, want], `--due with ${what}: ${b.error ?? b.stderr}`);
+  }
 
   // The real binary: HOME stays empty; usage errors.
   dir = copy();

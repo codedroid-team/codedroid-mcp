@@ -74,10 +74,9 @@ export function recordVerdicts({ dir, file, now = new Date() }) {
   }
   if (faults.length) return fail(...faults);
 
-  const root = fs.realpathSync(dir);
-  const full = path.join(root, "VERIFY.md");
-  if (escapesRoot(root, full)) return fail(`Refusing to write VERIFY.md: it is a link or leads outside ${dir}`);
-  if (notRegular(full)) return fail("Refusing to write VERIFY.md: it is not a regular file");
+  const refused = badLedger(dir);
+  if (refused) return fail(refused);
+  const full = path.join(fs.realpathSync(dir), "VERIFY.md");
   const fence = model.problems.find((p) => p.file === "VERIFY.md" && p.message === "code fence opened here is never closed");
   if (fence) return fail(`VERIFY.md line ${fence.line} opens a code fence that is never closed: rows written after it could not be read`);
   const date = today(now);
@@ -113,6 +112,15 @@ export function recordVerdicts({ dir, file, now = new Date() }) {
   };
 }
 
+/** Why dir's VERIFY.md must not be used (a link, a folder, a named pipe), or null. */
+function badLedger(dir) {
+  const root = fs.realpathSync(dir);
+  const full = path.join(root, "VERIFY.md");
+  if (escapesRoot(root, full)) return `Refusing to write VERIFY.md: it is a link or leads outside ${dir}`;
+  if (notRegular(full)) return "Refusing to write VERIFY.md: it is not a regular file";
+  return null;
+}
+
 const docsProblems = (model) => model.problems.some((p) => p.file === "TESTCASES.md" || p.file === "PRD.md");
 
 /**
@@ -137,6 +145,8 @@ export function dueCases(model) {
 /** `codedroid-mcp e2e verdicts --due [dir]`: prints dueCases; writes nothing. */
 export function listDue({ dir }) {
   if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) return { code: 2, lines: [`No such folder: ${dir}`] };
+  const refused = badLedger(dir);
+  if (refused) return { code: 2, lines: [refused] };
   const model = readE2e(dir);
   if (docsProblems(model)) return { code: 2, lines: [DOCS_PROBLEMS] };
   return { code: 0, lines: dueCases(model) };
