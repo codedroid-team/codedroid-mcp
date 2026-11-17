@@ -33,7 +33,7 @@ function screenshots(model) {
     const stem = name.slice(0, -ext.length);
     const id = ids.find((x) => stem === x || stem.startsWith(`${x}-`) || stem.startsWith(`${x}_`));
     if (!MIME[ext] || !id || !fs.lstatSync(path.join(dir, name)).isFile()) continue;
-    out.push({ id, name, buf: fs.readFileSync(path.join(dir, name)) });
+    try { out.push({ id, name, buf: fs.readFileSync(path.join(dir, name)) }); } catch (e) { const rel = `${path.dirname(model.results.report)}/${name}`; model.problems.push({ file: rel, line: 0, message: `${rel} cannot be read: ${e.code}` }); }
   }
   return out;
 }
@@ -301,6 +301,6 @@ export function stalePages(dir) {
   const rp = reportPage(model);
   const wants = (rel) => `<meta name="e2e-sources" content="${sources(model, rel === rp ? shotSources(model, screenshots(model)) : [])}">`;
   return pagePaths(model).filter((rel) => {
-    try { return !fs.readFileSync(path.join(dir, rel), "utf8").includes(wants(rel)); } catch { return true; }
+    try { return !fs.lstatSync(path.join(dir, rel)).isFile() || !fs.readFileSync(path.join(dir, rel), "utf8").includes(wants(rel)); } catch { return true; }
   });
 }

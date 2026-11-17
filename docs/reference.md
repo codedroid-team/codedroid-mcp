@@ -172,7 +172,9 @@ The report in use is the newest folder named exactly `YYYY-MM-DD` (zero-padded, 
 under `reports/`: the full run. The partial runs the skills write beside it (`<date>-bug-<case>`,
 `<date>-maintain`, `<date>-smoke`) are not used, so "exercised" and "passing" come from the full
 run. Only when no folder has that exact name does the last folder by name stand in. A folder shaped
-like a date but not zero-padded (`2026-11-9`) is a problem and is not used. `QUALITY.md` and
+like a date but not zero-padded (`2026-11-9`) or not a calendar date (`2026-13-45`) is a problem and
+is not used, and so is a newer dated folder with no `REPORT.md`. Only the first table whose columns
+start with `Case` and `Result` is read; a second one is a problem. `QUALITY.md` and
 `QUALITY.html` say which report their numbers come from.
 
 It never reads through a link: a source file, a `reports` folder, a report folder or a report that
@@ -212,10 +214,11 @@ feature. When there are any, the command prints `N left open: see
 (and in `QUALITY.html`), and so is the full problem list that the line `and M more: see
 <dir>/QUALITY.md` points to. Open items are not problems and do not change the exit code.
 
-Exit codes: 0 when all is well (`--check`: every page is current), 1 when the documents have
-problems (`--check`: a page is stale), 2 for a usage error, a folder that does not exist, or a file
-it cannot write. It refuses to write through a link that leads outside the folder, and writes nothing
-then. With more than 20 problems it prints a count per kind and the first 20; the pages list all.
+Exit codes: 0 when all is well, 1 when the documents have problems, 2 for a usage error (an
+unknown flag too), a folder that does not exist or holds none of the four documents, a source it
+cannot read, or a file it cannot write. With `--check`: 0 when every page is current, 1 when a page
+is stale or missing, 2 as above. It refuses to write through a link that leads outside the folder,
+and writes nothing then. With more than 20 problems it prints a count per kind and the first 20; the pages list all.
 
 ### Standalone Claude Code server
 

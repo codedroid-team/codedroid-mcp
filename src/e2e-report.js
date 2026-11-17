@@ -9,20 +9,37 @@ import { quality, qualityJson, qualityMd } from "./e2e-quality.js";
 import { renderPages, stalePages } from "./e2e-html.js";
 
 const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+const DOCS = ["INVENTORY.md", "PRD.md", "CUJs.md", "TESTCASES.md"];
 
 export function runE2eReport({ dir, check = false }) {
   if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) return { code: 2, lines: [`No such folder: ${dir}`] };
   const root = fs.realpathSync(dir);
+  if (!DOCS.some((n) => fs.lstatSync(path.join(root, n), { throwIfNoEntry: false }))) {
+    return { code: 2, lines: [`No e2e documents in ${dir}: expected INVENTORY.md, PRD.md, CUJs.md or TESTCASES.md`] };
+  }
+  // A source the reader cannot open is exit 2, like a folder that does not exist; 1 means the documents have problems.
+  const cannotRead = (e) => {
+    if (!e.code) throw e;
+    return { code: 2, lines: [`Cannot read ${path.relative(root, e.path ?? root) || "."}: ${e.code}`] };
+  };
 
   if (check) {
-    const stale = stalePages(dir);
+    let stale;
+    try { stale = stalePages(dir); } catch (e) { return cannotRead(e); }
     for (const f of ["QUALITY.md", "quality.json"]) if (!fs.existsSync(path.join(root, f))) stale.push(f);
     return stale.length ? { code: 1, lines: stale.map((f) => `stale: ${f}`) } : { code: 0, lines: ["All pages are current."] };
   }
 
-  const model = readE2e(dir);
-  const q = quality(model);
-  const files = { "QUALITY.md": qualityMd(q, model), "quality.json": qualityJson(q, model), ...renderPages(model, q) };
+  let model, q, files;
+  try {
+    model = readE2e(dir);
+    q = quality(model);
+    const pages = renderPages(model, q); // first: a screenshot it cannot read adds a problem
+    q.ok = model.problems.length === 0;
+    files = { "QUALITY.md": qualityMd(q, model), "quality.json": qualityJson(q, model), ...pages };
+  } catch (e) {
+    return cannotRead(e);
+  }
   const refuse = (rel) => ({ code: 2, lines: [`Refusing to write ${rel}: it is a link or leads outside ${dir}`] });
   const targets = Object.keys(files).map((rel) => [rel, path.join(root, rel)]);
   // Check every target before writing any: no link may lead a write outside the folder.
@@ -33,13 +50,23 @@ export function runE2eReport({ dir, check = false }) {
     if (real !== root && !real.startsWith(root + path.sep)) return refuse(rel);
     try { if (fs.lstatSync(full).isSymbolicLink()) return refuse(rel); } catch { /* not there yet */ }
   }
-  for (const [rel, full] of targets) {
-    try {
+  // Each output goes to a new temp file beside it, then all are renamed over their targets: a write never goes
+  // through a link swapped in after the check, and a failure before the renames changes no target.
+  const temps = [];
+  let current;
+  try {
+    for (const [rel, full] of targets) {
+      current = rel;
       fs.mkdirSync(path.dirname(full), { recursive: true });
-      fs.writeFileSync(full, files[rel]);
-    } catch (e) {
-      return { code: 2, lines: [`Cannot write ${rel}: ${e.code ?? e.message}`] };
+      const tmp = `${full}.tmp-${process.pid}`;
+      const fd = fs.openSync(tmp, "wx");
+      temps.push([tmp, full, rel]);
+      try { fs.writeFileSync(fd, files[rel]); } finally { fs.closeSync(fd); }
     }
+    for (const [tmp, full, rel] of temps) { current = rel; fs.renameSync(tmp, full); }
+  } catch (e) {
+    for (const [tmp] of temps) fs.rmSync(tmp, { force: true });
+    return { code: 2, lines: [`Cannot write ${current}: ${e.code ?? e.message}`] };
   }
 
   const c = q.capabilities, r = q.requirements, f = q.failures;

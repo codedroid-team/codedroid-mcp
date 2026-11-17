@@ -201,7 +201,8 @@ async function main() {
 
   if (command === "e2e") {
     const usage = "Usage: codedroid-mcp e2e report [dir] [--check]";
-    if (args._[1] !== "report" || args._.length > 3) {
+    const unknown = process.argv.slice(2).some((a) => a.startsWith("-") && a !== "--check" && a !== "--help");
+    if (args._[1] !== "report" || args._.length > 3 || unknown) {
       process.stderr.write(`${usage}\n`);
       process.exitCode = 2;
       return;

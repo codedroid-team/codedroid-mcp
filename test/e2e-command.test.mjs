@@ -211,6 +211,112 @@ assert.ok(out.includes("  25 × <id> has no Covers: line"), r.stdout);
 assert.equal(out.filter((l) => /^\S+:\d+: /.test(l)).length, 20);
 assert.ok(out.includes(`and ${total - 20} more: see ${many}/QUALITY.md`), r.stdout);
 
+// At exactly 20 problems all are listed; at 21 the summary per kind comes first and one is left for the page.
+for (const k of [20, 21]) {
+  const d = copy((x) => fs.appendFileSync(path.join(x, "TESTCASES.md"), Array.from({ length: k }, (_, i) => `\n### TC-9${i}z · P1 · Extra\nFeature: F1 · Type: happy\nCovers: R1\nTier: core · Depth: screen\n`).join("")));
+  assert.equal(readE2e(d).problems.length, k);
+  const o = run("report", d).stdout.split("\n");
+  assert.equal(o.find((l) => l.endsWith("problems:")), `${k} problems:`);
+  assert.equal(o.filter((l) => /^\S+:\d+: /.test(l)).length, 20);
+  assert.deepEqual(o.filter((l) => l.startsWith("  ")), k > 20 ? ["  21 × <id> has no Run mode: line (phone, task or manual)"] : [], `${k}`);
+  assert.deepEqual(o.filter((l) => l.startsWith("and ")), k > 20 ? [`and 1 more: see ${d}/QUALITY.md`] : [], `${k}`);
+}
+
+// Unknown flags and extra arguments are usage errors and write nothing.
+const flags = copy();
+const flagsBefore = listing(flags);
+for (const args of [["report", flags, "--chek"], ["report", flags, "--check=yes"], ["report", "-x"], ["report", "a", "b"]]) {
+  r = run(...args);
+  assert.equal(r.status, 2, args.join(" "));
+  assert.ok(r.stderr.includes("Usage: codedroid-mcp e2e report [dir] [--check]"), args.join(" ") + r.stdout + r.stderr);
+}
+assert.deepEqual(listing(flags), flagsBefore);
+
+// A folder with none of the four documents is refused in both modes, and nothing in it changes.
+const empty = path.join(root, "not-e2e");
+fs.mkdirSync(empty);
+fs.writeFileSync(path.join(empty, "QUALITY.md"), "mine");
+for (const mode of [[], ["--check"]]) {
+  r = run("report", empty, ...mode);
+  assert.equal(r.status, 2, r.stdout);
+  assert.equal(r.stdout.trim(), `No e2e documents in ${empty}: expected INVENTORY.md, PRD.md, CUJs.md or TESTCASES.md`);
+}
+assert.deepEqual([fs.readdirSync(empty), fs.readFileSync(path.join(empty, "QUALITY.md"), "utf8")], [["QUALITY.md"], "mine"]);
+
+// A folder in place of a document is a problem, not a crash.
+r = run("report", copy((d) => { fs.rmSync(path.join(d, "PRD.md")); fs.mkdirSync(path.join(d, "PRD.md")); }));
+assert.equal(r.status, 1, r.stdout + r.stderr);
+assert.ok(r.stdout.includes("PRD.md:0: PRD.md is not a regular file: not read"), r.stdout + r.stderr);
+
+// --check never opens a page through a link or a page that is not a regular file: both are stale.
+const linkPage = copy();
+run("report", linkPage);
+const pageCopy = path.join(root, "PRD-copy.html");
+fs.renameSync(path.join(linkPage, "PRD.html"), pageCopy);
+fs.symlinkSync(pageCopy, path.join(linkPage, "PRD.html"));
+fs.rmSync(path.join(linkPage, "CUJs.html"));
+assert.equal(spawnSync("mkfifo", [path.join(linkPage, "CUJs.html")]).status, 0);
+r = run("report", linkPage, "--check");
+assert.equal(r.status, 1, r.stdout + r.stderr);
+assert.equal(r.stdout.trim(), "stale: PRD.html\nstale: CUJs.html");
+
+// Every output goes to a temp name first and is renamed over its target: a hard link to an outside file is replaced, not written through.
+const hard = copy();
+run("report", hard);
+const hardOutside = path.join(root, "hard-outside");
+fs.writeFileSync(hardOutside, "precious");
+fs.rmSync(path.join(hard, "QUALITY.md"));
+fs.linkSync(hardOutside, path.join(hard, "QUALITY.md"));
+r = run("report", hard);
+assert.equal(r.status, 0, r.stdout + r.stderr);
+assert.equal(fs.readFileSync(hardOutside, "utf8"), "precious");
+assert.equal(fs.statSync(path.join(hard, "QUALITY.md")).nlink, 1);
+assert.notEqual(fs.readFileSync(path.join(hard, "QUALITY.md"), "utf8"), "precious");
+
+if (process.getuid?.() !== 0) {
+  // One output that cannot be written: exit 2, no output changed, no temp file left.
+  const part = copy();
+  run("report", part);
+  subst(part, "PRD.md", "#", "# ");
+  const outs = ["QUALITY.md", "quality.json", "PRD.html", "CUJs.html", "TESTCASES.html", "QUALITY.html", "reports/2026-01-02/REPORT.html"];
+  const bytes = () => outs.map((f) => fs.readFileSync(path.join(part, f), "utf8"));
+  const partBefore = bytes();
+  const rd = path.join(part, "reports/2026-01-02");
+  fs.chmodSync(rd, 0o555);
+  try {
+    r = run("report", part);
+  } finally {
+    fs.chmodSync(rd, 0o755);
+  }
+  assert.equal(r.status, 2, r.stdout + r.stderr);
+  assert.equal(r.stdout.trim(), "Cannot write reports/2026-01-02/REPORT.html: EACCES");
+  assert.deepEqual(bytes(), partBefore, "no output changed");
+  assert.deepEqual(listing(part).filter((f) => f.includes(".tmp-")), []);
+
+  // A source that cannot be read is exit 2 with its name, in both modes; an unreadable screenshot is a problem.
+  const locked = copy();
+  fs.chmodSync(path.join(locked, "PRD.md"), 0);
+  try {
+    for (const mode of [[], ["--check"]]) {
+      r = run("report", locked, ...mode);
+      assert.equal(r.status, 2, r.stdout + r.stderr);
+      assert.equal(r.stdout.trim(), "Cannot read PRD.md: EACCES");
+    }
+  } finally {
+    fs.chmodSync(path.join(locked, "PRD.md"), 0o644);
+  }
+  const shotLocked = copy();
+  const shot = path.join(shotLocked, "reports/2026-01-02/TC-1a.png");
+  fs.chmodSync(shot, 0);
+  try {
+    r = run("report", shotLocked);
+  } finally {
+    fs.chmodSync(shot, 0o644);
+  }
+  assert.equal(r.status, 1, r.stdout + r.stderr);
+  assert.ok(r.stdout.includes("reports/2026-01-02/TC-1a.png:0: reports/2026-01-02/TC-1a.png cannot be read: EACCES"), r.stdout + r.stderr);
+}
+
 assert.deepEqual(fs.readdirSync(home), [], "HOME still empty");
 fs.rmSync(root, { recursive: true, force: true });
 fs.rmSync(home, { recursive: true, force: true });
