@@ -18,7 +18,8 @@ is no `e2e/` yet, create it with just `TESTCASES.md`.
 ## 2. Reproduce it by hand
 
 Walk the steps on the phone with `get_screen`, `tap`, `type_text` and `wait_for`, reading each
-screen; `adb` `logcat -c -b crash` before and `logcat -d -b crash` after, for a crash. Record the
+screen; `adb` `logcat -c -b crash` before and `logcat -d -b crash` after, for a crash (with your
+own shell when the `adb` tool is absent and the phone is on this computer's adb). Record the
 exact labels you saw. No repro after two careful tries: say so, with what you saw, and stop. A bug
 you cannot show is not a test yet.
 

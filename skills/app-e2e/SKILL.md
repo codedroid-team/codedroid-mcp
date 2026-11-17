@@ -34,7 +34,7 @@ show it and ask whether it still holds before building on it.
 
 Also on start, ask which build is the release candidate and which server or account it uses,
 unless the user said. Check that the installed build is that one (`adb` `shell dumpsys package
-<package>`: versionCode and lastUpdateTime), and that the package name in the code is the one
+<package>`: versionCode and lastUpdateTime; without the `adb` tool, your own shell or `list_apps`), and that the package name in the code is the one
 installed: a renamed package installs as a second app, with its own sign-in and setup.
 
 ## The phone

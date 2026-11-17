@@ -32,7 +32,17 @@ Setting up over USB needs [adb](https://developer.android.com/tools/releases/pla
 
 **Every client at once**: run `npx -y @codedroid/mcp setup` in your terminal. Or for one client:
 
-**Claude Code**: run in your terminal:
+**Claude.ai, Claude Desktop, Cowork, or Claude Code without installing anything**: add
+CodeDroid from Claude's directory (the **CodeDroid** plugin, or the connector), then sign in
+with the Google account you use in the CodeDroid app. Nothing runs on your computer: Claude
+reaches your phone through CodeDroid's server, so there is no pairing, but no `adb` or
+`install_apk` either. In Claude Code you can also add it by URL:
+
+```bash
+claude mcp add --transport http codedroid https://orchestrator.codedroid.com/mcp
+```
+
+**Claude Code, with adb and installs from this computer**: run in your terminal:
 
 ```bash
 claude plugin install codedroid --marketplace codedroid-team/codedroid-mcp
@@ -120,6 +130,10 @@ Android platform-tools and a USB or wireless debugging connection. See [adb setu
   the cases current as the app changes.
 - **`install_apk`** to install a build from your computer, with no cable or shared network.
 - **An `adb` tool** that runs adb commands on your computer, to read logs and run tests. You can [turn it off](docs/reference.md#adb-setup).
+
+The last two run on your computer, so they come with the local install only. The directory's
+plugin has the phone tools and the skills; the connector, and adding the server by URL, have the
+phone tools alone. `claude-plugin/` in this repository is what the directory lists.
 
 ## Privacy and security
 
