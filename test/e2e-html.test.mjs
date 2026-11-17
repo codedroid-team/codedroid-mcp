@@ -267,8 +267,8 @@ try {
   assert.equal(fenced.split("MARK_FENCE").length - 1, 1, "fence shown once");
   // Text under a "## F<n>" group heading that names no feature, and text above a retired journey or case, is shown once.
   const odd = render(copy((d) => {
-    fs.appendFileSync(path.join(d, "CUJs.md"), "\n## F7 · Later\nMARK_CUJF7\n\nMARK_ABOVECUJ\n\n### CUJ-9 · Old · P2 · phone\nRetired: 2026-01-01 - merged\n");
-    fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n## F7 · Later\nMARK_TCF7\n\nMARK_ABOVETC\n\n### TC-9a · P2 · Old\nRetired: 2026-01-01 - merged\n");
+    fs.appendFileSync(path.join(d, "CUJs.md"), "\n## Old\nMARK_ABOVECUJ\n\n### CUJ-9 · Old · P2 · phone\nRetired: 2026-01-01 - merged\n\n## F7 · Later\nMARK_CUJF7\n");
+    fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n## Old\nMARK_ABOVETC\n\n### TC-9a · P2 · Old\nRetired: 2026-01-01 - merged\n\n## F7 · Later\nMARK_TCF7\n");
   }));
   for (const [m, p] of [["MARK_CUJF7", "CUJs.html"], ["MARK_ABOVECUJ", "CUJs.html"], ["MARK_TCF7", "TESTCASES.html"], ["MARK_ABOVETC", "TESTCASES.html"]]) {
     assert.deepEqual(Object.keys(odd).filter((k) => odd[k].includes(m)), [p], m);
