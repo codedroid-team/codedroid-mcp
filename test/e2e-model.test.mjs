@@ -346,6 +346,54 @@ try {
   // Caps: none in any case.
   for (const word of ["None", "NONE"]) assert.deepEqual(readE2e(copy((d) => { sub(d, "PRD.md", "  Caps: C2\n", `  Caps: ${word}\n`); sub(d, "TESTCASES.md", "Covers: R4 (C2)", "Covers: R4"); })).problems, [], word);
 
+  // A requirement line in another list form is reported, and the lines under it belong to no requirement.
+  const REQ_FORM = 'requirement is not readable: use "- R<n> · <text>"';
+  for (const form of ["* R2 ·", "+ R2 ·", "1. R2 ·", "- **R2** ·", "-\u00a0R2 ·"]) {
+    const bad = readE2e(copy((d) => sub(d, "PRD.md", "- R2 ·", form)));
+    assert.deepEqual(bad.problems.filter((x) => x.file === "PRD.md"), [{ file: "PRD.md", line: 15, message: REQ_FORM }], form);
+    assert.deepEqual(bad.requirements.map((r) => [r.id, r.caps, r.proof]), [["R1", ["C4"], "kept"], ["R3", ["C5"], "elsewhere"], ["R4", ["C2"], "elsewhere"]], form);
+  }
+  // A second Caps, Proof, Fails, Proves, Feature, Covers, Tier, Depth or Run mode line is a problem; the first counts.
+  const twice = readE2e(copy((d) => {
+    sub(d, "PRD.md", "  Caps: C4\n  Proof: kept\n", "  Caps: C4\n  Caps: C1\n  Proof: kept\n  Proof: screen\n  Fails: none in source\n");
+    sub(d, "CUJs.md", "Proves: R4", "Proves: R4\nProves: R3");
+    fs.appendFileSync(path.join(d, "TESTCASES.md"), "Feature: F1 · Type: happy\nCovers: R3\nTier: core\nDepth: kept\nRun mode: task\n");
+  }));
+  assert.deepEqual(twice.problems.map((x) => `${x.file}:${x.line}: ${x.message}`), [
+    "PRD.md:11: R1 has two Caps: lines", "PRD.md:13: R1 has two Proof: lines", "PRD.md:15: R1 has two Fails: lines",
+    "CUJs.md:18: CUJ-3 has two Proves: lines",
+    "TESTCASES.md:43: TC-3b has two Feature: lines", "TESTCASES.md:44: TC-3b has two Covers: lines", "TESTCASES.md:45: TC-3b has two Tier: lines",
+    "TESTCASES.md:46: TC-3b has two Depth: lines", "TESTCASES.md:47: TC-3b has two Run mode: lines",
+  ]);
+  assert.deepEqual([twice.requirements[0].caps, twice.requirements[0].proof, twice.requirements[0].fails.length], [["C4"], "kept", 2]);
+  assert.deepEqual(twice.cujs[2].proves, ["R4"]);
+  assert.deepEqual([twice.cases[5].feature, twice.cases[5].tier, twice.cases[5].depth, twice.cases[5].mode], ["F2", "edge", "screen", "phone"]);
+
+  // INVENTORY: no control row is dropped silently.
+  const invProblems = (edit) => readE2e(copy(edit)).problems.filter((x) => x.file === "INVENTORY.md").map((x) => `${x.line}: ${x.message}`);
+  for (const id of ["**C5**", "c5", "`C5`"]) assert.deepEqual(invProblems((d) => sub(d, "INVENTORY.md", "| C5 |", `| ${id} |`)), ["14: capability id must be written C<n>"], id);
+  const NO_SCREEN = (id) => `${id} is under no screen: put the row under its "## S<n> · ..." heading`;
+  assert.deepEqual(invProblems((d) => sub(d, "INVENTORY.md", "| C5 |", "### Delete dialog\n| Id | Control | Does | Source | States | Seen |\n| --- | --- | --- | --- | --- | --- |\n| C5 |")),
+    [`17: ${NO_SCREEN("C5")}`, `18: ${NO_SCREEN("C6")}`]);
+  assert.deepEqual(invProblems((d) => sub(d, "INVENTORY.md", "# Notes app inventory\n", "| Id | Control | Does | Source | States | Seen |\n| --- | --- | --- | --- | --- | --- |\n| C9 | x | y | z | | yes |\n")),
+    [`3: ${NO_SCREEN("C9")}`]);
+  assert.deepEqual(invProblems((d) => sub(d, "INVENTORY.md", "| C5 |", "C5 |")), ["14: table row must start with |"]);
+  assert.deepEqual(invProblems((d) => sub(d, "INVENTORY.md", "| no: needs an existing note |", "| maybe |")), ["14: C5 Seen must start with yes, no or ?"]);
+
+  // CUJs.md: a feature group heading at another level than 2 is a problem.
+  for (const h of ["### F2 · Search", "# F2 · Search"]) {
+    p = readE2e(copy((d) => sub(d, "CUJs.md", "## F2 · Search", h))).problems;
+    assert.deepEqual(p, [{ file: "CUJs.md", line: 14, message: 'feature heading is not readable: use "## F<n> · <name>"' }], h);
+  }
+  // Values and lines each check reads: feature priority, CUJ run mode, a missing Proves:, a case's Tier.
+  assert.deepEqual(readE2e(copy((d) => sub(d, "PRD.md", "### F2 · Search · P1", "### F2 · Search · P7"))).problems, [{ file: "PRD.md", line: 25, message: "F2 priority must be P0, P1 or P2" }]);
+  assert.deepEqual(readE2e(copy((d) => sub(d, "CUJs.md", "· P1 · phone", "· P1 · robot"))).problems, [{ file: "CUJs.md", line: 16, message: "CUJ-3 mode must be phone, task or manual" }]);
+  assert.deepEqual(readE2e(copy((d) => sub(d, "CUJs.md", "Proves: R4\n", ""))).problems, [{ file: "CUJs.md", line: 16, message: "CUJ-3 has no Proves: line" }]);
+  assert.deepEqual(readE2e(copy((d) => sub(d, "TESTCASES.md", "Tier: smoke · Depth: screen", "Tier: sideways · Depth: screen"))).problems, [{ file: "TESTCASES.md", line: 35, message: "Tier must be smoke, core, deep or edge" }]);
+  // A level-2 heading that is not a feature ends the feature group: the journey under it has none.
+  const ungrouped = readE2e(copy((d) => fs.appendFileSync(path.join(d, "CUJs.md"), "\n## Extras\n\n### CUJ-4 · Export · P2 · phone\nProves: R4\n")));
+  assert.deepEqual([ungrouped.problems, ungrouped.cujs[3].feature], [[], null]);
+
   assert.throws(() => readE2e(path.join(fixture, "nope")));
   console.log("ok e2e-model");
 } finally {
