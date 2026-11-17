@@ -53,13 +53,15 @@ assert.deepEqual(written, ["PRD.html", "CUJs.html", "QUALITY.html", "QUALITY.md"
 const lines = r.stdout.trimEnd().split("\n");
 assert.ok(lines[0].includes(`${q.capabilities.total} controls`), lines[0]);
 assert.ok(lines[0].includes(`${q.cases.total} cases`), lines[0]);
+assert.equal(lines[1], "Last report reports/2026-01-02/REPORT.md: 4 passed, 1 failed, 1 not run; 2 of 4 requirements passing.");
+assert.ok(!run("report", copy((d) => fs.rmSync(path.join(d, "reports"), { recursive: true }))).stdout.includes("Last report"), "no report, no results line");
 assert.equal(lines.at(-1), `Open ${path.resolve(dir, "QUALITY.html")}`);
 assert.ok(!r.stdout.includes("problems:"));
 assert.deepEqual(listing(parent).filter((f) => !f.startsWith("e2e")), parentBefore.filter((f) => !f.startsWith("e2e")), "nothing outside the folder");
 assert.deepEqual(fs.readdirSync(home), [], "HOME untouched: no daemon state");
 
-// Verifier line: after the headline, before the left-open line; the exit code does not change.
-assert.equal(lines[1], `4 of 6 cases not approved by the verifier (1 not judged yet): see ${dir}/QUALITY.md`);
+// Verifier line: after the headline and the last report's results, before the left-open line; the exit code does not change.
+assert.equal(lines[2], `4 of 6 cases not approved by the verifier (1 not judged yet): see ${dir}/QUALITY.md`);
 assert.ok(lines.indexOf(`3 left open: see ${dir}/QUALITY.md`) > 1);
 const allApproved = copy((d) => {
   const v = fs.readFileSync(path.join(d, "VERIFY.md"), "utf8").split("\n").filter((l) => !/^\| TC-(1c|2a|3a)/.test(l)).join("\n");
@@ -71,11 +73,11 @@ assert.equal(r.status, 0, r.stdout + r.stderr);
 assert.ok(!r.stdout.includes("not approved") && !r.stdout.includes("not been judged"), r.stdout);
 const onlyJudged = copy((d) => fs.appendFileSync(path.join(d, "VERIFY.md"), `| TC-3b | 1 | repair | same | ${readE2e(d).cases.find((c) => c.id === "TC-3b").verify.hash} | 2026-11-14 | R4: weak. |\n`));
 r = run("report", onlyJudged);
-assert.equal(r.stdout.split("\n")[1], `4 of 6 cases not approved by the verifier: see ${onlyJudged}/QUALITY.md`, "no bracket when none is unjudged");
+assert.equal(r.stdout.split("\n")[2], `4 of 6 cases not approved by the verifier: see ${onlyJudged}/QUALITY.md`, "no bracket when none is unjudged");
 const noVerdicts = copy((d) => fs.rmSync(path.join(d, "VERIFY.md")));
 r = run("report", noVerdicts);
 assert.equal(r.status, 0, r.stdout + r.stderr);
-assert.equal(r.stdout.split("\n")[1], "No case has been judged by the verifier yet.");
+assert.equal(r.stdout.split("\n")[2], "No case has been judged by the verifier yet.");
 assert.ok(!r.stdout.includes("not approved"));
 
 // Open items (no case, no Gap line) are not problems: exit 0, one line before the path.
@@ -236,7 +238,7 @@ assert.ok(out.includes(`and ${total - 20} more: see ${many}/QUALITY.md`), r.stdo
 
 // At exactly 20 problems all are listed; at 21 the summary per kind comes first and one is left for the page.
 for (const k of [20, 21]) {
-  const d = copy((x) => fs.appendFileSync(path.join(x, "TESTCASES.md"), Array.from({ length: k }, (_, i) => `\n### TC-9${i}z · P1 · Extra\nFeature: F1 · Type: happy\nCovers: R1\nTier: core · Depth: screen\n`).join("")));
+  const d = copy((x) => fs.appendFileSync(path.join(x, "TESTCASES.md"), Array.from({ length: k }, (_, i) => `\n### TC-1x${String.fromCharCode(97 + i)} · P1 · Extra\nFeature: F1 · Type: happy\nCovers: R1\nTier: core · Depth: screen\nExpected: x\n`).join("")));
   assert.equal(readE2e(d).problems.length, k);
   const o = run("report", d).stdout.split("\n");
   assert.equal(o.find((l) => l.endsWith("problems:")), `${k} problems:`);

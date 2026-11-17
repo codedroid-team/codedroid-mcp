@@ -11,7 +11,7 @@ runs them with CodeDroid's tools.
 ## A case
 
 ```markdown
-### TC-10 · P1 · Save a skill: it appears under "My skills"
+### TC-12 · P1 · Save a skill: it appears under "My skills"
 Feature: F3 · Type: happy
 Covers: R7 (C14)
 Tier: core · Depth: screen
@@ -26,7 +26,7 @@ Feature: F3 · Type: happy
 Covers: R8 (C17, C18), R8.f1 (C18)
 Tier: core · Depth: elsewhere
 Run mode: phone
-Needs: TC-10 (makes e2e-timer)
+Needs: TC-12 (makes e2e-timer)
 Start: Chat, a new empty session.
 Steps:
 1. Tap the Skills tab (`content_description` "Skills"), then "My skills".

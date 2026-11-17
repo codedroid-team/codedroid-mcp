@@ -349,7 +349,7 @@ ${q.not_approved.length ? `<ul class="plain">${q.not_approved.filter((n) => n.st
         return tr([idCell + mark, inline(x.control), inline(x.does), inline(x.source), inline(x.states), inline(x.seen)], inFeature.has(x.id) ? "" : ` id="${esc(x.id)}"`);
       }))}</section>`).join("\n");
     return `<h1>Test quality</h1>
-<p class="lede">These are counts of the documents, not test results. ${v.judged - v.unverified ? `The verifier approved ${v.approved} of ${v.judged} test cases; approval is of a test's design, not a run.` : "No test case has been judged by the verifier yet."} ${q.report ? `Results come from ${esc(q.report)}.` : "There is no report yet, so no results."}</p>
+<p class="lede">These are counts of the documents${q.report ? ", with the results of the last report" : ", not test results"}. ${v.judged - v.unverified ? `The verifier approved ${v.approved} of ${v.judged} test cases; approval is of a test's design, not a run.` : "No test case has been judged by the verifier yet."} ${q.report ? `Results come from ${esc(q.report)}.` : "There is no report yet, so no results."}</p>
 ${model.pending.length ? `<p class="muted">Not written yet: ${model.pending.join(", ")}.</p>` : ""}
 ${problems}
 ${c.set_aside ? `<p class="muted">Percentages count the ${scope} controls in scope; ${c.set_aside} set aside as non-goals.</p>` : ""}
@@ -363,6 +363,7 @@ ${tile("requirements and failures acknowledged as gaps", 0, 0, `${q.requirements
 ${tile("left open", 0, 0, `${q.open.length}`)}
 ${tile("controls exercised in the last report", c.exercised, scope, q.report ? undefined : "no report yet")}
 ${tile("controls passing in the last report", c.passing, scope, q.report ? undefined : "no report yet")}
+${tile("requirements passing in the last report", q.requirements.passing, q.requirements.total, q.report ? undefined : "no report yet")}
 ${tile("controls not seen on the phone", 0, 0, `${c.not_seen} of ${scope}`)}
 ${tile("cases", 0, 0, `${q.cases.total}`)}
 ${q.cases.retired || q.cujs.retired ? tile("retired, not counted", 0, 0, `${q.cases.retired} cases, ${q.cujs.retired} journeys`) : ""}
@@ -379,12 +380,12 @@ ${table(["Feature", "Controls: approved / with a case", "Requirements: approved 
       q.by_feature.map((f) => { const k = f.capabilities, r = f.requirements; return tr([`${link(f.id)} · ${esc(f.name)} ${chip(f.priority)}`, `${pct(k.approved, k.total)} / ${pct(k.with_case, k.total)}`, `${pct(r.approved, r.total)} / ${pct(r.with_case, r.total)}`]); }))}
 ${table(["Feature", "Deep enough: approved / any case", "Failures: approved / with a case"],
       q.by_feature.map((f) => { const r = f.requirements, x = f.failures; return tr([`${link(f.id)} · ${esc(f.name)}`, `${pct(r.at_depth_approved, r.total)} / ${pct(r.at_depth, r.total)}`, `${pct(x.approved, x.total)} / ${pct(x.with_case, x.total)}`]); }))}
-${table(["Feature", "Exercised in report", "Passing in report", "Cases smoke / core / deep / edge"],
+${table(["Feature", "Exercised in report", "Passing in report", "Runnable cases smoke / core / deep / edge"],
       q.by_feature.map((f) => { const k = f.capabilities, t = f.tiers; return tr([`${link(f.id)} · ${esc(f.name)}`, pct(k.exercised, k.total), pct(k.passing, k.total), `${t.smoke}/${t.core}/${t.deep}/${t.edge}`]); }))}
 <p class="muted">A control used by requirements of two features is counted in both rows, so the rows can add up to more than the headline.</p>
 <h2>By journey</h2>
 ${table(["Journey", "Requirements", "Cases", "Controls with a case", "Exercised in report", "Passing in report"],
-      q.by_cuj.map((j) => { const k = j.capabilities; return tr([`${link(j.id)} · ${esc(j.title)}`, j.requirements.map(link).join(", "), String(j.cases.length), pct(k.with_case, k.total), pct(k.exercised, k.total), pct(k.passing, k.total)]); }))}
+      q.by_cuj.map((j) => { const k = j.capabilities; return tr([`${link(j.id)} · ${esc(j.title)}`, j.requirements.map(link).join(", "), `${j.cases.length}${j.manual ? ` (${j.manual} manual)` : ""}`, pct(k.with_case, k.total), pct(k.exercised, k.total), pct(k.passing, k.total)]); }))}
 <h2>All controls by screen</h2>
 ${inventory}`;
   });

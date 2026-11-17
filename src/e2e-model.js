@@ -17,6 +17,7 @@ const RESULTS = ["pass", "fail", "not run"];
 const PRIORITIES = ["P0", "P1", "P2"];
 const SOURCES = ["INVENTORY.md", "PRD.md", "CUJs.md", "TESTCASES.md"];
 const DEPTH_TWICE = (id) => `${id} gives Depth twice: on its Tier: line and on a Depth: line`;
+const WHY_MANUAL = (id) => `${id} is manual and has no Why manual: line`;
 const FAILS_FORM = (id) => `${id} Fails: must list failures or say "none in source"`;
 const UNREADABLE = {
   screen: 'screen heading is not readable: use "## S<n> · <source> · "<title>""',
@@ -160,6 +161,25 @@ export function readE2e(dir) {
       }
     }
     for (const s of m.screens) if (!m.capabilities.some((c) => c.screen === s.id)) problem("INVENTORY.md", s.line, `${s.id} has no capability`);
+    // A Source written path:line (or path:from-to) is checked against the repo that holds the e2e folder, when the
+    // path's first folder is there: a folder copied away from its app is not flooded with problems.
+    const repo = path.dirname(root);
+    const lengths = new Map();
+    for (const c of m.capabilities) {
+      const s = c.source.match(/^([^\s:]+):(\d+)(?:-(\d+))?$/);
+      const parts = s ? s[1].split(/[\\/]/) : [];
+      if (!s || path.isAbsolute(s[1]) || parts.includes("..") || !lexists(path.join(repo, parts[0]))) continue;
+      const full = path.join(repo, s[1]);
+      if (!lengths.has(full)) {
+        let st = null;
+        try { st = fs.lstatSync(full); } catch { /* missing */ }
+        const text = st?.isFile() ? fs.readFileSync(full, "utf8") : null;
+        lengths.set(full, !st ? -1 : text === null ? 0 : text.split("\n").length - (text.endsWith("\n") ? 1 : 0));
+      }
+      const len = lengths.get(full), last = Number(s[3] ?? s[2]);
+      if (len === -1) problem("INVENTORY.md", c.line, `${c.id} Source ${s[1]} is not in the repo`);
+      else if (len > 0 && last > len) problem("INVENTORY.md", c.line, `${c.id} Source line ${last} is past the end of ${s[1]} (${len} lines)`);
+    }
   }
 
   const prd = read("PRD.md");
@@ -261,14 +281,16 @@ export function readE2e(dir) {
       } else if (hd && hd.level === 2 && (h = hd.text.match(/^(F\d+)\b/))) { group = h[1]; cuj = null; }
       else if (hd) {
         if (/^CUJ-/.test(hd.text)) problem("CUJs.md", n, UNREADABLE.cuj);
-        if (hd.level !== 2 && /^F\d/.test(hd.text)) problem("CUJs.md", n, 'feature heading is not readable: use "## F<n> · <name>"');
-        if (hd.level <= 2) group = null;
+        const unreadable = hd.level !== 2 && /^F\d/.test(hd.text);
+        if (unreadable) problem("CUJs.md", n, 'feature heading is not readable: use "## F<n> · <name>"');
+        if (hd.level <= 2 || unreadable) group = null; // the journeys under it are in no feature known
         cuj = null;
       }
       else if (cuj && (h = t.match(/^Retired:\s*(.*)$/))) {
         cuj.retired = h[1].trim();
         if (!cuj.retired) problem("CUJs.md", n, `${cuj.id} Retired: has no reason`);
       }
+      else if (cuj && /^Why manual:\s*\S/.test(t)) cuj.why = true;
       else if (cuj && (h = t.match(/^Proves:\s*(.*)$/))) {
         if (again("CUJs.md", n, cuj, "has", cuj.id, "Proves:")) continue;
         cuj.has = true;
@@ -277,9 +299,15 @@ export function readE2e(dir) {
         for (const r of cuj.proves) refs.push(["CUJs.md", n, r, "req", cuj]);
       }
     }
-    for (const c of m.cujs) { if (!c.has && c.retired === null) problem("CUJs.md", c.line, `${c.id} has no Proves: line`); delete c.has; }
+    for (const c of m.cujs) {
+      if (!c.has && c.retired === null) problem("CUJs.md", c.line, `${c.id} has no Proves: line`);
+      if (c.mode === "manual" && !c.why && c.retired === null) problem("CUJs.md", c.line, WHY_MANUAL(c.id));
+      delete c.has;
+      delete c.why;
+    }
   }
 
+  const cujsRead = Boolean(cujs);
   const tcs = read("TESTCASES.md");
   if (tcs) {
     let tc = null;
@@ -313,7 +341,11 @@ export function readE2e(dir) {
         refs.push(["TESTCASES.md", n, id, kind === "deep" ? "feature" : kind === "failure" ? "fail" : "req"]);
       }
       else if (tc) {
-        if ((h = t.match(/^Retired:\s*(.*)$/))) {
+        // Covers: is one line: an indented line or an R<n> line right under it is a wrapped Covers: line, never read.
+        if (tc.has.coversLine === n - 1 && /^(\s+\S|R\d)/.test(t)) problem("TESTCASES.md", n, `${tc.id} Covers: goes on to this line: keep it on one line`);
+        if (/^Expected:/.test(t)) tc.has.expected = true;
+        else if (/^Why manual:\s*\S/.test(t)) tc.has.why = true;
+        else if ((h = t.match(/^Retired:\s*(.*)$/))) {
           tc.retired = h[1].trim();
           if (!tc.retired) problem("TESTCASES.md", n, `${tc.id} Retired: has no reason`);
         } else if ((h = t.match(/^Feature:\s*(\S+)(?:\s*·\s*Type:\s*(\S+))?/))) {
@@ -327,6 +359,7 @@ export function readE2e(dir) {
         } else if ((h = t.match(/^Covers:\s*(.*)$/))) {
           if (again("TESTCASES.md", n, tc.has, "covers", tc.id, "Covers:")) continue;
           tc.has.covers = true;
+          tc.has.coversLine = n;
           let depth = 0;
           let cur = "";
           const entries = [];
@@ -379,6 +412,16 @@ export function readE2e(dir) {
       for (const [k, label] of [["covers", "Covers: line"], ["tier", `Tier: line (${words(TIERS)})`], ["depth", `Depth: line (${words(PROOF)})`], ["mode", `Run mode: line (${words(MODES)})`]]) {
         if (c.type === "setup" && k !== "mode") continue; // a setup case proves nothing: only its Run mode matters
         if (!c.has[k]) problem("TESTCASES.md", c.line, `${c.id} has no ${label}`);
+      }
+      if (c.type !== "setup" && !c.has.expected) problem("TESTCASES.md", c.line, `${c.id} has no Expected: line`);
+      if (c.mode === "manual" && !c.has.why) problem("TESTCASES.md", c.line, WHY_MANUAL(c.id));
+      // A numbered case is for its CUJ (TC-12a for CUJ-12; a bug case TC-B1 for none), and has that CUJ's feature.
+      const num = c.type !== "setup" && cujsRead && c.id.match(/^TC-(\d+)[A-Za-z]*$/);
+      if (num) {
+        const n = Number(num[1]);
+        const cuj = m.cujs.find((j) => Number(j.id.slice(4)) === n);
+        if (!cuj) problem("TESTCASES.md", c.line, `${c.id} is numbered for CUJ-${n}, which is not in CUJs.md`);
+        else if (c.feature && cuj.feature && c.feature !== cuj.feature) problem("TESTCASES.md", c.line, `${c.id} has Feature: ${c.feature}, but CUJ-${n} is under ${cuj.feature}`);
       }
       delete c.has;
     }

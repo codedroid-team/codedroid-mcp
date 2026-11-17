@@ -73,6 +73,7 @@ export function runE2eReport({ dir, check = false }) {
   const lines = [
     `${scope}, ${c.with_case} with a case, ${c.approved} with an approved case; ${count(r.total, "requirement", "requirements")}, ${r.with_case} with a case${ack(r.acknowledged)}, ${r.at_depth} with a case deep enough; ${count(f.total, "failure", "failures")}, ${f.with_case} with a case${ack(f.acknowledged)}; ${count(q.cases.total, "case", "cases")}.`,
   ];
+  if (q.report) lines.push(`Last report ${q.report}: ${q.results.pass} passed, ${q.results.fail} failed, ${q.results["not run"]} not run; ${r.passing} of ${count(r.total, "requirement", "requirements")} passing.`);
   const md = `${dir.replace(/\/+$/, "") || "/"}/QUALITY.md`;
   const v = q.verify;
   if (v.judged && v.unverified === v.judged) lines.push("No case has been judged by the verifier yet.");

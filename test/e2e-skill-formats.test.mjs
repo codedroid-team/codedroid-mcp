@@ -76,7 +76,7 @@ try {
     fs.writeFileSync(path.join(dir, file), stitched[kind].join("\n"));
   }
   const m = readE2e(dir);
-  // The examples parse without a problem: TC-12a's `Needs: TC-10` names a case in the same example.
+  // The examples parse without a problem: TC-12a's `Needs: TC-12` names a case in the same example.
   assert.deepEqual(m.problems.map((p) => `${p.file}:${p.line}: ${p.message}`), []);
   // They show a Non-goal line, a setup case and the Gap lines (failure, deep, depth).
   assert.deepEqual(m.nonGoals.map((g) => g.caps), [["C19"]]);
@@ -182,12 +182,14 @@ Feature: F1 · Type: happy
 Covers: R3 (C1)
 Tier: core · Depth: screen
 Run mode: phone
+Expected: the note is in the list.
 
 ### TC-1b · P0 · An empty title cannot be saved
 Feature: F1 · Type: negative
 Covers: R3.f1 (C1)
 Tier: edge · Depth: screen
 Run mode: phone
+Expected: "Save" stays disabled.
 
 ### TC-1c · P0 · Saving with no connection
 Feature: F1 · Type: negative
@@ -195,6 +197,7 @@ Covers: R3.f2 (C1)
 Tier: edge · Depth: screen
 Run mode: manual
 Why manual: the phone must be offline
+Expected: "Couldn't save".
 
 ### TC-2a · P1 · An upgrade keeps the order
 Feature: F1 · Type: happy
@@ -202,6 +205,7 @@ Covers: R9
 Tier: core · Depth: screen
 Run mode: manual
 Why manual: needs the previous release
+Expected: the order is kept.
 
 ### TC-00 · P1 · Remove leftovers
 Feature: all · Type: setup

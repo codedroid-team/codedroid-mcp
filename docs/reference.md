@@ -167,8 +167,9 @@ writes `QUALITY.md`, `quality.json` and the HTML pages (`PRD.html`, `CUJs.html`,
 `QUALITY.html`, and a `REPORT.html` beside the report in use) into that folder, overwriting earlier
 copies on every run and deleting nothing. Commit them with the Markdown. It writes each file under a
 temp name beside it, then renames it into place, and never changes a file outside the folder. It
-prints the counts, each problem it found in the documents as `file:line: message`, and the path of
-`QUALITY.html`. It needs Node 20 or later, and no phone, daemon or network.
+prints the counts, then, when there is a report, its results (`Last report reports/<date>/REPORT.md:
+52 passed, 6 failed, 3 not run; 38 of 45 requirements passing.`), each problem it found in the
+documents as `file:line: message`, and the path of `QUALITY.html`. It needs Node 20 or later, and no phone, daemon or network.
 `REPORT.html` embeds each screenshot beside the report, so it is about one and a third times the
 size of those screenshots together.
 
@@ -177,7 +178,10 @@ under `reports/`: the full run. The partial runs the skills write beside it (`<d
 `<date>-maintain`, `<date>-smoke`) are not used, so "exercised" and "passing" come from the full
 run. A control is exercised when a runnable case covering it has a `pass` or `fail` row in that
 report, and passing when at least one such case passed and none failed; a `not run` row neither
-helps nor hurts. Only when no folder has that exact name does the last folder by name stand in. A
+helps nor hurts. In a feature's or journey's row only its own cases (those on the feature's
+requirements; the journey's numbered cases) can fail a control, so a failure in another journey does
+not mark a journey whose cases all passed. A requirement passes when a runnable case on it or on one
+of its failure lines passed and none failed. Only when no folder has that exact name does the last folder by name stand in. A
 folder shaped like a date but not zero-padded (`2026-11-9`) or not a calendar date (`2026-13-45`)
 is a problem and is not used, and so is a newer dated folder with no `REPORT.md`. Only the first table whose columns
 start with `Case` and `Result` is read; a second one is a problem. `QUALITY.md` and
@@ -202,7 +206,10 @@ capabilities aside: they leave "not in any feature", the percentages count the c
 scope, and the quality pages list them with the reason. A requirement with no control in the
 inventory writes `Caps: none`; `Fails:` is either failure items (`- R<n>.f<m> · text`, each starting with its own
 requirement's id) below it or `none in source`; any other list item under `Fails:` is a problem. A
-`Gap:` or `Non-goal:` line starts at the beginning of the line, with `-` or `*`. A heading of any
+`Gap:` or `Non-goal:` line starts at the beginning of the line, with `-` or `*`. In `INVENTORY.md` a
+`Source` written `path:line` or `path:from-to` is checked against the repo holding the folder (its
+parent) when the path's first folder is there: a file that is not there, or a line past its end, is a
+problem. A heading of any
 level ends a block, and a feature, journey, case or screen heading at the wrong level is a problem.
 
 In `TESTCASES.md`, `- Gap: <ref> · reason` acknowledges something no case covers. `<ref>` is a
@@ -212,7 +219,12 @@ brackets counts every control in that requirement's `Caps:`, also when the entry
 (`R1.f2`); write the controls in brackets (`R1.f2 (C4)`) to count fewer. A gap is never counted as
 covered; the quality pages list it under "Acknowledged gaps". A case with `Type: setup` needs only
 its `Run mode:` line and is counted apart. Every case has a `Feature:` line (`Feature: all` for a
-setup case). A line `Retired: <date> - <why>` in a case or journey retires it: it keeps its id, may
+setup case), and every case but a setup case an `Expected:` line. A numbered case (`TC-12a`) is for
+the journey of that number, which must be in `CUJs.md`, and its `Feature:` is that journey's feature;
+a bug case `TC-B<n>` is for none. A manual case or journey has a `Why manual:` line with a reason. A
+line right under `Covers:` that is indented or starts with `R<n>` is a wrapped `Covers:` line: a
+problem, since only the first line is read. Tier counts on the quality pages count runnable cases
+only; a journey's row says how many of its cases are manual. A line `Retired: <date> - <why>` in a case or journey retires it: it keeps its id, may
 point at what no longer exists, and counts for nothing (it appears on its page under "Retired", and
 quality gains `cases.retired` and `cujs.retired`). Only a runnable case (phone or task) counts as covering
 something or as a deep case.

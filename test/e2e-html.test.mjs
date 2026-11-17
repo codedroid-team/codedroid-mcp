@@ -159,7 +159,7 @@ try {
   assert.ok(!render(fixture)["PRD.html"].includes("not written yet"));
   // A bug case TC-B1: its screenshots are embedded, it counts, and it belongs to no CUJ.
   const bugDir = copy((d) => {
-    fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n### TC-B1 · P1 · Saving twice keeps one note\nFeature: F1 · Type: negative\nCovers: R1 (C4)\nTier: edge · Depth: kept\nRun mode: phone\n");
+    fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n### TC-B1 · P1 · Saving twice keeps one note\nFeature: F1 · Type: negative\nCovers: R1 (C4)\nTier: edge · Depth: kept\nRun mode: phone\nExpected: one note in the list.\n");
     fs.appendFileSync(path.join(d, "reports/2026-01-02/REPORT.md"), "| TC-B1 | fail | P1 | Saving twice keeps one note | |\n");
     for (const n of ["TC-B1.png", "TC-B1-before.png"]) fs.copyFileSync(path.join(d, "reports/2026-01-02/TC-1a.png"), path.join(d, "reports/2026-01-02", n));
   });
@@ -183,6 +183,11 @@ try {
   assert.ok(aq.includes("4 of 5") && aq.includes("1 set aside as non-goals"), "in-scope denominator and the set-aside count");
   assert.ok(!aq.includes("not in any feature"), "C6 is no longer listed as in no feature");
   assert.ok(!render(fixture)["QUALITY.html"].includes("Set aside as non-goals"), "no section when nothing is set aside");
+  // Requirements passing, tier tallies of runnable cases only, and a journey's manual cases marked.
+  assert.ok(qual.includes("<b>2 of 4</b><small>requirements passing in the last report (50%)"), "requirements passing tile");
+  assert.ok(qual.includes("Runnable cases smoke / core / deep / edge"));
+  assert.ok(qual.split("<tr").some((row) => row.includes("CUJ-2") && row.includes("<td>1 (1 manual)</td>")), "CUJ-2's one case is manual");
+  assert.ok(qual.includes("counts of the documents, with the results of the last report."));
   // Left open and acknowledged gaps on QUALITY.html.
   assert.ok(qual.includes("Left open") && qual.includes("R3") && qual.includes("no runnable case"), "open list");
   assert.ok(!qual.includes("Acknowledged gaps"), "no acknowledged section without gaps");
@@ -233,7 +238,7 @@ try {
   assert.ok(cardOf(cujs, "CUJ-1").includes('<span class="chip pass">approved</span>'));
   assert.ok(!/<h3>R1<\/h3>[^]*?<\/div>/.exec(cardOf(prd, "R1"))[0].includes("approved"), "the requirement itself has no verifier chip");
   // A reopen row reads "reopened", by the user.
-  const reopened = render(copy((d) => fs.appendFileSync(path.join(d, "VERIFY.md"), "| TC-3a | 0 | reopen | user | 3b2c1eaffa0c0ca6 | 2026-11-17 | The user allowed three more tries. |\n")));
+  const reopened = render(copy((d) => fs.appendFileSync(path.join(d, "VERIFY.md"), "| TC-3a | 0 | reopen | user | fa01e4a128b39967 | 2026-11-17 | The user allowed three more tries. |\n")));
   assert.ok(cardOf(reopened["TESTCASES.html"], "TC-3a").includes("reopened") && cardOf(reopened["TESTCASES.html"], "TC-3a").includes("The user allowed three more tries."));
   assert.match(cardOf(reopened["TESTCASES.html"], "TC-3a"), /<b>reopened<\/b> <span class="muted">the user, 2026-11-17<\/span>/);
   // QUALITY.html: approved tiles lead, with-a-case numbers are secondary text; Verifier section.
@@ -253,7 +258,7 @@ try {
   assert.match(nvVer, /<li>Not judged yet \(6\): <a class="nw" href="TESTCASES\.html#TC-1a">TC-1a<\/a>, <a class="nw" href="TESTCASES\.html#TC-1b">TC-1b<\/a>,[^<]*<a/);
   // A long latest reason: the card's verdict block is clamped by CSS, and the history holds the full text.
   const long = "R2: " + "an app that opens the wrong note still shows a title, ".repeat(14) + "END-OF-REASON.";
-  const lp = render(copy((d) => fs.appendFileSync(path.join(d, "VERIFY.md"), `| TC-1c | 2 | repair | independent | 9ce5e9680a7f9cc1 | 2026-11-17 | ${long} |\n`)))["TESTCASES.html"];
+  const lp = render(copy((d) => fs.appendFileSync(path.join(d, "VERIFY.md"), `| TC-1c | 2 | repair | independent | a278d51cee207692 | 2026-11-17 | ${long} |\n`)))["TESTCASES.html"];
   assert.ok(long.length > 600);
   assert.match(cardOf(lp, "TC-1c"), /<p class="verdict clamp warn">/);
   assert.ok(/<details class="history">[^]*END-OF-REASON\./.test(cardOf(lp, "TC-1c")), "the history holds the full reason");
@@ -459,7 +464,7 @@ try {
   assert.equal((lr.match(/data:image\/png;base64,/g) ?? []).length, 1, "only TC-1a.png");
   // Screenshot ids: TC-10's shot is not TC-1's, and a retired case's shot is not embedded.
   const ids = render(copy((d) => {
-    fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n### TC-1 · P1 · One\nFeature: F1 · Type: happy\nCovers: R1\nTier: core · Depth: screen\nRun mode: phone\n");
+    fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n### TC-1 · P1 · One\nFeature: F1 · Type: happy\nCovers: R1\nTier: core · Depth: screen\nRun mode: phone\nExpected: x\n");
     sub(d, "TESTCASES.md", "Run mode: task", "Run mode: task\nRetired: 2026-01-01 - merged");
     for (const f of ["TC-1.png", "TC-10.png", "TC-10-a.png", "TC-1c.png"]) fs.copyFileSync(path.join(d, "reports/2026-01-02/TC-1a.png"), path.join(d, "reports/2026-01-02", f));
   }))["reports/2026-01-02/REPORT.html"];
