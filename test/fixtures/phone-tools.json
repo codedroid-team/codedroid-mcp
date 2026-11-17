@@ -309,7 +309,7 @@
       "required": ["task_id"]
     },
     "name": "get_task",
-    "description": "Where a run_task task stands, waiting up to wait_s for it to finish: its steps, then its reply. question: what it asks the user; reply with answer_task. credits: what it cost (status charged, shadow, unlimited, not_charged or pending; used).",
+    "description": "Where a run_task task stands, waiting up to wait_s for it to finish: its steps, then its reply. question: what it asks the user; reply with answer_task. credits: the CodeDroid credits it took from the user's CodeDroid account, separate from your own model usage (status charged, shadow, unlimited, not_charged or pending; used).",
     "annotations": {
       "idempotentHint": true,
       "openWorldHint": false,
