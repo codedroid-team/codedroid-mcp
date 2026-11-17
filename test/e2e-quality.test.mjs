@@ -351,6 +351,38 @@ try {
   assert.doesNotMatch(qualityMd(q, model), /no journey proves/, "no section when every requirement has a journey");
   assert.deepEqual(quality(readE2e(copy((d) => { fs.rmSync(path.join(d, "CUJs.md")); fs.rmSync(path.join(d, "TESTCASES.md")); fs.rmSync(path.join(d, "reports"), { recursive: true }); }))).requirements.no_cuj, [], "CUJs.md not written yet");
 
+  // Each report cell of QUALITY.md, on a folder where every one of them has its own value.
+  // In scope C1-C9 (C10 set aside). F1/R1: C1-C4, F2: R2 C5+C6, R3 C7. C1 pass, C2 fail, C3 pass, C4 not run,
+  // C5+C6 pass, C7 manual only. Not seen in scope: C7, C8, C9. Gaps: R1.f2, R1.f3, R3.
+  const cells = fs.mkdtempSync(path.join(os.tmpdir(), "e2e-quality-"));
+  tmps.push(cells);
+  const put = (f, t) => { fs.mkdirSync(path.dirname(path.join(cells, f)), { recursive: true }); fs.writeFileSync(path.join(cells, f), t); };
+  put("INVENTORY.md", `## S1 · MainActivity · "Main"\n| Id | Control | Does | Source | States | Seen |\n| --- | --- | --- | --- | --- | --- |\n${
+    Array.from({ length: 10 }, (_, i) => `| C${i + 1} | text "c${i + 1}" | does | a.kt:1 | | ${[7, 8, 9, 10].includes(i + 1) ? "no: hidden" : "yes"} |`).join("\n")}\n`);
+  put("PRD.md", "### F1 · A · P1\n- R1 · one\n  Caps: C1, C2, C3, C4\n  Proof: screen\n  Fails:\n  - R1.f1 · f1\n  - R1.f2 · f2\n  - R1.f3 · f3\n"
+    + "### F2 · B · P1\n- R2 · two\n  Caps: C5, C6\n  Proof: screen\n  Fails:\n  - R2.f1 · f\n- R3 · three\n  Caps: C7\n  Proof: screen\n  Fails: none in source\n\n## Non-goals\n- Non-goal: C10 · later\n");
+  put("CUJs.md", "## F1 · A\n### CUJ-1 · j · P1 · phone\nProves: R1\n## F2 · B\n### CUJ-2 · k · P1 · phone\nProves: R2, R3\n");
+  const tcBlock = (id, f, covers, mode) => `### ${id} · P1 · t\nFeature: ${f} · Type: happy\nCovers: ${covers}\nTier: core · Depth: screen\nRun mode: ${mode}\n\n`;
+  put("TESTCASES.md", tcBlock("TC-1a", "F1", "R1 (C1)", "phone") + tcBlock("TC-1b", "F1", "R1 (C2)", "phone") + tcBlock("TC-1c", "F1", "R1 (C3)", "task")
+    + tcBlock("TC-1d", "F1", "R1.f1 (C4)", "task") + tcBlock("TC-2a", "F2", "R2", "phone") + tcBlock("TC-2b", "F2", "R3", "manual")
+    + "## Gaps\n- Gap: R1.f2 · a\n- Gap: R1.f3 · b\n- Gap: R3 · c\n");
+  put("reports/2026-01-02/REPORT.md", "| Case | Result |\n| --- | --- |\n| TC-1a | pass |\n| TC-1b | fail |\n| TC-1c | pass |\n| TC-1d | not run |\n| TC-2a | pass |\n| TC-2b | not run |\n");
+  const cm = readE2e(cells);
+  const cq = quality(cm);
+  assert.equal(cq.ok, true, JSON.stringify(cq.problems));
+  const cmd = qualityMd(cq, cm).split("\n");
+  for (const row of [
+    "| Capabilities exercised in the last report | 5 of 9 (55%) |",
+    "| Capabilities passing in the last report | 4 of 9 (44%) |",
+    "| Capabilities not seen on the phone | 3 of 9 |",
+    "| Failures acknowledged as gaps | 2 of 4 |",
+    "| Requirements acknowledged as gaps | 1 of 3 |",
+    "| Cases | 6 (3 phone, 2 task, 1 manual) |",
+  ]) assert.ok(cmd.includes(row), row);
+  const col = (start, k) => cmd.find((l) => l.startsWith(start)).split("|").map((x) => x.trim())[k];
+  assert.deepEqual([col("| F1 · A |", 4), col("| F1 · A |", 5), col("| F2 · B |", 4), col("| F2 · B |", 5)], ["75%", "50%", "66%", "66%"], "per feature: Exercised, Passing");
+  assert.deepEqual([col("| CUJ-1 |", 6), col("| CUJ-1 |", 7), col("| CUJ-2 |", 7)], ["75%", "50%", "66%"], "per journey: Exercised, Passing");
+
   console.log("ok e2e-quality");
 } finally {
   for (const d of tmps) fs.rmSync(d, { recursive: true, force: true });

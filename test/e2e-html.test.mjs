@@ -249,6 +249,67 @@ try {
   }
   assert.ok(nj["CUJs.html"].indexOf("Requirements no journey proves") < nj["CUJs.html"].indexOf('id="CUJ-1"'), "at the top of CUJs.html");
   assert.ok(!qual.includes("no journey proves") && !cujs.includes("no journey proves"), "no list when every requirement has a journey");
+  // Every document field that reaches a page is escaped. Each field gets its own marker; a folder or file name
+  // cannot hold "/", so there the marker is not closed.
+  let n = 0;
+  const marks = [];
+  const mk = (close = true) => { const m = `MARK-${++n}`; marks.push(m); return `<u>${m}${close ? "</u>" : ""}`; };
+  const planted = copy((d) => {
+    const r = path.join(d, "reports/2026-01-02");
+    sub(d, "INVENTORY.md", '## S1 · NotesListFragment · "Notes"', `## S1 · Src${mk()} · "Notes${mk()}"`);
+    sub(d, "INVENTORY.md", '| C6 | description "Share" | hands the note text to the share sheet | app/src/main/java/notes/EditorFragment.kt:141 | | ? |', `| C6 | ${mk()} | ${mk()} | ${mk()} | ${mk()} | ? ${mk()} |`);
+    sub(d, "PRD.md", "# Notes PRD\n", `# Notes PRD ${mk()}\n`);
+    sub(d, "PRD.md", "## Goal\nKeep short notes on the phone.", `## Goal ${mk()}\nKeep short notes ${mk()} &lt;b&gt; it's`);
+    sub(d, "PRD.md", "### F1 · Notes · P0\n", `### F1 · Notes${mk()} · P0\nWhat: ${mk()}\n`);
+    sub(d, "PRD.md", "- R1 · A saved note appears in the list with its title.", `- R1 · A saved note ${mk()}`);
+    sub(d, "PRD.md", "  Caps: C4\n  Proof: kept\n", `  Caps: C4, ${mk()}\n  Proof: kept\n  Why: ${mk()}\n`);
+    sub(d, "PRD.md", "  Proof: screen\n", `  Proof: screen${mk()}\n`);
+    sub(d, "PRD.md", "an empty title leaves", `an empty ${mk()} title leaves`);
+    fs.appendFileSync(path.join(d, "PRD.md"), `- Non-goal: C6 · ${mk()}\n`);
+    sub(d, "CUJs.md", "# Notes CUJs\n", `# Notes CUJs\n\n${mk()}\n`);
+    sub(d, "CUJs.md", "## F1 · Notes\n", `## F1 · Notes\n${mk()}\n`);
+    sub(d, "CUJs.md", "Write a note and find it again", `Write a note${mk()}`);
+    sub(d, "CUJs.md", "Proves: R1, R2\n", `Proves: R1, R2, ${mk()}\n`);
+    sub(d, "CUJs.md", "- The note shows in the list.", `- The note shows ${mk()}\n- and stays ${mk()}`);
+    fs.appendFileSync(path.join(d, "CUJs.md"), `\n### CUJ-9 · Old · P2 · phone\nRetired: ${mk()}\n\n## Robustness\n- ${mk()}\n`);
+    sub(d, "TESTCASES.md", "# Notes test cases\n", `# Notes test cases\n\n${mk()}\n`);
+    sub(d, "TESTCASES.md", "A saved note is still there", `A saved note ${mk()}`);
+    sub(d, "TESTCASES.md", '1. Tap "New note", type a title, tap "Save".', `1. Tap ${mk()}\n2. Then ${mk()}`);
+    sub(d, "TESTCASES.md", "Feature: F1 · Type: negative", `Feature: F1 · Type: negative${mk()}`);
+    sub(d, "TESTCASES.md", "Tier: core · Depth: screen\nRun mode: task", `Tier: core${mk()} · Depth: screen\nRun mode: task${mk()}`);
+    fs.appendFileSync(path.join(d, "TESTCASES.md"), `\n### TC-9a · P2 · Old\nRetired: ${mk()}\n\n## Gaps\n${mk()}\n- Gap: R2.f1 · ${mk()}\n`);
+    sub(d, "reports/2026-01-02/REPORT.md", "shows `a | b` blank", `shows ${mk()}`);
+    sub(d, "reports/2026-01-02/REPORT.md", "| P1 | Saving with no connection keeps the text |", `| P1 | Saving ${mk()} |`);
+    sub(d, "reports/2026-01-02/REPORT.md", "| 12 | 2026-01-02 |", `| 12 ${mk()} | 2026-01-02 |`);
+    fs.appendFileSync(path.join(d, "reports/2026-01-02/REPORT.md"), `\n${mk()}\n`);
+    fs.copyFileSync(path.join(r, "TC-1a.png"), path.join(r, `TC-1a-${mk(false)}.png`));
+    const odd = path.join(d, `reports/zz${mk(false)}`);
+    fs.mkdirSync(odd);
+    fs.writeFileSync(path.join(odd, "REPORT.md"), "| Case | Result |\n| --- | --- |\n");
+  });
+  const hp = render(planted);
+  for (const [p, h] of Object.entries(hp)) assert.ok(!h.includes("<u>"), `raw <u> on ${p}`);
+  const all = Object.values(hp).join("");
+  assert.deepEqual(marks.filter((m) => !all.includes(`&lt;u&gt;${m}`)), [], "every planted field is on a page, escaped");
+  assert.ok(all.includes("&amp;lt;b&amp;gt;") && all.includes("it&#39;s"), "& and ' escaped too");
+  // Screenshots: a link is never read, whether it leads outside the folder or to a document inside it.
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), "e2e-html-out-"));
+  tmps.push(outside);
+  fs.writeFileSync(path.join(outside, "secret.png"), "outside-secret-bytes");
+  const linked = copy((d) => {
+    fs.symlinkSync(path.join(outside, "secret.png"), path.join(d, "reports/2026-01-02/TC-1b.png"));
+    fs.symlinkSync(path.join(d, "PRD.md"), path.join(d, "reports/2026-01-02/TC-1c.png"));
+  });
+  const lr = render(linked)["reports/2026-01-02/REPORT.html"];
+  for (const f of [path.join(outside, "secret.png"), path.join(linked, "PRD.md")]) assert.ok(!lr.includes(fs.readFileSync(f).toString("base64")), `${f} not embedded`);
+  assert.equal((lr.match(/data:image\/png;base64,/g) ?? []).length, 1, "only TC-1a.png");
+  // Screenshot ids: TC-10's shot is not TC-1's, and a retired case's shot is not embedded.
+  const ids = render(copy((d) => {
+    fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n### TC-1 · P1 · One\nFeature: F1 · Type: happy\nCovers: R1\nTier: core · Depth: screen\nRun mode: phone\n");
+    sub(d, "TESTCASES.md", "Run mode: task", "Run mode: task\nRetired: 2026-01-01 - merged");
+    for (const f of ["TC-1.png", "TC-10.png", "TC-10-a.png", "TC-1c.png"]) fs.copyFileSync(path.join(d, "reports/2026-01-02/TC-1a.png"), path.join(d, "reports/2026-01-02", f));
+  }))["reports/2026-01-02/REPORT.html"];
+  assert.deepEqual([...ids.matchAll(/<span class="muted">([^<]*)<\/span><\/figcaption>/g)].map((m) => m[1]), ["TC-1.png", "TC-1a.png"]);
   console.log("e2e-html ok");
 } finally {
   for (const d of tmps) fs.rmSync(d, { recursive: true, force: true });
