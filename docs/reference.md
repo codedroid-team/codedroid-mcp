@@ -165,8 +165,10 @@ Run it in an app's repo after writing the `app-e2e` documents. It reads `dir` (d
 `INVENTORY.md`, `PRD.md`, `CUJs.md`, `TESTCASES.md` and one report, below) and
 writes `QUALITY.md`, `quality.json` and the HTML pages (`PRD.html`, `CUJs.html`, `TESTCASES.html`,
 `QUALITY.html`, and a `REPORT.html` beside the report in use) into that folder, overwriting earlier
-copies and deleting nothing. It prints the counts, each problem it found in the documents as
-`file:line: message`, and the path of `QUALITY.html`. It needs no phone, daemon or network.
+copies on every run and deleting nothing. Commit them with the Markdown. It writes each file under a
+temp name beside it, then renames it into place, and never changes a file outside the folder. It
+prints the counts, each problem it found in the documents as `file:line: message`, and the path of
+`QUALITY.html`. It needs Node 20 or later, and no phone, daemon or network.
 `REPORT.html` embeds each screenshot beside the report, so it is about one and a third times the
 size of those screenshots together.
 
@@ -182,7 +184,8 @@ start with `Case` and `Result` is read; a second one is a problem. `QUALITY.md` 
 `QUALITY.html` say which report their numbers come from.
 
 It never reads through a link: a source file, a `reports` folder, a report folder or a report that
-is a symbolic link, or leads outside the folder, is a problem and is not read. `quality.json` lists
+is a symbolic link, or leads outside the folder, is a problem and is not read, and so is a source
+that is not a regular file. `quality.json` lists
 its sources as the name under the folder and a sha256, with no path, so the same folder gives the
 same file wherever it is run from.
 
@@ -190,8 +193,9 @@ The four documents are written in that order. One that is missing while no later
 written yet, not a problem: the command names it (`Not written yet: PRD.md, CUJs.md, TESTCASES.md.
 Next: PRD.md.`) and its page says so. One missing before a document that exists is a problem.
 
-With `--check` it writes nothing and prints `stale: <file>` for every page that is missing or was
-built from older documents (and for a missing `QUALITY.md` or `quality.json`).
+With `--check` it writes nothing and prints `stale: <file>` for every page that is missing, is a
+link or not a regular file, or was built from older documents (and for a missing `QUALITY.md` or
+`quality.json`).
 
 It also reads two lines the skills teach. In `PRD.md`, `- Non-goal: C40, C41 · reason` sets
 capabilities aside: they leave "not in any feature", the percentages count the capabilities in
@@ -223,8 +227,8 @@ feature. When there are any, the command prints `N left open: see
 Exit codes: 0 when all is well, 1 when the documents have problems, 2 for a usage error (an
 unknown flag too), a folder that does not exist or holds none of the four documents, a source it
 cannot read, or a file it cannot write. With `--check`: 0 when every page is current, 1 when a page
-is stale or missing, 2 as above. It refuses to write through a link that leads outside the folder,
-and writes nothing then. With more than 20 problems it prints a count per kind and the first 20; the pages list all.
+is stale or missing, 2 as above. It refuses to write through a link, or into a folder that leads
+outside, with exit 2, and writes nothing then. With more than 20 problems it prints a count per kind and the first 20; the pages list all.
 
 ### Standalone Claude Code server
 

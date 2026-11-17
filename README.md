@@ -129,7 +129,7 @@ Android platform-tools and a USB or wireless debugging connection. See [adb setu
   check), `app-e2e-bug` turns a bug into a case that reproduces it, and `app-e2e-maintain` keeps
   the cases current as the app changes. After writing the documents, the agent runs
   `npx -y @codedroid/mcp e2e report`, which writes a quality report and HTML pages into `e2e/`
-  and lists any broken references in them; it needs no phone ([details](docs/reference.md#quality-report-for-an-apps-e2e-folder)).
+  and lists any problems in them; it needs no phone ([details](docs/reference.md#quality-report-for-an-apps-e2e-folder)).
 - **`install_apk`** to install a build from your computer, with no cable or shared network.
 - **An `adb` tool** that runs adb commands on your computer, to read logs and run tests. You can [turn it off](docs/reference.md#adb-setup).
 
@@ -139,8 +139,9 @@ phone tools alone. `claude-plugin/` in this repository is what the directory lis
 
 ## Privacy and security
 
-The plugin runs `npx -y @codedroid/mcp@<version>`, which downloads this exact release from npm
-and starts a local MCP server. Everything it sends goes over TLS to the CodeDroid server, `orchestrator.codedroid.com`
+The plugin runs `npx -y @codedroid/mcp@<version>`, which downloads that exact release from npm
+and starts a local MCP server. The `app-e2e` skills also run `npx -y @codedroid/mcp e2e report`,
+with no version, which runs the newest release on npm. Everything it sends goes over TLS to the CodeDroid server, `orchestrator.codedroid.com`
 unless the pairing command shown on your phone names another:
 
 - **Pairing** sends the one-time code, your computer's name, and its OS (for example `darwin`),
