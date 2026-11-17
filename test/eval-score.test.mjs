@@ -164,6 +164,8 @@ try {
     for (const [heading, mode] of [
       ["### TC-1 · P0 · Upload · manual sync is off", "phone"],
       ["### TC-1 · P0 (smoke) · Manual upload of a photo", "phone"],
+      ["### TC-1 · P0 (smoke) · Manual", "phone"],
+      ["### TC-1 · p0 · Manual", "phone"],
       ["### TC-1 · Priority P0 · Task list opens", "phone"],
       ["### TC-1 · P0 · Manual upload", "phone"],
       ["### TC-1 · P0 · Task", "phone"],
