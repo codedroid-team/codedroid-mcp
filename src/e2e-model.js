@@ -192,8 +192,9 @@ export function readE2e(dir) {
         if (!caps.length) problem("PRD.md", n, "Non-goal line names no capability");
         else if (!reason) problem("PRD.md", n, `Non-goal ${caps.join(", ")} has no reason`);
         for (const c of caps) refs.push(["PRD.md", n, c, "cap"]);
-      } else if (feature && (h = t.match(/^( {0,3})(?:[-*+•–]|\d+[.)])\s+[*_\s]*[RrＲｒ][0-9０-９]+(\S*)/)) && !(h[1] && /^\.f/.test(h[2])) && !/^- (R\d+) · /.test(t)) {
-        // Another list form, an indent, or a lower-case or full-width R; an indented R<n>.f<m> is a failure item.
+      } else if (feature && (h = t.match(/^( {0,3})(?:[-*+•–]|\d+[.)])\s+[*_\s]*[RrＲｒ][0-9０-９]+(\S*)( · )?/)) && (!h[1] || (!req && !h[2] && h[3])) && !/^- (R\d+) · /.test(t)) {
+        // Another list form, or a lower-case or full-width R. Indented, only "R<n> · " outside a requirement:
+        // other indented items are prose, and inside a requirement they belong to it.
         finish();
         problem("PRD.md", n, UNREADABLE.requirement);
       } else if ((h = t.match(/^- (R\d+) · (.*)$/))) {

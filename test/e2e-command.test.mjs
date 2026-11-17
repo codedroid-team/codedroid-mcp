@@ -75,6 +75,8 @@ assert.equal(r.stdout.split("\n").at(-3), `1 left open: see ${oneOpen}/QUALITY.m
 assert.ok(fs.readFileSync(path.join(oneOpen, "QUALITY.md"), "utf8").includes("## Left open"), "the named file has the list");
 r = run("report", oneOpen + "/");
 assert.ok(r.stdout.includes(`see ${oneOpen}/QUALITY.md`), "no double slash");
+// A file named like a date directly inside reports/ is not a report folder.
+assert.equal(run("report", copy((d) => fs.writeFileSync(path.join(d, "reports/2026-03-01"), "x"))).status, 0, "a dated file in reports/");
 
 // Written in stages: a clean INVENTORY.md alone exits 0 and names what comes next; counts take the singular.
 const early = copy((d) => {

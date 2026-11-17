@@ -381,11 +381,13 @@ try {
   assert.deepEqual(fails2.problems.map((x) => `${x.line}: ${x.message}`), ["20: R2 has two Fails: lines"]);
   assert.deepEqual(fails2.requirements[1].fails.map((f) => f.id), ["R2.f1", "R2.f2"]);
 
-  // A requirement line indented by one to three spaces, with a • or – bullet, or a lower-case or full-width R is
-  // reported, as the last requirement of a feature or the first line under it; the lines below belong to none.
-  for (const form of [" - R5 ·", "   - R5 ·", "• R5 ·", "– R5 ·", "- r5 ·", "- Ｒ5 ·", "- R５ ·"]) {
+  // A requirement line with a • or – bullet, or a lower-case or full-width R is reported, as the last requirement
+  // of a feature or the first line under it; indented by one to three spaces, only where no requirement is open.
+  // The lines below belong to none.
+  for (const form of [" - R5 ·", "  - R5 ·", "   - R5 ·", "• R5 ·", "– R5 ·", "- r5 ·", "- Ｒ5 ·", "- R５ ·"]) {
     const block = `${form} Undo restores a deleted note.\n  Caps: C6\n  Proof: kept\n  Fails: none in source\n`;
-    for (const [where, from, to] of [["last", "\n### F2 · Search · P1\n", `\n${block}\n### F2 · Search · P1\n`], ["first", "### F2 · Search · P1\n", `### F2 · Search · P1\n${block}`]]) {
+    const places = [["last", "\n### F2 · Search · P1\n", `\n${block}\n### F2 · Search · P1\n`], ["first", "### F2 · Search · P1\n", `### F2 · Search · P1\n${block}`]];
+    for (const [where, from, to] of form.startsWith(" ") ? places.slice(1) : places) {
       let line;
       const slip = readE2e(copy((d) => { sub(d, "PRD.md", from, to); line = fs.readFileSync(path.join(d, "PRD.md"), "utf8").split("\n").indexOf(block.split("\n")[0]) + 1; }));
       assert.deepEqual(slip.problems, [{ file: "PRD.md", line, message: REQ_FORM }], `${form} ${where}`);
@@ -397,6 +399,14 @@ try {
   assert.deepEqual(prose("- R2-D2 unit"), [REQ_FORM]);
   for (const t of ["- RTL layout", "1. Restart the app", "- Results are kept", "  - Run it twice", "• Results are kept", " - rtl too"]) assert.deepEqual(prose(t), [], t);
   assert.deepEqual(readE2e(copy((d) => sub(d, "PRD.md", "  - R2.f1 ·", "   - R2.f1 ·"))).problems, [], "a failure item indented by three");
+  assert.deepEqual(readE2e(copy((d) => sub(d, "PRD.md", "- R2 ·", "- R1.f3 · a long title is cut\n- R2 ·"))).problems, [{ file: "PRD.md", line: 15, message: REQ_FORM }], "a failure item at the margin");
+  // An indented sub-bullet naming a requirement is prose: under a feature's What, Gates, Harm or Screens line, or
+  // inside a requirement, where it keeps that requirement's Caps, Proof and Fails.
+  for (const t of ["What: notes.\n  - R1 above is the main one.", "Gates: sign-in.\n  - R1 needs an account.", "Harm: delete.\n   - R3 deletes for good.", "Screens: list, editor.\n  - r2d2 is the robot."]) {
+    assert.deepEqual(readE2e(copy((d) => sub(d, "PRD.md", "### F1 · Notes · P0\n", `### F1 · Notes · P0\n${t}\n`))).problems, [], t);
+  }
+  const depends = readE2e(copy((d) => sub(d, "PRD.md", "with its text.\n", "with its text.\n  Depends on:\n  - R1 must have saved the note first.\n")));
+  assert.deepEqual([depends.problems, depends.requirements[1].caps, depends.requirements[1].proof, depends.requirements[1].fails.map((f) => f.id)], [[], ["C1", "C3"], "screen", ["R2.f1"]]);
 
   // The results table's separator row is read as the pages read a table rule: outer pipes are optional.
   for (const sep of ["--- | --- | --- | --- | ---", "|---|:-:|---|---|---", " | --- | --- | --- | --- | --- | "]) {

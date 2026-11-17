@@ -274,6 +274,7 @@ try {
     assert.deepEqual(Object.keys(odd).filter((k) => odd[k].includes(m)), [p], m);
     assert.equal(odd[p].split(m).length - 1, 1, `${m} once`);
   }
+  assert.ok(odd["CUJs.html"].includes("<h2>F7 · Later</h2>"), "the heading of a group that names no feature");
   assert.ok(odd["CUJs.html"].indexOf("MARK_ABOVECUJ") < odd["CUJs.html"].indexOf('id="CUJ-9"') && odd["TESTCASES.html"].indexOf("MARK_ABOVETC") < odd["TESTCASES.html"].indexOf('id="TC-9a"'), "above the retired card");
   // Requirements no journey proves: listed on QUALITY.html and at the top of CUJs.html, only when there are any.
   const nj = render(copy((d) => sub(d, "CUJs.md", "Proves: R4\n", "Proves: R4\nRetired: 2026-01-01 - merged\n")));
