@@ -60,20 +60,20 @@ Steps:
 - `Tier:` the kind of scenario. `smoke`: the screen or control is there and opens. `core`: the
   main action on the plain path. `deep`: an extended scenario of the main action: several items,
   large or awkward data, a long sequence of steps, or state carried across leaving and reopening
-  the app. `edge`: failure, recovery, interruption (app killed, backgrounded, connection lost
-  midway), limits.
+  the app. `edge`: failure, recovery, interruption (app killed, backgrounded), limits.
 - `Depth:` the deepest place its Expected lines check, in the same words as a requirement's
   `Proof:`: `screen` (visible where the user acted), `elsewhere` (visible on another screen, a
   notification, a file or the server), `kept` (still true after leaving and reopening the app). Tier
   and Depth are independent: a core case can check `kept`, a deep case only `screen`. A requirement
-  whose cases all look shallower than its Proof is not tested deep enough: a `kept` one needs a case
+  whose cases all look shallower than its Proof has no case deep enough: a `kept` one needs a case
   that reopens the app (`adb` `shell am force-stop <package>` of the app under test, `open_app`) and
   checks again.
 - Every Fails line of a P0 or P1 requirement is in some case's `Covers:`, usually an `edge` case
-  (cut the network, cancel, bad input, reach the limit), or has a Gap line. Turning the phone's
-  network off cuts CodeDroid's link too: write such a case only when the phone is on USB with the
-  `adb` tool and the same step turns the network back on; otherwise give the failure a `- Gap:`
-  line that says so.
+  (cancel, bad input, reach the limit), or has a Gap line.
+- A case that needs the phone offline is never `phone` or `task`: turning the phone's network off
+  cuts CodeDroid's link, so nothing could check it. Write it as a `manual` case with
+  `Why manual: the phone must be offline`, and give the failure a `- Gap:` line too, since a manual
+  case settles nothing; or write the Gap line alone.
 - Every P0 feature has at least one `deep` case, or a `Gap: F<n> deep` line.
 - A gap is a line `- Gap: <ref> · <reason>` under a `## Gaps` heading at the end of the file.
   `<ref>` is a requirement id (`R4`), a failure id (`R1.f2`), or a feature id and the word deep
@@ -82,8 +82,10 @@ Steps:
   needs no Gap line, and the command reports one that has both, and a depth Gap line for a
   requirement that has no case or is already deep enough. A manual case is not a runnable case,
   and does not count as a deep case. A Gap line never counts as covered: the
-  quality page lists it under "Acknowledged gaps". "Left open" is what has neither a case nor a
-  Gap line; it is what is left to write, so empty it before handing over. A requirement listed
+  quality page lists it under "Acknowledged gaps". "Left open" lists requirements with no runnable
+  case, requirements whose deepest case is shallower than their Proof, failure lines of P0 and P1
+  features with no case, and P0 features with no deep case, each with no Gap line; it is what is
+  left to write, so empty it before handing over. A requirement listed
   as too shallow is fixed by a case whose Expected lines check at its Proof depth (for `kept`,
   reopen the app and check again); give it a `depth` Gap line only when this phone or account
   cannot do that.
@@ -102,7 +104,10 @@ Steps:
   position.
 - A Gate or Harm line with no case: the requirement or failure line it belongs to gets a Gap line
   that says why (needs a drag, a second account); a capability the run will not test is a PRD
-  Non-goal line instead.
+  Non-goal line instead. A requirement that already has a case cannot also take a Gap line (the
+  command reports a ref that has both): the blocked or confirmed behavior is a failure of that
+  requirement, so add a failure line `R<n>.f<m>` for it in `PRD.md`, with its exact words, then
+  give that failure a case or a `- Gap:` line.
 - Expected lines are outcomes on the screen or in the app, exact words in quotes. Not how it got
   there, and nothing that changes with the screen or the clock.
 

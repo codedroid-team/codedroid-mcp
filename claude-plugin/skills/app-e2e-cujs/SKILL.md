@@ -34,8 +34,9 @@ User action: tap own skill → fill "Fill In" → "Use Skill".
 - Manual CUJs stay in, marked `manual` in the heading, with the reason on a line under it, never
   in the heading: `Why manual: <reason>` (needs a wipe, a second account, a real payment).
   Include what a brand-new account meets first: first run, a welcome or first-task screen.
-- Every PRD requirement is in some CUJ's `Proves:`. A requirement with none is a gap: add a CUJ or
-  move it to non-goals. A feature in scope with no CUJ is a gap too. Write no coverage table: the
+- Every PRD requirement is in some CUJ's `Proves:`. A requirement with none is a gap: add a CUJ, or
+  take the requirement out of the PRD and name its controls that no other requirement uses on a
+  `- Non-goal:` line. A feature in scope with no CUJ is a gap too. Write no coverage table: the
   quality pages list "Requirements no journey proves".
 - A journey that proves no requirement means the PRD is missing one: add the requirement (with its
   Caps, Proof and Fails; `Caps: none` if no control is involved) rather than leaving `Proves:`

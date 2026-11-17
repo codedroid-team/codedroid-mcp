@@ -14,7 +14,9 @@ the app-e2e-run skill's for running one first.
 From the report (the user, an issue, a crash log), write down: the build, the start state, the
 steps, what happened and what should have. Ask for what is missing rather than guessing. If the
 documents are from before these formats, bring them up first, with the user's OK (the
-app-e2e-maintain skill's "Documents from before these formats"). If there
+app-e2e-maintain skill's "Documents from before these formats"). If the user declines, write the
+bug's case with the current lines for that case only, skip the command, and say the other
+documents are in the older format. If there
 is no `e2e/` yet, create it with the documents the case stands on, for the bug's screens only: an
 `INVENTORY.md`, a `PRD.md` with the requirement the bug breaks, a `CUJs.md` with its journey (as the
 app-e2e-explore, app-e2e-prd and app-e2e-cujs skills write them), then `TESTCASES.md`.
@@ -38,9 +40,10 @@ requirement or failure the bug breaks. If none fits, add one to `PRD.md` first (
 Proof and Fails; a failure gets its `R<n>.f<m>` line) and cover that. A `TC-B<n>` case's
 `Feature:` is the feature of the requirement it covers.
 
-Run `npx -y @codedroid/mcp e2e report e2e`; it must print no problems before you go on (fix each
-`file:line: message` and rerun). If the documents were written before these formats, stop and
-bring them up as step 1 says, with the user's OK; never rewrite approved documents on your own.
+Run `npx -y @codedroid/mcp e2e report e2e` (documents in another folder: pass that folder in place
+of `e2e`); it must print no problems before you go on (fix each `file:line: message` and rerun). If
+the documents were written before these formats, stop and bring them up as step 1 says, with the
+user's OK; never rewrite approved documents on your own.
 
 ## 4. Prove it red
 

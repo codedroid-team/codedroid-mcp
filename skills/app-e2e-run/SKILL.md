@@ -73,7 +73,8 @@ cleanup changed the screen.
 
 ## The report
 
-`e2e/reports/<date>/REPORT.md`:
+`e2e/reports/<date>/REPORT.md`. A run that stops early still writes it, with `not run` for the
+cases it did not reach: a dated report folder with no `REPORT.md` is a problem.
 
 - A header: build, device, account, date; passed / failed / not run. Without adb, say what the run
   could not check: the installed build, the crash buffer, the screenshot files.
@@ -104,7 +105,8 @@ state, a common cleanup) or before a release verdict. A bug you find mid-run tha
 add a case for it to `TESTCASES.md`, run it twice, and say in the report that it was added. Anything
 the run left that only "clear all" would remove: list it under cleanup, don't clear it.
 
-Then run `npx -y @codedroid/mcp e2e report e2e`. Exit 1 means the documents have problems, printed
+Then run `npx -y @codedroid/mcp e2e report e2e` (documents in another folder: pass that folder in
+place of `e2e`). Exit 1 means the documents have problems, printed
 as `file:line: message`: fix them and rerun until it prints none. If the documents were written
 before these formats, stop: with the user's OK, follow the app-e2e-maintain skill's "Documents
 from before these formats" first. Never rewrite approved documents at the end of a run on your own.

@@ -19,12 +19,15 @@ Load each step's skill when you reach it; this table is not the step.
 
 After each step's document is written, run `npx -y @codedroid/mcp e2e report e2e` from the repo
 root. It must print no problems before you go on: exit 1 means it found some, printed as
-`file:line: message`; fix every one and rerun. It writes `QUALITY.md`, `quality.json` and HTML pages into `e2e/`
+`file:line: message`; fix every one and rerun. If it prints `Unknown command: e2e`, the installed
+`@codedroid/mcp` release is older than these skills: tell the user, and go on without the command
+(write the documents as the skills say; give the user the Markdown at the gates). It writes `QUALITY.md`, `quality.json` and HTML pages into `e2e/`
 (`PRD.html`, `CUJs.html`, `TESTCASES.html`, `QUALITY.html`, `REPORT.html` beside the report the numbers read: the newest folder named `e2e/reports/<date>/`).
 The Markdown stays the source: never edit a generated file, and commit them with the Markdown. At
 both gates give the user the page, not the Markdown, and `e2e/QUALITY.html` for what is not
-covered; at gate 2 the page to look at is its "Left open" list, what no runnable case or `Gap:`
-line settles. You read `QUALITY.md` (the same content, plain text); before `TESTCASES.md` exists the
+covered; at gate 2 the page to look at is its "Left open" list: requirements with no runnable case,
+requirements whose deepest case is shallower than their Proof, failure lines of P0 and P1 features
+with no case, and P0 features with no deep case, each until a case or a `Gap:` line settles it. You read `QUALITY.md` (the same content, plain text); before `TESTCASES.md` exists the
 open count is the work ahead, not a defect. The `Approved:` line still goes on the Markdown; after
 writing it, run the command once more so the pages match.
 
