@@ -27,7 +27,7 @@ The Markdown stays the source: never edit a generated file, and commit them with
 both gates give the user the page, not the Markdown, and `e2e/QUALITY.html` for what is not
 covered; at gate 2 the page to look at is its "Left open" list: requirements with no runnable case,
 requirements whose deepest case is shallower than their Proof, failure lines of P0 and P1 features
-with no case, and P0 features with no deep case, each until a case or a `Gap:` line settles it. You read `QUALITY.md` (the same content, plain text); before `TESTCASES.md` exists the
+with no runnable case, and P0 features with no deep case, each until a case or a `Gap:` line settles it. You read `QUALITY.md` (the same content, plain text); before `TESTCASES.md` exists the
 open count is the work ahead, not a defect. The `Approved:` line still goes on the Markdown; after
 writing it, run the command once more so the pages match.
 

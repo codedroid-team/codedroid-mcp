@@ -9,8 +9,8 @@ Input and output: `e2e/EXPLORE.md`, `e2e/INVENTORY.md`, `e2e/PRD.md`, `e2e/CUJs.
 `e2e/TESTCASES.md` in the app's repo. Read the app-e2e-explore and app-e2e-testcases skills' rules
 first: a label you did not see on screen or in the source is a guess. After any edit to them, run
 `npx -y @codedroid/mcp e2e report e2e` (documents in another folder: pass that folder in place of
-`e2e`) and fix every problem it prints as `file:line: message`;
-never edit the pages it writes.
+`e2e`; `Unknown command: e2e` means the release is older than these skills: tell the user and go on
+without it) and fix every problem it prints as `file:line: message`; never edit the pages it writes.
 
 ## A case failed because the UI changed
 
@@ -29,8 +29,10 @@ never edit the pages it writes.
 
 - Removed: mark its cases `Retired: <date> - <why>` instead of deleting them, and its CUJ in
   `CUJs.md`; leave them out of runs. Retired items no longer count in the quality numbers. Then
-  delete the feature from `PRD.md` (its heading and requirements) and its control rows from
-  `INVENTORY.md` (a screen left with no row goes too); retired cases and journeys may still name them.
+  delete the feature's heading and requirements from `PRD.md`, its control rows and any screen left
+  with no row from `INVENTORY.md`, its controls from any `- Non-goal:` line (a line left with none
+  goes), its `- Gap:` lines, and its requirement ids from any other journey's `Proves:`; retired
+  cases and journeys may still name them. Show the user the diff before committing.
 - Added: explore its screens and add their controls to `INVENTORY.md` (as app-e2e-explore does),
   add it to the PRD's features (as app-e2e-prd does), add its CUJ (as app-e2e-cujs does, with the
   user's review), then its cases (as app-e2e-testcases does, with the user's approval).
@@ -46,11 +48,11 @@ removed. Run the changed cases twice, as above.
 
 Start from `e2e/QUALITY.html`: its "Left open" list (requirements with no runnable case,
 requirements whose deepest case is shallower than their Proof, failure lines of P0 and P1 features
-with no case, P0 features with no deep case; none with a Gap line) is what remains to write; then
-capabilities no runnable case covers. Then list, from the files: screens in `EXPLORE.md` no
-feature claims, features in scope with no CUJ, Gate and Harm lines with no negative case, CUJs with
-no case, PRD requirements with no CUJ, cases that have not passed in the latest report, and cases
-whose `Needs:` names a missing case. Say which matter most (P0 first) and offer to write the
+with no runnable case, P0 features with no deep case; none with a Gap line) is what remains to
+write; then capabilities no runnable case covers. Then list, from the files: screens in `EXPLORE.md`
+no feature claims, features in scope with no CUJ, Gate and Harm lines with no negative case, CUJs
+with no case, PRD requirements with no CUJ, cases that have not passed in the latest report, and
+cases whose `Needs:` names a missing case. Say which matter most (P0 first) and offer to write the
 missing cases.
 
 ## Documents from before these formats

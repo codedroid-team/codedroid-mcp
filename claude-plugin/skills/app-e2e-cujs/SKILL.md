@@ -27,8 +27,7 @@ User action: tap own skill → fill "Fill In" → "Use Skill".
 
 ## The file
 
-- Group by the PRD's features, in its order, under a level-2 heading per feature
-  (`## F3 · Skills`).
+- Group by the PRD's features, in its order, under a level-2 heading per feature (`## F3 · Skills`).
   Number continuously. A feature that needs more than five CUJs is two features: say so.
 - A common start state at the top (unlocked, app in front, signed in, nothing running).
 - Manual CUJs stay in, marked `manual` in the heading, with the reason on a line under it, never
@@ -40,8 +39,7 @@ User action: tap own skill → fill "Fill In" → "Use Skill".
   quality pages list "Requirements no journey proves".
 - A journey that proves no requirement means the PRD is missing one: add the requirement (with its
   Caps, Proof and Fails; `Caps: none` if no control is involved) rather than leaving `Proves:`
-  empty. A manual journey proves a
-  requirement too.
+  empty. A manual journey proves a requirement too.
 - Robustness checks (rotation, dark theme, Back, crash buffer) as a short list folded into cases,
   not CUJs of their own.
 

@@ -30,6 +30,8 @@ report which checks adb would have made.
 
 ## Each case
 
+A `manual` case is never run: give it a `not run` row with its `Why manual:` reason, and never
+follow its steps.
 1. Put the app in the case's start state: `open_app`, then Back to its first screen. If Back does
    not get there, `adb` `shell am force-stop <package>` (the app under test, never
    com.codedroid.agent) and `open_app` again.
@@ -102,12 +104,14 @@ cases it did not reach: a dated report folder with no `REPORT.md` is a problem.
 After fixing a case, rerun it and every case that `Needs:` it, and report the last result with
 "passed after N tries". Rerun the whole suite only when a fix changed a shared step (the start
 state, a common cleanup) or before a release verdict. A bug you find mid-run that no case covers:
-add a case for it to `TESTCASES.md`, run it twice, and say in the report that it was added. Anything
-the run left that only "clear all" would remove: list it under cleanup, don't clear it.
+add a case for it to `TESTCASES.md` (if it is approved, the app-e2e-maintain skill's "Changing an
+approved file" applies), run it twice, and say in the report that it was added. Anything the run left that
+only "clear all" would remove: list it under cleanup, don't clear it.
 
 Then run `npx -y @codedroid/mcp e2e report e2e` (documents in another folder: pass that folder in
-place of `e2e`). Exit 1 means the documents have problems, printed
-as `file:line: message`: fix them and rerun until it prints none. If the documents were written
+place of `e2e`; `Unknown command: e2e` means the release is older than these skills: tell the user
+and go on without it). Exit 1 means the documents have problems, printed as `file:line: message`:
+fix them and rerun until it prints none. If the documents were written
 before these formats, stop: with the user's OK, follow the app-e2e-maintain skill's "Documents
 from before these formats" first. Never rewrite approved documents at the end of a run on your own.
 It writes `REPORT.html` beside the report and refreshes `QUALITY.html`; never edit those, and

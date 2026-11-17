@@ -38,12 +38,14 @@ now and passes once fixed. Everything it creates is named `e2e-...` and removed 
 `Covers:`, `Tier:` with `Depth:`, and `Run mode:` as app-e2e-testcases says. `Covers:` names the
 requirement or failure the bug breaks. If none fits, add one to `PRD.md` first (with its Caps,
 Proof and Fails; a failure gets its `R<n>.f<m>` line) and cover that. A `TC-B<n>` case's
-`Feature:` is the feature of the requirement it covers.
+`Feature:` is the feature of the requirement it covers. If `TESTCASES.md` is approved,
+the app-e2e-maintain skill's "Changing an approved file" applies.
 
 Run `npx -y @codedroid/mcp e2e report e2e` (documents in another folder: pass that folder in place
-of `e2e`); it must print no problems before you go on (fix each `file:line: message` and rerun). If
-the documents were written before these formats, stop and bring them up as step 1 says, with the
-user's OK; never rewrite approved documents on your own.
+of `e2e`; `Unknown command: e2e` means the release is older than these skills: tell the user and go
+on without it); it must print no problems before you go on (fix each `file:line: message` and
+rerun). If the documents were written before these formats, stop and bring them up as step 1 says,
+with the user's OK; never rewrite approved documents on your own.
 
 ## 4. Prove it red
 

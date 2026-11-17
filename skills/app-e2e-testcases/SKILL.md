@@ -80,15 +80,13 @@ Steps:
   (`F1 deep`: that feature has no deep case, on purpose) or a requirement id and the word depth
   (`R7 depth`: it has a case, but none checks as deep as its Proof). A ref a runnable case covers
   needs no Gap line, and the command reports one that has both, and a depth Gap line for a
-  requirement that has no case or is already deep enough. A manual case is not a runnable case,
-  and does not count as a deep case. A Gap line never counts as covered: the
-  quality page lists it under "Acknowledged gaps". "Left open" lists requirements with no runnable
-  case, requirements whose deepest case is shallower than their Proof, failure lines of P0 and P1
-  features with no case, and P0 features with no deep case, each with no Gap line; it is what is
-  left to write, so empty it before handing over. A requirement listed
-  as too shallow is fixed by a case whose Expected lines check at its Proof depth (for `kept`,
-  reopen the app and check again); give it a `depth` Gap line only when this phone or account
-  cannot do that.
+  requirement that has no case or is already deep enough. A manual case is not a runnable case, and
+  does not count as a deep case. A Gap line never counts as covered: the quality page lists it under
+  "Acknowledged gaps". "Left open" lists requirements with no runnable case, requirements whose
+  deepest case is shallower than their Proof, failure lines of P0 and P1 features with no runnable
+  case, and P0 features with no deep case, each with no Gap line; it is what is left to write. A
+  requirement listed as too shallow is fixed by a case whose Expected lines check at its Proof
+  depth; give it a `depth` Gap line only when this phone or account cannot do that.
 - `Feature:` is the PRD feature of its CUJ. `Type:` is `happy` (the journey works), `negative`
   (the app refuses or protects, and says so) or `setup` (a case that only prepares or cleans up,
   with `Feature: all`). A setup case proves nothing: it needs only its `Run mode:` line, and
@@ -144,8 +142,7 @@ Steps:
 ## Before handing to the user
 
 Run `npx -y @codedroid/mcp e2e report e2e`; it must print no problems before you go on (fix each
-`file:line: message` and rerun).
-Give the user `e2e/TESTCASES.html` to review and `e2e/QUALITY.html` for what no runnable case
-covers; its "Left open" list should be empty, or each item explained to the user. List the cases by feature, with priority, type and which run a CodeDroid task; the CUJs left
-without a case and the Gate and Harm lines left without a negative case, and why. Ask for
-approval before running.
+`file:line: message` and rerun). Give the user `e2e/TESTCASES.html` to review and `e2e/QUALITY.html`
+for what no runnable case covers; its "Left open" list should be empty, or each item explained. List
+the cases by feature, with priority, type and which run a CodeDroid task; the CUJs without a case
+and the Gate and Harm lines without a negative case, and why. Ask for approval before running.
