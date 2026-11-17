@@ -405,8 +405,10 @@ try {
   for (const t of ["What: notes.\n  - R1 above is the main one.", "Gates: sign-in.\n  - R1 needs an account.", "Harm: delete.\n   - R3 deletes for good.", "Screens: list, editor.\n  - r2d2 is the robot."]) {
     assert.deepEqual(readE2e(copy((d) => sub(d, "PRD.md", "### F1 · Notes · P0\n", `### F1 · Notes · P0\n${t}\n`))).problems, [], t);
   }
-  const depends = readE2e(copy((d) => sub(d, "PRD.md", "with its text.\n", "with its text.\n  Depends on:\n  - R1 must have saved the note first.\n")));
-  assert.deepEqual([depends.problems, depends.requirements[1].caps, depends.requirements[1].proof, depends.requirements[1].fails.map((f) => f.id)], [[], ["C1", "C3"], "screen", ["R2.f1"]]);
+  for (const t of ["  - R1 must have saved the note first.", "  - R1 · must have saved the note first."]) {
+    const depends = readE2e(copy((d) => sub(d, "PRD.md", "with its text.\n", `with its text.\n  Depends on:\n${t}\n`)));
+    assert.deepEqual([depends.problems, depends.requirements[1].caps, depends.requirements[1].proof, depends.requirements[1].fails.map((f) => f.id)], [[], ["C1", "C3"], "screen", ["R2.f1"]], t);
+  }
 
   // The results table's separator row is read as the pages read a table rule: outer pipes are optional.
   for (const sep of ["--- | --- | --- | --- | ---", "|---|:-:|---|---|---", " | --- | --- | --- | --- | --- | "]) {
