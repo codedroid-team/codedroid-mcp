@@ -193,6 +193,28 @@ try {
   const dp = render(copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n## Gaps\n- Gap: R4 depth · <b>one</b> screen\n")))["QUALITY.html"];
   assert.ok(!dp.includes("must be checked at"), "acknowledged, so not open");
   assert.ok(dp.includes("</a> depth") && dp.includes("&lt;b&gt;one&lt;/b&gt; screen"), "listed under acknowledged gaps, escaped");
+  // Labels and percentages match QUALITY.md: rounded down, "with a case deep enough", no report yet without one.
+  for (const p of Object.values(pages)) assert.ok(!p.includes("tested deep enough") && !p.includes("Tested deep enough"), "no 'tested deep enough'");
+  assert.ok(qual.includes("<b>2 of 4</b><small>requirements with a case deep enough (50%)</small>"), "tile label");
+  assert.ok(qual.includes("<b>4 of 6</b><small>capabilities exercised in the last report (66%)</small>"), "rounded down");
+  assert.ok(qual.includes("<th>Deep enough</th>"), "per-feature column");
+  assert.ok(/F1<\/a> · Notes [^\n]*?<td>75%<\/td><td>75%<\/td><td>75%<\/td><td>66%<\/td>/.test(qual), "F1 row rounded down like QUALITY.md");
+  assert.ok(qual.includes("A control used by requirements of two features is counted in both rows"), "per-feature note");
+  assert.ok(prd.includes("2 of 3 requirements have a case, 2 with a case deep enough."), "feature card wording");
+  const noRepQ = none["QUALITY.html"];
+  assert.ok(noRepQ.includes("<b>no report yet</b><small>capabilities exercised in the last report</small>") && noRepQ.includes("<b>no report yet</b><small>capabilities passing in the last report</small>"), "no report yet");
+  assert.ok(!noRepQ.includes("0 of 6"), "no 0 of 6 without a report");
+  const noMode = render(copy((d) => sub(d, "TESTCASES.md", "Tier: core · Depth: screen\nRun mode: task\n", "Tier: core · Depth: screen\n")))["TESTCASES.html"];
+  assert.ok(noMode.includes("6 cases: 4 phone, 0 task, 1 manual, 1 with no run mode."), "cases with no run mode counted on TESTCASES.html");
+  // Requirements no journey proves: listed on QUALITY.html and at the top of CUJs.html, only when there are any.
+  const nj = render(copy((d) => sub(d, "CUJs.md", "Proves: R4\n", "Proves: R4\nRetired: 2026-01-01 - merged\n")));
+  for (const p of ["QUALITY.html", "CUJs.html"]) {
+    const sec = nj[p].split("Requirements no journey proves")[1]?.split("</ul>")[0] ?? "";
+    assert.ok(sec.includes('href="PRD.html#R4"') && sec.includes("Typing in search narrows the list"), `${p} lists R4`);
+    assert.ok(!sec.includes("R3"), `${p} lists only R4`);
+  }
+  assert.ok(nj["CUJs.html"].indexOf("Requirements no journey proves") < nj["CUJs.html"].indexOf('id="CUJ-1"'), "at the top of CUJs.html");
+  assert.ok(!qual.includes("no journey proves") && !cujs.includes("no journey proves"), "no list when every requirement has a journey");
   console.log("e2e-html ok");
 } finally {
   for (const d of tmps) fs.rmSync(d, { recursive: true, force: true });

@@ -42,14 +42,18 @@ export function quality(model) {
   const inFeature = new Set(model.requirements.flatMap((r) => r.caps).filter((id) => caps.has(id)));
   const withCase = new Set();
   const exercised = new Set();
-  const passing = new Set();
+  const passed = new Set();
+  const failed = new Set();
   for (const c of runnable) {
     for (const id of reach(c)) {
       withCase.add(id);
       if (result(c) === "pass" || result(c) === "fail") exercised.add(id);
-      if (result(c) === "pass") passing.add(id);
+      if (result(c) === "pass") passed.add(id);
+      if (result(c) === "fail") failed.add(id);
     }
   }
+  // Passing: a case on it passed and none failed. A case not run neither helps nor hurts.
+  const passing = new Set([...passed].filter((id) => !failed.has(id)));
   const manualOnly = new Set(real.filter((c) => c.mode === "manual").flatMap((c) => [...reach(c)]));
   const seenYes = new Set(model.capabilities.filter((c) => c.seen.startsWith("yes")).map((c) => c.id));
   const counts = (ids) => capCounts(ids, inFeature, withCase, exercised, passing, seenYes);
@@ -63,8 +67,9 @@ export function quality(model) {
   const acked = (id) => gapped.has(id) && !coverRefs.has(id);
   const depthGapped = new Set(model.gaps.filter((g) => g.kind === "depth").map((g) => g.ref));
   const deepest = (r) => Math.max(-1, ...runnable.filter((c) => c.covers.some((e) => e.ref === r.id)).map((c) => DEPTH.indexOf(c.depth)));
-  const atDepth = (r) => runnable.some((c) => c.covers.some((e) => e.ref === r.id) && DEPTH.indexOf(c.depth) >= DEPTH.indexOf(r.proof));
-  const shallow = (r) => coverRefs.has(r.id) && !atDepth(r);
+  // A requirement with no valid Proof: is never deep enough, nor too shallow: its Proof line is a problem.
+  const atDepth = (r) => DEPTH.includes(r.proof) && runnable.some((c) => c.covers.some((e) => e.ref === r.id) && DEPTH.indexOf(c.depth) >= DEPTH.indexOf(r.proof));
+  const shallow = (r) => coverRefs.has(r.id) && DEPTH.includes(r.proof) && !atDepth(r);
   const deepCases = (f) => runnable.filter((c) => c.feature === f.id && c.tier === "deep").length;
   const deepGap = (f) => model.gaps.find((g) => g.kind === "deep" && g.ref === f.id)?.reason ?? null;
   const reqCounts = (list) => ({
@@ -88,7 +93,8 @@ export function quality(model) {
     ok: model.problems.length === 0,
     problems: model.problems,
     capabilities: { ...counts([...caps.keys()].filter((id) => !reasons.has(id))), total: caps.size, set_aside: reasons.size },
-    requirements: reqCounts(model.requirements),
+    // Only when CUJs.md was read: before it is written, no requirement is missing a journey yet.
+    requirements: { ...reqCounts(model.requirements), no_cuj: model.files["CUJs.md"] ? model.requirements.filter((r) => !journeys.some((j) => j.proves.includes(r.id))).map((r) => r.id) : [] },
     failures: failCounts(model.requirements),
     report: model.results.report,
     cases: {
@@ -143,8 +149,18 @@ export function quality(model) {
   };
 }
 
-const pct = (n, d) => (d ? `${Math.round((100 * n) / d)}%` : "–");
+/** Rounded down, so 100% means all and 0% means none; a share below 1% is "<1%". */
+export const pct = (n, d) => {
+  if (!d) return "–";
+  const p = Math.floor((100 * n) / d);
+  return p === 0 && n ? "<1%" : `${p}%`;
+};
 const frac = (n, d) => `${n} of ${d} (${pct(n, d)})`;
+/** "4 phone, 1 task, 1 manual", plus the cases with no valid run mode when there are any. */
+export const modes = ({ total, by_mode: m }) => {
+  const none = total - m.phone - m.task - m.manual;
+  return `${m.phone} phone, ${m.task} task, ${m.manual} manual${none ? `, ${none} with no run mode` : ""}`;
+};
 
 export function qualityMd(q, model) {
   const out = ["# Test quality", ""];
@@ -163,17 +179,16 @@ export function qualityMd(q, model) {
   if (c.set_aside) out.push(`| Capabilities in scope | ${scope} (${c.set_aside} set aside as non-goals) |`);
   out.push(`| Capabilities in features | ${frac(c.in_feature, scope)} |`);
   out.push(`| Capabilities with a case | ${frac(c.with_case, scope)} |`);
-  out.push(`| Capabilities exercised in the last report | ${frac(c.exercised, scope)} |`);
-  out.push(`| Capabilities passing in the last report | ${frac(c.passing, scope)} |`);
+  out.push(`| Capabilities exercised in the last report | ${q.report ? frac(c.exercised, scope) : "no report yet"} |`);
+  out.push(`| Capabilities passing in the last report | ${q.report ? frac(c.passing, scope) : "no report yet"} |`);
   out.push(`| Capabilities not seen on the phone | ${c.not_seen} of ${scope} |`);
   out.push(`| Requirements with a case | ${frac(q.requirements.with_case, q.requirements.total)} |`);
-  out.push(`| Requirements tested deep enough | ${frac(q.requirements.at_depth, q.requirements.total)} |`);
+  out.push(`| Requirements with a case deep enough | ${frac(q.requirements.at_depth, q.requirements.total)} |`);
   out.push(`| Failures with a case | ${frac(q.failures.with_case, q.failures.total)} |`);
   out.push(`| Requirements acknowledged as gaps | ${q.requirements.acknowledged} of ${q.requirements.total} |`);
   out.push(`| Failures acknowledged as gaps | ${q.failures.acknowledged} of ${q.failures.total} |`);
   out.push(`| Left open | ${q.open.length} |`);
-  const m = q.cases.by_mode;
-  out.push(`| Cases | ${q.cases.total} (${m.phone} phone, ${m.task} task, ${m.manual} manual) |`);
+  out.push(`| Cases | ${q.cases.total} (${modes(q.cases)}) |`);
   if (q.cases.retired || q.cujs.retired) out.push(`| Retired, not counted | ${q.cases.retired} cases, ${q.cujs.retired} journeys |`);
   out.push("");
 
@@ -184,12 +199,17 @@ export function qualityMd(q, model) {
     const k = f.capabilities, r = f.requirements, t = f.tiers;
     out.push(`| ${f.id} · ${f.name} | ${f.priority} | ${pct(k.with_case, k.total)} | ${pct(k.exercised, k.total)} | ${pct(k.passing, k.total)} | ${pct(r.with_case, r.total)} | ${pct(r.at_depth, r.total)} | ${pct(f.failures.with_case, f.failures.total)} | ${t.smoke}/${t.core}/${t.deep}/${t.edge} |`);
   }
+  out.push("", "A control used by requirements of two features is counted in both rows, so the rows can add up to more than the headline.");
   out.push("", "## By journey", "");
   out.push("| CUJ | Title | Requirements | Cases | Capabilities with a case | Exercised | Passing |");
   out.push("| --- | --- | --- | --- | --- | --- | --- |");
   for (const j of q.by_cuj) {
     const k = j.capabilities;
     out.push(`| ${j.id} | ${j.title} | ${j.requirements.join(", ")} | ${j.cases.length} | ${pct(k.with_case, k.total)} | ${pct(k.exercised, k.total)} | ${pct(k.passing, k.total)} |`);
+  }
+  if (q.requirements.no_cuj.length) {
+    out.push("", "## Requirements no journey proves", "");
+    for (const id of q.requirements.no_cuj) out.push(`- ${id} · ${model.requirements.find((r) => r.id === id).text}`);
   }
   out.push("", "## Left open", "");
   if (!q.open.length) out.push("Nothing is left open.", "");
@@ -222,6 +242,6 @@ export function qualityMd(q, model) {
   return out.join("\n").replace(/\n+$/, "\n");
 }
 
-export function qualityJson(q, model, now = new Date()) {
-  return JSON.stringify({ ...q, generated: now.toISOString(), sources: Object.fromEntries(Object.entries(model.files).map(([name, f]) => [name, f.sha256])) }, null, 2) + "\n";
+export function qualityJson(q, model) {
+  return JSON.stringify({ ...q, sources: Object.fromEntries(Object.entries(model.files).map(([name, f]) => [name, f.sha256])) }, null, 2) + "\n";
 }

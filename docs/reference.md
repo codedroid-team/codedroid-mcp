@@ -171,9 +171,11 @@ copies and deleting nothing. It prints the counts, each problem it found in the 
 The report in use is the newest folder named exactly `YYYY-MM-DD` (zero-padded, compared as dates)
 under `reports/`: the full run. The partial runs the skills write beside it (`<date>-bug-<case>`,
 `<date>-maintain`, `<date>-smoke`) are not used, so "exercised" and "passing" come from the full
-run. Only when no folder has that exact name does the last folder by name stand in. A folder shaped
-like a date but not zero-padded (`2026-11-9`) or not a calendar date (`2026-13-45`) is a problem and
-is not used, and so is a newer dated folder with no `REPORT.md`. Only the first table whose columns
+run. A control is exercised when a runnable case covering it has a `pass` or `fail` row in that
+report, and passing when at least one such case passed and none failed; a `not run` row neither
+helps nor hurts. Only when no folder has that exact name does the last folder by name stand in. A
+folder shaped like a date but not zero-padded (`2026-11-9`) or not a calendar date (`2026-13-45`)
+is a problem and is not used, and so is a newer dated folder with no `REPORT.md`. Only the first table whose columns
 start with `Case` and `Result` is read; a second one is a problem. `QUALITY.md` and
 `QUALITY.html` say which report their numbers come from.
 
@@ -199,7 +201,9 @@ level ends a block, and a feature, journey, case or screen heading at the wrong 
 
 In `TESTCASES.md`, `- Gap: <ref> · reason` acknowledges something no case covers. `<ref>` is a
 requirement (`R4`), a failure line (`R1.f2`), a feature with no deep case (`F1 deep`) or a
-requirement with a case but none deep enough for its Proof (`R3 depth`). A gap is never counted as
+requirement with a case but none deep enough for its Proof (`R3 depth`). A `Covers:` entry with no
+brackets counts every control in that requirement's `Caps:`, also when the entry is a failure id
+(`R1.f2`); write the controls in brackets (`R1.f2 (C4)`) to count fewer. A gap is never counted as
 covered; the quality pages list it under "Acknowledged gaps". A case with `Type: setup` needs only
 its `Run mode:` line and is counted apart. Every case has a `Feature:` line (`Feature: all` for a
 setup case). A line `Retired: <date> - <why>` in a case or journey retires it: it keeps its id, may

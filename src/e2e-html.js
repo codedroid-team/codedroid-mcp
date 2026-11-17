@@ -5,14 +5,13 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { readE2e } from "./e2e-model.js";
-import { quality } from "./e2e-quality.js";
+import { modes, pct, quality } from "./e2e-quality.js";
 import { CSS } from "./e2e-html-style.js";
 import { esc, inline, md } from "./e2e-markdown.js";
 
 const PRD = "PRD.html", CUJS = "CUJs.html", TCS = "TESTCASES.html", QUAL = "QUALITY.html";
 const chip = (t, kind = "") => `<span class="chip ${kind}">${esc(t)}</span>`;
-const bar = (n, d) => `<div class="bar"><span style="width:${d ? Math.round((100 * n) / d) : 0}%"></span></div>`;
-const pct = (n, d) => (d ? `${Math.round((100 * n) / d)}%` : "–");
+const bar = (n, d) => `<div class="bar"><span style="width:${d ? Math.floor((100 * n) / d) : 0}%"></span></div>`;
 const table = (head, rows) => `<div class="scroll"><table><thead><tr>${head.map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table></div>`;
 const tr = (cells, attr = "") => `<tr${attr}>${cells.map((c) => `<td>${c}</td>`).join("")}</tr>`;
 const MIME = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg" };
@@ -133,6 +132,9 @@ export function renderPages(model, q) {
   const caseLine = (link, c) => `<li>${link(c.id)} ${esc(c.title)} ${c.mode === "manual" ? chip("manual") : ""} ${result(c.id)}</li>`;
   const caseList = (link, cs) => (cs.length ? `<ul class="plain">${cs.map((c) => caseLine(link, c)).join("")}</ul>` : chip("no case", "warn"));
   const featureOf = (id) => model.features.find((f) => f.id === id);
+  const noCuj = (link) => (q.requirements.no_cuj.length
+    ? `<h2>Requirements no journey proves</h2>\n<ul class="plain">${q.requirements.no_cuj.map((id) => `<li>${link(id)} ${inline(reqs.get(id).text)}</li>`).join("")}</ul>`
+    : "");
 
   const prd = page(PRD, "", "PRD", (link) => {
     const { title, html } = prdProse(model);
@@ -141,7 +143,7 @@ export function renderPages(model, q) {
       const k = q.by_feature.find((x) => x.id === f?.id)?.requirements;
       const idAttr = f ? ` id="${esc(f.id)}"` : "";
       return `<section class="card"${idAttr}><div class="head"><h2>${f ? `${esc(f.id)} · ${esc(f.name)}` : "Requirements outside a feature"}</h2><span class="chips">${f ? chip(f.priority) : ""}${notVerified}</span></div>
-${k ? `<p class="muted">${k.with_case} of ${k.total} requirements have a case, ${k.at_depth} tested deep enough.</p>` : ""}
+${k ? `<p class="muted">${k.with_case} of ${k.total} requirements have a case, ${k.at_depth} with a case deep enough.</p>` : ""}
 ${rs.map((r) => reqCard(r)).join("\n")}</section>`;
     };
     const reqCard = (r) => {
@@ -183,6 +185,7 @@ ${section(model, "CUJs.md", j.line, /^Proves:/)}</article>`;
     const retiredCard = (j) => `<article class="card" id="${esc(j.id)}"><div class="head"><h3>${esc(j.id)} · ${esc(j.title)}</h3><span class="chips">${chip("retired")}</span></div><p class="muted">${esc(j.retired)}</p></article>`;
     return `<h1>Critical user journeys</h1>
 ${pending("CUJs.md")}<p class="lede">${live.length} journeys, each tied to the requirements it proves and the cases that run it.${gone.length ? ` ${gone.length} retired, not counted.` : ""}</p>
+${noCuj(link)}
 ${groups.filter(([, js]) => js.length).map(([f, js]) => `<h2${f ? ` id="${esc(f.id)}"` : ""}>${f ? `${link(f.id)} · ${esc(f.name)}` : "Other journeys"}</h2>\n${js.map(card).join("\n")}`).join("\n")}
 ${gone.length ? `<h2>Retired</h2>\n${gone.map(retiredCard).join("\n")}` : ""}`;
   });
@@ -200,7 +203,7 @@ ${section(model, "TESTCASES.md", c.line, /^(Feature|Covers|Tier|Run mode):/)}</a
     const retiredCard = (c) => `<article class="card" id="${esc(c.id)}"><div class="head"><h3>${esc(c.id)} · ${esc(c.title)}</h3><span class="chips">${chip("retired")}</span></div><p class="muted">${esc(c.retired)}</p></article>`;
     const groups = [...model.features.map((f) => [f, live.filter((c) => c.feature === f.id)]), [null, live.filter((c) => !featureOf(c.feature))]];
     return `<h1>Test cases</h1>
-${pending("TESTCASES.md")}<p class="lede">${q.cases.total} cases: ${q.cases.by_mode.phone} phone, ${q.cases.by_mode.task} task, ${q.cases.by_mode.manual} manual${q.cases.setup ? `, ${q.cases.setup} setup` : ""}.${gone.length ? ` ${gone.length} retired, not counted.` : ""}${hasReport ? "" : " No report yet, so no results."}</p>
+${pending("TESTCASES.md")}<p class="lede">${q.cases.total} cases: ${modes(q.cases)}${q.cases.setup ? `, ${q.cases.setup} setup` : ""}.${gone.length ? ` ${gone.length} retired, not counted.` : ""}${hasReport ? "" : " No report yet, so no results."}</p>
 ${groups.filter(([, cs]) => cs.length).map(([f, cs]) => `<h2${f ? ` id="${esc(f.id)}"` : ""}>${f ? `${link(f.id)} · ${esc(f.name)}` : "Other cases"}</h2>\n${cs.map(card).join("\n")}`).join("\n")}
 ${gone.length ? `<h2>Retired</h2>\n${gone.map(retiredCard).join("\n")}` : ""}`;
   });
@@ -245,24 +248,26 @@ ${c.set_aside ? `<p class="muted">Percentages count the ${scope} capabilities in
 ${tile("capabilities have a case", c.with_case, scope)}
 ${tile("capabilities are in a feature", c.in_feature, scope)}
 ${tile("requirements have a case", q.requirements.with_case, q.requirements.total)}
-${tile("requirements tested deep enough", q.requirements.at_depth, q.requirements.total)}
+${tile("requirements with a case deep enough", q.requirements.at_depth, q.requirements.total)}
 ${tile("failures have a case", q.failures.with_case, q.failures.total)}
 ${tile("requirements and failures acknowledged as gaps", 0, 0, `${q.requirements.acknowledged + q.failures.acknowledged}`)}
 ${tile("left open", 0, 0, `${q.open.length}`)}
-${tile("capabilities exercised in the last report", c.exercised, scope)}
-${tile("capabilities passing in the last report", c.passing, scope)}
+${tile("capabilities exercised in the last report", c.exercised, scope, q.report ? undefined : "no report yet")}
+${tile("capabilities passing in the last report", c.passing, scope, q.report ? undefined : "no report yet")}
 ${tile("capabilities not seen on the phone", 0, 0, `${c.not_seen} of ${scope}`)}
 ${tile("cases", 0, 0, `${q.cases.total}`)}
 ${q.cases.retired || q.cujs.retired ? tile("retired, not counted", 0, 0, `${q.cases.retired} cases, ${q.cujs.retired} journeys`) : ""}
 </div>
+${noCuj(link)}
 ${open}
 ${acknowledged}
 <h2>Not covered by a runnable case</h2>
 ${gaps}
 ${aside}
 <h2>By feature</h2>
-${table(["Feature", "Controls with a case", "Exercised in report", "Passing in report", "Requirements with a case", "Tested deep enough", "Failures with a case", "Cases smoke / core / deep / edge"],
+${table(["Feature", "Controls with a case", "Exercised in report", "Passing in report", "Requirements with a case", "Deep enough", "Failures with a case", "Cases smoke / core / deep / edge"],
       q.by_feature.map((f) => { const k = f.capabilities, r = f.requirements, t = f.tiers; return tr([`${link(f.id)} · ${esc(f.name)} ${chip(f.priority)}`, pct(k.with_case, k.total), pct(k.exercised, k.total), pct(k.passing, k.total), pct(r.with_case, r.total), pct(r.at_depth, r.total), pct(f.failures.with_case, f.failures.total), `${t.smoke}/${t.core}/${t.deep}/${t.edge}`]); }))}
+<p class="muted">A control used by requirements of two features is counted in both rows, so the rows can add up to more than the headline.</p>
 <h2>By journey</h2>
 ${table(["Journey", "Requirements", "Cases", "Controls with a case", "Exercised in report", "Passing in report"],
       q.by_cuj.map((j) => { const k = j.capabilities; return tr([`${link(j.id)} · ${esc(j.title)}`, j.requirements.map(link).join(", "), String(j.cases.length), pct(k.with_case, k.total), pct(k.exercised, k.total), pct(k.passing, k.total)]); }))}
