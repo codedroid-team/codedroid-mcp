@@ -193,7 +193,7 @@ try {
   assert.ok(!gq2.includes("R2.f1</a> · a note deleted"), "an acknowledged failure is not in the open list");
   const gapCards = gapPages["TESTCASES.html"].split('<article class="card"').slice(1).map((a) => a.split("</article>")[0]);
   assert.ok(gapCards.length && gapCards.every((a) => !a.includes("Gap:")), "gap lines are not shown as case text");
-  assert.ok(gapPages["TESTCASES.html"].includes("Gap: R2.f1 · &lt;i&gt;cannot&lt;/i&gt; be staged"), "the Gaps section is shown as prose");
+  assert.ok(gapPages["TESTCASES.html"].indexOf("Gap: R2.f1 · &lt;i&gt;cannot&lt;/i&gt; be staged") > gapPages["TESTCASES.html"].lastIndexOf("</article>"), "the Gaps section is shown as prose, after the last case");
   // Too shallow: listed as open with the depths; a depth Gap moves it to the acknowledged list.
   assert.ok(qual.includes("shallow") && qual.includes("must be checked at elsewhere; the deepest case checks screen"), "shallow item");
   const dp = render(copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n## Gaps\n- Gap: R4 depth · <b>one</b> screen\n")))["QUALITY.html"];
@@ -215,7 +215,7 @@ try {
   // Every part of the documents is on exactly one page: feature prose, a requirement's other lines, a heading that is
   // not a feature, the CUJs intro, a group's prose, prose after the last journey, the test cases intro, prose between
   // cases. Planted beside each, <u> is escaped.
-  const MARKS = ["MARK_WHAT", "MARK_SCREENS", "MARK_GATES", "MARK_HARM", "MARK_FTAIL", "MARK_REQ", "MARK_UNASSIGNED", "MARK_CUJSTART", "MARK_CUJGROUP", "MARK_ROBUST", "MARK_TCINTRO", "MARK_TCMID"];
+  const MARKS = ["MARK_WHAT", "MARK_SCREENS", "MARK_GATES", "MARK_HARM", "MARK_FTAIL", "MARK_REQ", "MARK_UNASSIGNED", "MARK_CUJSTART", "MARK_CUJGROUP", "MARK_ROBUST", "MARK_TCINTRO", "MARK_TCMID", "MARK_INCUJ", "MARK_INCASE"];
   const u = (m) => `${m} <u>x</u>`;
   const shown = render(copy((d) => {
     sub(d, "PRD.md", "### F1 · Notes · P0\n", `### F1 · Notes · P0\nWhat: ${u("MARK_WHAT")}\nScreens: ${u("MARK_SCREENS")}\nGates: ${u("MARK_GATES")}\nHarm: ${u("MARK_HARM")}\n\n`);
@@ -227,8 +227,10 @@ try {
     fs.appendFileSync(path.join(d, "CUJs.md"), `\n## Robustness\n- ${u("MARK_ROBUST")}\n`);
     sub(d, "TESTCASES.md", "# Notes test cases\n", `# Notes test cases\n\n${u("MARK_TCINTRO")}\n`);
     sub(d, "TESTCASES.md", "### TC-3a", `## Search\n${u("MARK_TCMID")}\n\n### TC-3a`);
+    sub(d, "CUJs.md", "- The note shows in the list.", `- ${u("MARK_INCUJ")}`);
+    sub(d, "TESTCASES.md", "Expected: the title is in the list.", `Expected: ${u("MARK_INCASE")}`);
   }));
-  for (const m of MARKS) assert.deepEqual(Object.keys(shown).filter((p) => shown[p].includes(m)), [{ MARK_CUJSTART: "CUJs.html", MARK_CUJGROUP: "CUJs.html", MARK_ROBUST: "CUJs.html", MARK_TCINTRO: "TESTCASES.html", MARK_TCMID: "TESTCASES.html" }[m] ?? "PRD.html"], m);
+  for (const m of MARKS) assert.deepEqual(Object.keys(shown).filter((p) => shown[p].includes(m)), [{ MARK_CUJSTART: "CUJs.html", MARK_CUJGROUP: "CUJs.html", MARK_ROBUST: "CUJs.html", MARK_TCINTRO: "TESTCASES.html", MARK_TCMID: "TESTCASES.html", MARK_INCUJ: "CUJs.html", MARK_INCASE: "TESTCASES.html" }[m] ?? "PRD.html"], m);
   for (const [p, h] of Object.entries(shown)) assert.ok(!h.includes("<u>"), `raw <u> on ${p}`);
   assert.equal((Object.values(shown).join("").match(/&lt;u&gt;x&lt;\/u&gt;/g) ?? []).length, MARKS.length, "each planted <u> shown once, escaped");
   const f1 = shown["PRD.html"].split('<section class="card" id="F1">')[1].split('<article class="card" id="R1">')[0];
@@ -237,7 +239,7 @@ try {
   const cu = shown["CUJs.html"];
   assert.ok(cu.indexOf("MARK_CUJSTART") < cu.indexOf("MARK_CUJGROUP") && cu.indexOf("MARK_CUJGROUP") < cu.indexOf('id="CUJ-1"') && cu.lastIndexOf('id="CUJ-3"') < cu.indexOf("MARK_ROBUST"), "CUJs prose in document order");
   const tc = shown["TESTCASES.html"];
-  assert.ok(tc.indexOf("MARK_TCINTRO") < tc.indexOf('id="TC-1a"'), "test cases intro first");
+  assert.ok(tc.indexOf("MARK_TCINTRO") < tc.indexOf('id="F1"') && tc.indexOf('id="TC-2a"') < tc.indexOf("MARK_TCMID") && tc.indexOf("MARK_TCMID") < tc.indexOf('id="TC-3a"'), "test cases prose in document order");
   assert.ok(prd.includes("<h1>Notes PRD</h1>") && prd.includes('<section class="prose"><h2>Goal</h2>'), "PRD prose headings start at h2, under the page's h1");
   assert.ok(shown["PRD.html"].includes("<h3>Unassigned</h3>"), "a heading that is not a feature is shown");
   // Requirements no journey proves: listed on QUALITY.html and at the top of CUJs.html, only when there are any.
@@ -270,6 +272,8 @@ try {
     sub(d, "CUJs.md", "## F1 · Notes\n", `## F1 · Notes\n${mk()}\n`);
     sub(d, "CUJs.md", "Write a note and find it again", `Write a note${mk()}`);
     sub(d, "CUJs.md", "Proves: R1, R2\n", `Proves: R1, R2, ${mk()}\n`);
+    sub(d, "CUJs.md", "Proves: R4\n", "Proves: R3\n");
+    sub(d, "PRD.md", "Typing in search narrows", `Typing ${mk()} narrows`);
     sub(d, "CUJs.md", "- The note shows in the list.", `- The note shows ${mk()}\n- and stays ${mk()}`);
     fs.appendFileSync(path.join(d, "CUJs.md"), `\n### CUJ-9 · Old · P2 · phone\nRetired: ${mk()}\n\n## Robustness\n- ${mk()}\n`);
     sub(d, "TESTCASES.md", "# Notes test cases\n", `# Notes test cases\n\n${mk()}\n`);

@@ -97,36 +97,39 @@ function featureBlock(model, f) {
   return { prose: md(prose.join("\n")), extra: new Map([...extra].map(([id, ls]) => [id, dedent(ls)])) };
 }
 
-/** The text of CUJs.md or TESTCASES.md outside its items (`items` holds their heading lines), as HTML: `top` before
- * the first feature group, `groups` the text under each `## F<n>` group heading, `rest` everything after, each in
- * document order. The title line is dropped: the page has its own h1. */
+/** The text of CUJs.md or TESTCASES.md outside its items (`items` holds their heading lines), as HTML, each in
+ * document order: `top` before the first item or feature group, `groups` under each `## F<n>` group heading, `before`
+ * the text just above an item (by its heading line), `rest` the text after the last item. The title line is dropped:
+ * the page has its own h1. */
 function loose(model, name, items) {
   const f = model.files[name];
-  if (!f) return { top: "", groups: new Map(), rest: "" };
-  const parts = [{ group: null, head: null, lines: [] }];
+  const out = { top: "", groups: new Map(), before: new Map(), rest: "" };
+  if (!f) return out;
+  const parts = [{ group: null, head: null, lines: [], next: null }];
   let fence = false, skip = false, titled = false;
   for (const [i, t] of f.text.split(/\r?\n/).entries()) {
     if (/^\s*```/.test(t)) fence = !fence;
     else if (!fence && /^#{1,3} /.test(t)) {
       skip = items.has(i + 1);
-      if (skip) continue;
+      if (skip) { parts.at(-1).next ??= i + 1; continue; }
       if (!titled && /^# /.test(t)) { titled = true; continue; }
       titled = true;
       const g = t.match(/^## (F\d+)\b/);
-      parts.push({ group: g ? g[1] : null, head: t, lines: [] });
+      parts.push({ group: g ? g[1] : null, head: t, lines: [], next: null });
       continue;
     }
     if (!skip) parts.at(-1).lines.push(t);
   }
   const known = (p) => p.group && model.features.some((x) => x.id === p.group);
-  const first = parts.findIndex(known);
-  const text = (ps) => md(ps.flatMap((p) => [...(p.head && !known(p) ? [p.head] : []), ...p.lines]).join("\n"));
-  const after = first < 0 ? [] : parts.slice(first);
-  return {
-    top: text(first < 0 ? parts : parts.slice(0, first)),
-    groups: new Map(model.features.map((x) => [x.id, text(after.filter((p) => p.group === x.id))])),
-    rest: text(after.filter((p) => !known(p))),
-  };
+  const html = (ps) => md(ps.flatMap((p) => [...(p.head && !known(p) ? [p.head] : []), ...p.lines]).join("\n"));
+  let k = 0;
+  while (k < parts.length && !known(parts[k])) if (parts[k++].next !== null) break;
+  out.top = html(parts.slice(0, k));
+  const rest = parts.slice(k);
+  for (const x of model.features) out.groups.set(x.id, html(rest.filter((p) => p.group === x.id && known(p))));
+  for (const p of rest) if (!known(p) && p.next !== null) out.before.set(p.next, html([p]));
+  out.rest = html(rest.filter((p) => !known(p) && p.next === null));
+  return out;
 }
 
 export function renderPages(model, q) {
@@ -247,9 +250,9 @@ ${section(model, "CUJs.md", j.line, /^Proves:/)}</article>`;
 ${pending("CUJs.md")}<p class="lede">${live.length} journeys, each tied to the requirements it proves and the cases that run it.${gone.length ? ` ${gone.length} retired, not counted.` : ""}</p>
 ${noCuj(link)}
 ${text.top}
-${groups.filter(([f, js]) => js.length || text.groups.get(f?.id)).map(([f, js]) => `<h2${f ? ` id="${esc(f.id)}"` : ""}>${f ? `${link(f.id)} · ${esc(f.name)}` : "Other journeys"}</h2>\n${f ? text.groups.get(f.id) : ""}\n${js.map(card).join("\n")}`).join("\n")}
+${groups.filter(([f, js]) => js.length || text.groups.get(f?.id)).map(([f, js]) => `<h2${f ? ` id="${esc(f.id)}"` : ""}>${f ? `${link(f.id)} · ${esc(f.name)}` : "Other journeys"}</h2>\n${f ? text.groups.get(f.id) : ""}\n${js.map((j) => (text.before.get(j.line) ?? "") + card(j)).join("\n")}`).join("\n")}
 ${text.rest}
-${gone.length ? `<h2>Retired</h2>\n${gone.map(retiredCard).join("\n")}` : ""}`;
+${gone.length ? `<h2>Retired</h2>\n${gone.map((j) => (text.before.get(j.line) ?? "") + retiredCard(j)).join("\n")}` : ""}`;
   });
 
   const tcs = page(TCS, "", "Test cases", (link) => {
@@ -268,9 +271,9 @@ ${section(model, "TESTCASES.md", c.line, /^(Feature|Covers|Tier|Run mode):/)}</a
     return `<h1>Test cases</h1>
 ${pending("TESTCASES.md")}<p class="lede">${q.cases.total} cases: ${modes(q.cases)}${q.cases.setup ? `, ${q.cases.setup} setup` : ""}.${gone.length ? ` ${gone.length} retired, not counted.` : ""}${hasReport ? "" : " No report yet, so no results."}</p>
 ${text.top}
-${groups.filter(([f, cs]) => cs.length || text.groups.get(f?.id)).map(([f, cs]) => `<h2${f ? ` id="${esc(f.id)}"` : ""}>${f ? `${link(f.id)} · ${esc(f.name)}` : "Other cases"}</h2>\n${f ? text.groups.get(f.id) : ""}\n${cs.map(card).join("\n")}`).join("\n")}
+${groups.filter(([f, cs]) => cs.length || text.groups.get(f?.id)).map(([f, cs]) => `<h2${f ? ` id="${esc(f.id)}"` : ""}>${f ? `${link(f.id)} · ${esc(f.name)}` : "Other cases"}</h2>\n${f ? text.groups.get(f.id) : ""}\n${cs.map((c) => (text.before.get(c.line) ?? "") + card(c)).join("\n")}`).join("\n")}
 ${text.rest}
-${gone.length ? `<h2>Retired</h2>\n${gone.map(retiredCard).join("\n")}` : ""}`;
+${gone.length ? `<h2>Retired</h2>\n${gone.map((c) => (text.before.get(c.line) ?? "") + retiredCard(c)).join("\n")}` : ""}`;
   });
 
   const qual = page(QUAL, "", "Test quality", (link) => {
