@@ -436,6 +436,10 @@ try {
     const odd = path.join(d, `reports/zz${mk(false)}`);
     fs.mkdirSync(odd);
     fs.writeFileSync(path.join(odd, "REPORT.md"), "| Case | Result |\n| --- | --- |\n");
+    // The verifier's ledger: a verdict reason (TC-3b is stale here, so its card and history show it) and a row's
+    // item cell, which an unreadable row's problem message names. By, verdict, attempt and date are read only
+    // from fixed words, numbers and calendar dates: a row with anything else there is rejected and never shown.
+    fs.appendFileSync(path.join(d, "VERIFY.md"), `| TC-3b | 1 | repair | independent | 0123456789abcdef | 2026-11-17 | R4: ${mk()} |\n| ${mk()} | 2 | repair | independent | 0123456789abcdef | 2026-11-17 | r |\n`);
   });
   const hp = render(planted);
   for (const [p, h] of Object.entries(hp)) assert.ok(!h.includes("<u>"), `raw <u> on ${p}`);

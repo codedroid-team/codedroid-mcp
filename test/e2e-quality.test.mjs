@@ -146,6 +146,18 @@ try {
     assert.equal(np.by_feature[0].requirements.at_depth, 1);
     assert.ok(!np.open.some((o) => o.ref === "R2"), "R2 is not listed as too shallow");
   }
+  // ...and the approved twin: R1 is deep enough through the approved TC-1a (kept); with no valid Proof it is not,
+  // even when TC-1a is approved on the edited text (a ledger row with its new code).
+  for (const bad of ["  Proof: deep\n", ""]) {
+    const npDir = copy((d) => sub(d, "PRD.md", "  Caps: C4\n  Proof: kept\n", `  Caps: C4\n${bad}`));
+    fs.appendFileSync(path.join(npDir, "VERIFY.md"), `| TC-1a | 1 | approved | independent | ${caseHash(readE2e(npDir), "TC-1a")} | 2026-11-17 | R1: still approved. |\n`);
+    const npm = readE2e(npDir);
+    assert.equal(npm.cases.find((c) => c.id === "TC-1a").verify.status, "approved");
+    const np = quality(npm);
+    assert.deepEqual([np.requirements.approved, np.requirements.at_depth_approved, np.by_feature[0].requirements.at_depth_approved], [1, 0, 0], `R1 with ${JSON.stringify(bad)}`);
+    assert.match(qualityMd(np, npm), /\| Requirements with an approved case deep enough \| 0 of 4 \(0%\) \|/);
+  }
+  assert.match(md, /\| Requirements with an approved case deep enough \| 1 of 4 \(25%\) \|/);
 
   // A failing case is exercised but not passing: TC-3a not run, TC-3b fail leaves C2 exercised, not passing.
   const rep = quality(readE2e(copy((d) => {
