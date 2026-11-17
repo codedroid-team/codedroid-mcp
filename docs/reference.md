@@ -167,6 +167,8 @@ writes `QUALITY.md`, `quality.json` and the HTML pages (`PRD.html`, `CUJs.html`,
 `QUALITY.html`, and a `REPORT.html` beside the report in use) into that folder, overwriting earlier
 copies and deleting nothing. It prints the counts, each problem it found in the documents as
 `file:line: message`, and the path of `QUALITY.html`. It needs no phone, daemon or network.
+`REPORT.html` embeds each screenshot beside the report, so it is about one and a third times the
+size of those screenshots together.
 
 The report in use is the newest folder named exactly `YYYY-MM-DD` (zero-padded, compared as dates)
 under `reports/`: the full run. The partial runs the skills write beside it (`<date>-bug-<case>`,

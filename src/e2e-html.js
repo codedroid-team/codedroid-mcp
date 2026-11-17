@@ -54,6 +54,10 @@ function section(model, name, line, drop) {
   return md(out.join("\n"), { base: 3 });
 }
 
+const FEATURE = /^### F\d+ · .+? · P\d+\s*$/; // as the model reads it; any other heading ends a feature block
+/** `What: x` at the start of a line starts its own paragraph with the label in bold. */
+const label = (t) => t.replace(/^([A-Z][A-Za-z ]{0,30}):(?=\s)/, "\n**$1:**");
+
 /** The PRD's own prose: everything except the feature blocks and the title. */
 function prdProse(model) {
   const f = model.files["PRD.md"];
@@ -63,14 +67,66 @@ function prdProse(model) {
   for (const t of f.text.split(/\r?\n/)) {
     if (/^\s*```/.test(t)) fence = !fence;
     else if (!fence) {
-      if (/^### F\d+ · /.test(t)) { skip = true; continue; }
-      if (/^#{1,2} /.test(t)) skip = false;
+      if (FEATURE.test(t)) { skip = true; continue; }
+      if (/^#{1,6} /.test(t)) skip = false;
       if (title === null && /^# /.test(t)) { title = t.slice(2).trim(); continue; }
     }
     if (!skip) keep.push(t);
   }
-  const text = keep.join("\n").replace(/^## Features\s*$(?=(?:\s*\n)*(?:#|$(?![\s\S])))/m, "");
-  return { title: title ?? "Product requirements", html: md(text, { base: 1 }) };
+  const text = keep.join("\n").replace(/^## Features\s*$(?=(?:\s*\n)*(?:#{1,2} |$(?![\s\S])))/m, "");
+  return { title: title ?? "Product requirements", html: md(text) };
+}
+
+/** A feature block's own lines (`prose`) and each requirement's lines other than Caps, Proof, Fails and failure items. */
+function featureBlock(model, f) {
+  const lines = model.files["PRD.md"].text.split(/\r?\n/);
+  const starts = new Map(model.requirements.map((r) => [r.line, r.id]));
+  const prose = [], extra = new Map();
+  let fence = false, req = null;
+  for (let n = f.line + 1; n <= lines.length; n++) {
+    const t = lines[n - 1];
+    if (/^\s*```/.test(t)) fence = !fence;
+    else if (!fence && /^#{1,6} /.test(t)) break;
+    if (!fence && starts.has(n)) { req = starts.get(n); extra.set(req, []); continue; }
+    if (!fence && /^\S/.test(t)) req = null; // a line at the margin ends the requirement
+    if (!req) prose.push(fence ? t : label(t));
+    else if (!/^\s+(Caps|Proof|Fails):/.test(t) && !/^\s+[-*+] R\d+\.f\d+ · /.test(t)) extra.get(req).push(t);
+  }
+  const indent = (ls) => Math.min(...ls.filter((l) => l.trim()).map((l) => l.match(/^\s*/)[0].length));
+  const dedent = (ls) => (ls.some((l) => l.trim()) ? md(ls.map((l) => label(l.slice(indent(ls)))).join("\n")) : "");
+  return { prose: md(prose.join("\n")), extra: new Map([...extra].map(([id, ls]) => [id, dedent(ls)])) };
+}
+
+/** The text of CUJs.md or TESTCASES.md outside its items (`items` holds their heading lines), as HTML: `top` before
+ * the first feature group, `groups` the text under each `## F<n>` group heading, `rest` everything after, each in
+ * document order. The title line is dropped: the page has its own h1. */
+function loose(model, name, items) {
+  const f = model.files[name];
+  if (!f) return { top: "", groups: new Map(), rest: "" };
+  const parts = [{ group: null, head: null, lines: [] }];
+  let fence = false, skip = false, titled = false;
+  for (const [i, t] of f.text.split(/\r?\n/).entries()) {
+    if (/^\s*```/.test(t)) fence = !fence;
+    else if (!fence && /^#{1,3} /.test(t)) {
+      skip = items.has(i + 1);
+      if (skip) continue;
+      if (!titled && /^# /.test(t)) { titled = true; continue; }
+      titled = true;
+      const g = t.match(/^## (F\d+)\b/);
+      parts.push({ group: g ? g[1] : null, head: t, lines: [] });
+      continue;
+    }
+    if (!skip) parts.at(-1).lines.push(t);
+  }
+  const known = (p) => p.group && model.features.some((x) => x.id === p.group);
+  const first = parts.findIndex(known);
+  const text = (ps) => md(ps.flatMap((p) => [...(p.head && !known(p) ? [p.head] : []), ...p.lines]).join("\n"));
+  const after = first < 0 ? [] : parts.slice(first);
+  return {
+    top: text(first < 0 ? parts : parts.slice(0, first)),
+    groups: new Map(model.features.map((x) => [x.id, text(after.filter((p) => p.group === x.id))])),
+    rest: text(after.filter((p) => !known(p))),
+  };
 }
 
 export function renderPages(model, q) {
@@ -142,11 +198,13 @@ export function renderPages(model, q) {
     const featureCard = (f, rs) => {
       const k = q.by_feature.find((x) => x.id === f?.id)?.requirements;
       const idAttr = f ? ` id="${esc(f.id)}"` : "";
+      const block = f ? featureBlock(model, f) : { prose: "", extra: new Map() };
       return `<section class="card"${idAttr}><div class="head"><h2>${f ? `${esc(f.id)} · ${esc(f.name)}` : "Requirements outside a feature"}</h2><span class="chips">${f ? chip(f.priority) : ""}${notVerified}</span></div>
 ${k ? `<p class="muted">${k.with_case} of ${k.total} requirements have a case, ${k.at_depth} with a case deep enough.</p>` : ""}
-${rs.map((r) => reqCard(r)).join("\n")}</section>`;
+${block.prose}
+${rs.map((r) => reqCard(r, block.extra.get(r.id) ?? "")).join("\n")}</section>`;
     };
-    const reqCard = (r) => {
+    const reqCard = (r, extra) => {
       const cs = casesFor(r.id);
       const capsHtml = r.caps.map((id) => {
         const c = caps.get(id);
@@ -158,6 +216,7 @@ ${rs.map((r) => reqCard(r)).join("\n")}</section>`;
       const fails = r.fails.map((f) => `<li id="${esc(f.id)}">${link(f.id)} ${inline(f.text)} ${casesFor(f.id).length ? casesFor(f.id).map((c) => link(c.id)).join(" ") : chip("no case", "warn")}</li>`);
       return `<article class="card" id="${esc(r.id)}"><div class="head"><h3>${esc(r.id)}</h3><span class="chips">${chip(`proof: ${r.proof ?? "?"}`)}${cs.length ? "" : chip("no case", "warn")}${notVerified}</span></div>
 <p>${inline(r.text)}</p>
+${extra}
 <dl class="meta"><dt>Controls</dt><dd>${capsHtml.length ? `<ul class="plain">${capsHtml.join("")}</ul>` : '<span class="muted">none listed</span>'}</dd>
 <dt>Cases</dt><dd>${caseList(link, cs)}</dd>
 <dt>Can fail when</dt><dd>${fails.length ? `<ul class="plain">${fails.join("")}</ul>` : '<span class="muted">none in source</span>'}</dd></dl></article>`;
@@ -182,11 +241,14 @@ ${section(model, "CUJs.md", j.line, /^Proves:/)}</article>`;
     const live = model.cujs.filter((j) => j.retired === null);
     const gone = model.cujs.filter((j) => j.retired !== null);
     const groups = [...model.features.map((f) => [f, live.filter((j) => j.feature === f.id)]), [null, live.filter((j) => !featureOf(j.feature))]];
+    const text = loose(model, "CUJs.md", new Set(model.cujs.map((j) => j.line)));
     const retiredCard = (j) => `<article class="card" id="${esc(j.id)}"><div class="head"><h3>${esc(j.id)} · ${esc(j.title)}</h3><span class="chips">${chip("retired")}</span></div><p class="muted">${esc(j.retired)}</p></article>`;
     return `<h1>Critical user journeys</h1>
 ${pending("CUJs.md")}<p class="lede">${live.length} journeys, each tied to the requirements it proves and the cases that run it.${gone.length ? ` ${gone.length} retired, not counted.` : ""}</p>
 ${noCuj(link)}
-${groups.filter(([, js]) => js.length).map(([f, js]) => `<h2${f ? ` id="${esc(f.id)}"` : ""}>${f ? `${link(f.id)} · ${esc(f.name)}` : "Other journeys"}</h2>\n${js.map(card).join("\n")}`).join("\n")}
+${text.top}
+${groups.filter(([f, js]) => js.length || text.groups.get(f?.id)).map(([f, js]) => `<h2${f ? ` id="${esc(f.id)}"` : ""}>${f ? `${link(f.id)} · ${esc(f.name)}` : "Other journeys"}</h2>\n${f ? text.groups.get(f.id) : ""}\n${js.map(card).join("\n")}`).join("\n")}
+${text.rest}
 ${gone.length ? `<h2>Retired</h2>\n${gone.map(retiredCard).join("\n")}` : ""}`;
   });
 
@@ -202,9 +264,12 @@ ${section(model, "TESTCASES.md", c.line, /^(Feature|Covers|Tier|Run mode):/)}</a
     const gone = model.cases.filter((c) => c.retired !== null);
     const retiredCard = (c) => `<article class="card" id="${esc(c.id)}"><div class="head"><h3>${esc(c.id)} · ${esc(c.title)}</h3><span class="chips">${chip("retired")}</span></div><p class="muted">${esc(c.retired)}</p></article>`;
     const groups = [...model.features.map((f) => [f, live.filter((c) => c.feature === f.id)]), [null, live.filter((c) => !featureOf(c.feature))]];
+    const text = loose(model, "TESTCASES.md", new Set(model.cases.map((c) => c.line)));
     return `<h1>Test cases</h1>
 ${pending("TESTCASES.md")}<p class="lede">${q.cases.total} cases: ${modes(q.cases)}${q.cases.setup ? `, ${q.cases.setup} setup` : ""}.${gone.length ? ` ${gone.length} retired, not counted.` : ""}${hasReport ? "" : " No report yet, so no results."}</p>
-${groups.filter(([, cs]) => cs.length).map(([f, cs]) => `<h2${f ? ` id="${esc(f.id)}"` : ""}>${f ? `${link(f.id)} · ${esc(f.name)}` : "Other cases"}</h2>\n${cs.map(card).join("\n")}`).join("\n")}
+${text.top}
+${groups.filter(([f, cs]) => cs.length || text.groups.get(f?.id)).map(([f, cs]) => `<h2${f ? ` id="${esc(f.id)}"` : ""}>${f ? `${link(f.id)} · ${esc(f.name)}` : "Other cases"}</h2>\n${f ? text.groups.get(f.id) : ""}\n${cs.map(card).join("\n")}`).join("\n")}
+${text.rest}
 ${gone.length ? `<h2>Retired</h2>\n${gone.map(retiredCard).join("\n")}` : ""}`;
   });
 

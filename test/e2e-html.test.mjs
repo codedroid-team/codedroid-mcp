@@ -144,6 +144,10 @@ try {
   assert.ok(h.includes("<td><code>x | y</code></td><td>z</td>"));
   assert.ok(h.includes("&lt;b&gt;raw&lt;/b&gt;") && h.includes("&gt; quote &lt;i&gt;"));
   assert.ok(md("```\nopen").includes("<pre>"), "unclosed fence still renders");
+  // An escaped pipe stays in its cell; a row with more cells than the header keeps them in the last column.
+  const t2 = md("| H | I |\n| - | - |\n| x \\| y | z |\n| a | b | c | d |");
+  assert.ok(t2.includes("<tr><td>x | y</td><td>z</td></tr>"), t2);
+  assert.ok(t2.includes("<tr><td>a</td><td>b | c | d</td></tr>"), t2);
   // A source not written yet: its page still renders and says so, and QUALITY.html lists what is pending.
   const early = render(copy((d) => { for (const f of ["PRD.md", "CUJs.md", "TESTCASES.md", "reports"]) fs.rmSync(path.join(d, f), { recursive: true }); }));
   assert.ok(early["PRD.html"].includes("PRD.md is not written yet."));
@@ -187,7 +191,9 @@ try {
   assert.ok(gq2.includes("Acknowledged gaps") && gq2.includes("&lt;i&gt;cannot&lt;/i&gt; be staged") && gq2.includes("one screen"), "acknowledged section, escaped");
   assert.ok(gq2.includes('href="PRD.html#R2.f1"'), "gap ref links to the PRD");
   assert.ok(!gq2.includes("R2.f1</a> · a note deleted"), "an acknowledged failure is not in the open list");
-  assert.ok(!gapPages["TESTCASES.html"].includes("Gap:"), "gap lines are not shown as case text");
+  const gapCards = gapPages["TESTCASES.html"].split('<article class="card"').slice(1).map((a) => a.split("</article>")[0]);
+  assert.ok(gapCards.length && gapCards.every((a) => !a.includes("Gap:")), "gap lines are not shown as case text");
+  assert.ok(gapPages["TESTCASES.html"].includes("Gap: R2.f1 · &lt;i&gt;cannot&lt;/i&gt; be staged"), "the Gaps section is shown as prose");
   // Too shallow: listed as open with the depths; a depth Gap moves it to the acknowledged list.
   assert.ok(qual.includes("shallow") && qual.includes("must be checked at elsewhere; the deepest case checks screen"), "shallow item");
   const dp = render(copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n## Gaps\n- Gap: R4 depth · <b>one</b> screen\n")))["QUALITY.html"];
@@ -206,6 +212,34 @@ try {
   assert.ok(!noRepQ.includes("0 of 6"), "no 0 of 6 without a report");
   const noMode = render(copy((d) => sub(d, "TESTCASES.md", "Tier: core · Depth: screen\nRun mode: task\n", "Tier: core · Depth: screen\n")))["TESTCASES.html"];
   assert.ok(noMode.includes("6 cases: 4 phone, 0 task, 1 manual, 1 with no run mode."), "cases with no run mode counted on TESTCASES.html");
+  // Every part of the documents is on exactly one page: feature prose, a requirement's other lines, a heading that is
+  // not a feature, the CUJs intro, a group's prose, prose after the last journey, the test cases intro, prose between
+  // cases. Planted beside each, <u> is escaped.
+  const MARKS = ["MARK_WHAT", "MARK_SCREENS", "MARK_GATES", "MARK_HARM", "MARK_FTAIL", "MARK_REQ", "MARK_UNASSIGNED", "MARK_CUJSTART", "MARK_CUJGROUP", "MARK_ROBUST", "MARK_TCINTRO", "MARK_TCMID"];
+  const u = (m) => `${m} <u>x</u>`;
+  const shown = render(copy((d) => {
+    sub(d, "PRD.md", "### F1 · Notes · P0\n", `### F1 · Notes · P0\nWhat: ${u("MARK_WHAT")}\nScreens: ${u("MARK_SCREENS")}\nGates: ${u("MARK_GATES")}\nHarm: ${u("MARK_HARM")}\n\n`);
+    sub(d, "PRD.md", "  Fails: none in source\n\n### F2", `  Fails: none in source\n${u("MARK_FTAIL")}\n\n### F2`);
+    sub(d, "PRD.md", "  Proof: kept\n", `  Proof: kept\n  Why: ${u("MARK_REQ")}\n`);
+    sub(d, "PRD.md", "## Non-goals", `### Unassigned\n- S9 ${u("MARK_UNASSIGNED")}\n\n## Non-goals`);
+    sub(d, "CUJs.md", "# Notes CUJs\n", `# Notes CUJs\n\nStart state: ${u("MARK_CUJSTART")}\n`);
+    sub(d, "CUJs.md", "## F1 · Notes\n", `## F1 · Notes\n${u("MARK_CUJGROUP")}\n`);
+    fs.appendFileSync(path.join(d, "CUJs.md"), `\n## Robustness\n- ${u("MARK_ROBUST")}\n`);
+    sub(d, "TESTCASES.md", "# Notes test cases\n", `# Notes test cases\n\n${u("MARK_TCINTRO")}\n`);
+    sub(d, "TESTCASES.md", "### TC-3a", `## Search\n${u("MARK_TCMID")}\n\n### TC-3a`);
+  }));
+  for (const m of MARKS) assert.deepEqual(Object.keys(shown).filter((p) => shown[p].includes(m)), [{ MARK_CUJSTART: "CUJs.html", MARK_CUJGROUP: "CUJs.html", MARK_ROBUST: "CUJs.html", MARK_TCINTRO: "TESTCASES.html", MARK_TCMID: "TESTCASES.html" }[m] ?? "PRD.html"], m);
+  for (const [p, h] of Object.entries(shown)) assert.ok(!h.includes("<u>"), `raw <u> on ${p}`);
+  assert.equal((Object.values(shown).join("").match(/&lt;u&gt;x&lt;\/u&gt;/g) ?? []).length, MARKS.length, "each planted <u> shown once, escaped");
+  const f1 = shown["PRD.html"].split('<section class="card" id="F1">')[1].split('<article class="card" id="R1">')[0];
+  for (const m of ["MARK_WHAT", "MARK_SCREENS", "MARK_GATES", "MARK_HARM", "MARK_FTAIL"]) assert.ok(f1.includes(m), `${m} in the F1 card above its requirements`);
+  assert.ok(shown["PRD.html"].split('<article class="card" id="R1">')[1].split("</article>")[0].includes("MARK_REQ"), "the requirement's other line in its card");
+  const cu = shown["CUJs.html"];
+  assert.ok(cu.indexOf("MARK_CUJSTART") < cu.indexOf("MARK_CUJGROUP") && cu.indexOf("MARK_CUJGROUP") < cu.indexOf('id="CUJ-1"') && cu.lastIndexOf('id="CUJ-3"') < cu.indexOf("MARK_ROBUST"), "CUJs prose in document order");
+  const tc = shown["TESTCASES.html"];
+  assert.ok(tc.indexOf("MARK_TCINTRO") < tc.indexOf('id="TC-1a"'), "test cases intro first");
+  assert.ok(prd.includes("<h1>Notes PRD</h1>") && prd.includes('<section class="prose"><h2>Goal</h2>'), "PRD prose headings start at h2, under the page's h1");
+  assert.ok(shown["PRD.html"].includes("<h3>Unassigned</h3>"), "a heading that is not a feature is shown");
   // Requirements no journey proves: listed on QUALITY.html and at the top of CUJs.html, only when there are any.
   const nj = render(copy((d) => sub(d, "CUJs.md", "Proves: R4\n", "Proves: R4\nRetired: 2026-01-01 - merged\n")));
   for (const p of ["QUALITY.html", "CUJs.html"]) {

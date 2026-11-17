@@ -44,9 +44,12 @@ export function md(text, { base = 0 } = {}) {
       out.push(`<h${n}>${inline(m[2])}</h${n}>`);
       i++;
     } else if (isRow(line) && RULE.test(lines[i + 1] ?? "x")) {
-      const head = splitCells(line);
+      // `\|` is a pipe inside a cell; cells past the header's last column are kept in that column.
+      const cells = (l) => splitCells(l.replaceAll("\\|", "\uFFFF")).map((c) => c.replaceAll("\uFFFF", "|"));
+      const head = cells(line);
+      const fit = (r) => (r.length > head.length ? [...r.slice(0, head.length - 1), r.slice(head.length - 1).join(" | ")] : r);
       const rows = [];
-      for (i += 2; isRow(lines[i]); i++) rows.push(splitCells(lines[i]));
+      for (i += 2; isRow(lines[i]); i++) rows.push(fit(cells(lines[i])));
       const cell = (tag, c) => `<${tag}>${inline(c ?? "")}</${tag}>`;
       out.push(`<div class="scroll"><table><thead><tr>${head.map((c) => cell("th", c)).join("")}</tr></thead><tbody>${
         rows.map((r) => `<tr>${head.map((_, k) => cell("td", r[k])).join("")}</tr>`).join("")}</tbody></table></div>`);
