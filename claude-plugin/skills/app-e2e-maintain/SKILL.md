@@ -5,9 +5,12 @@ description: Keep an app's e2e test cases and CUJs current after the app changes
 
 # Maintain the test cases
 
-Input and output: `e2e/EXPLORE.md`, `e2e/CUJs.md` and `e2e/TESTCASES.md` in the app's repo. Read
-the app-e2e-explore and app-e2e-testcases skills' rules first: a label you did not see on screen
-or in the source is a guess.
+Input and output: `e2e/EXPLORE.md`, `e2e/INVENTORY.md`, `e2e/PRD.md`, `e2e/CUJs.md` and
+`e2e/TESTCASES.md` in the app's repo. Read the app-e2e-explore and app-e2e-testcases skills' rules
+first: a label you did not see on screen or in the source is a guess. After any edit to them, run
+`npx -y @codedroid/mcp e2e report e2e` (documents in another folder: pass that folder in place of
+`e2e`; `Unknown command: e2e` means the release is older than these skills: tell the user and go on
+without it) and fix every problem it prints as `file:line: message`; never edit the pages it writes.
 
 ## A case failed because the UI changed
 
@@ -16,7 +19,8 @@ or in the source is a guess.
    phone with `get_screen` and `tap`.
 2. Behavior changed, not just wording? That may be a bug or a product decision: ask the user before
    rewriting the Expected lines to match what the app does now.
-3. Update the steps and Expected lines with the labels you saw, and `EXPLORE.md` with them.
+3. Update the steps and Expected lines with the labels you saw, and `EXPLORE.md` and
+   `INVENTORY.md` with them.
 4. Run the case twice, as app-e2e-run does (its "Before the run" too), with its screenshots in a
    folder of its own, `e2e/reports/<date>-maintain/`, so a full run's report of the same day stays
    as it was; it must pass both times.
@@ -24,10 +28,14 @@ or in the source is a guess.
 ## A feature was added or removed
 
 - Removed: mark its cases `Retired: <date> - <why>` instead of deleting them, and its CUJ in
-  `CUJs.md`; leave them out of runs.
-- Added: explore its screens (as app-e2e-explore does), add it to the PRD's features (as
-  app-e2e-prd does), add its CUJ (as app-e2e-cujs does, with the user's review), then its cases (as
-  app-e2e-testcases does, with the user's approval).
+  `CUJs.md`; leave them out of runs. Retired items no longer count in the quality numbers. Then
+  delete the feature's heading and requirements from `PRD.md`, its control rows and any screen left
+  with no row from `INVENTORY.md`, its controls from any `- Non-goal:` line (a line left with none
+  goes), its `- Gap:` lines, and its requirement ids from any other journey's `Proves:`; retired
+  cases and journeys may still name them. Show the user the diff before committing.
+- Added: explore its screens and add their controls to `INVENTORY.md` (as app-e2e-explore does),
+  add it to the PRD's features (as app-e2e-prd does), add its CUJ (as app-e2e-cujs does, with the
+  user's review), then its cases (as app-e2e-testcases does, with the user's approval).
 
 ## A CUJ or feature changed in the files
 
@@ -38,15 +46,44 @@ removed. Run the changed cases twice, as above.
 
 ## Coverage
 
-List, from the files: screens in `EXPLORE.md` no feature claims, features in scope with no CUJ,
-Gate and Harm lines with no negative case, CUJs with no case, PRD requirements with no CUJ, cases
-that have not passed in the latest report, and cases whose `Needs:` names a missing case. Say
-which matter most (P0 first) and offer to write the missing cases.
+Start from `e2e/QUALITY.html`: its "Left open" list (requirements with no runnable case,
+requirements whose deepest case is shallower than their Proof, failure lines of P0 and P1 features
+with no runnable case, P0 features with no deep case; none with a Gap line) is what remains to
+write; then capabilities no runnable case covers. Then list, from the files: screens in `EXPLORE.md`
+no feature claims, features in scope with no CUJ, Gate and Harm lines with no negative case, CUJs
+with no case, PRD requirements with no CUJ, cases that have not passed in the latest report, and
+cases whose `Needs:` names a missing case. Say which matter most (P0 first) and offer to write the
+missing cases.
+
+## Documents from before these formats
+
+The command then lists many problems of the same few kinds. Bring the documents up in their order,
+rerunning `npx -y @codedroid/mcp e2e report e2e` after each; after the last step it must print no
+problems:
+1. `INVENTORY.md` from the UI source, as app-e2e-explore writes it; Seen from what `EXPLORE.md` and
+   earlier reports show, `?` for the rest.
+2. Each requirement's Caps, Proof and Fails, from the source.
+3. Each CUJ's `Proves:` line.
+4. Each case's `Covers:`, `Tier:`, `Depth:` and `Run mode:`, from what its Steps and Expected lines
+   actually do. Don't change the steps. A setup case needs only its `Run mode:` line: drop the
+   `Covers:`, `Tier:` and `Depth:` an older file gave it.
+5. A reason an older file gave for a missing case or a shallow one, in free prose, becomes a
+   `- Gap: <ref> · reason` line (`R4`, `R1.f2`, `F1 deep` or `R3 depth`, as app-e2e-testcases writes
+   it); a capability the PRD left out on purpose becomes a
+   `- Non-goal: C<n> · reason` line. The quality page's "Left open" list is then what remains to write.
+6. Rename a report folder whose date is not zero-padded to YYYY-MM-DD (`2026-11-9` to
+   `2026-11-09`). In the newest `reports/<date>/REPORT.md`, rewrite the results table so its first
+   two columns are `Case` and `Result`, with the ids and results copied from the old table and
+   nothing invented. Leave the older reports as they are.
+
+Show the user the diff and `e2e/QUALITY.html` before anything is committed; the approvals follow
+the rule below.
 
 ## Changing an approved file
 
-`CUJs.md` and `TESTCASES.md` carry an `Approved:` line. Show the user what you changed (the diff),
-and update the line only when they approve; until then say the file has unapproved changes.
+After you change a file that has an `Approved:` line, show the user the diff. If they approve,
+write the `Approved:` line with today's date; until they do, remove the line, so the next session
+sees a draft.
 
 ## Never
 

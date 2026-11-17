@@ -20,7 +20,7 @@ No `e2e/` yet? Say so and offer the app-e2e skill, which writes the cases first.
 | "Run TC-12a" / "TC-12a and TC-14" | Those ids |
 | "Run CUJ-05" / "the history journey" | Every case numbered for that CUJ (TC-05a, TC-05b...) |
 | "Test the skills feature" / "F3" | Every case whose `Feature:` is that feature |
-| "Smoke test" / "run the P0s" | Every P0 case |
+| "Smoke test" / "run the P0s" | Every P0 case except manual ones |
 | "Rerun what failed" | The cases the latest report lists as failed |
 | "Is TC-07 flaky?" | That case three times in a row |
 | "Did my change break anything?" | Below: the cases a change touches |
@@ -45,7 +45,8 @@ again and compare: a case that passes on one build and fails on the other is the
 
 ## The report
 
-`e2e/reports/<date>-<what>/REPORT.md` (e.g. `2026-11-05-smoke`): which cases and why they were
+`e2e/reports/<date>-<what>/REPORT.md` (e.g. `2026-11-05-smoke`; never the date alone, which is the full
+run's folder that the quality numbers read): which cases and why they were
 picked, the build, then each case's result with its screenshot, as app-e2e-run writes it. For a
 flaky check, all three results side by side and a verdict: flaky (find which kind before calling
 it a finding), consistently failing, or fine. Lead your reply with the failures.

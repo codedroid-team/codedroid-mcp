@@ -12,8 +12,14 @@ the app-e2e-run skill's for running one first.
 ## 1. Pin the bug down
 
 From the report (the user, an issue, a crash log), write down: the build, the start state, the
-steps, what happened and what should have. Ask for what is missing rather than guessing. If there
-is no `e2e/` yet, create it with just `TESTCASES.md`.
+steps, what happened and what should have. Ask for what is missing rather than guessing. If the
+documents are from before these formats, bring them up first, with the user's OK (the
+app-e2e-maintain skill's "Documents from before these formats"). If the user declines, write the
+bug's case with the current lines for that case only, skip the command, and say the other
+documents are in the older format. If there
+is no `e2e/` yet, create it with the documents the case stands on, for the bug's screens only: an
+`INVENTORY.md`, a `PRD.md` with the requirement the bug breaks, a `CUJs.md` with its journey (as the
+app-e2e-explore, app-e2e-prd and app-e2e-cujs skills write them), then `TESTCASES.md`.
 
 ## 2. Reproduce it by hand
 
@@ -29,12 +35,24 @@ Number it after the CUJ it belongs to (or `TC-B<n>` when none fits), title it wi
 that should hold, not the bug ("Delete a skill from search leaves the list correct"), and add a
 line `Bug: <link or one line>`. The Expected lines state the correct behavior, so the case fails
 now and passes once fixed. Everything it creates is named `e2e-...` and removed in its cleanup.
+`Covers:`, `Tier:` with `Depth:`, and `Run mode:` as app-e2e-testcases says. `Covers:` names the
+requirement or failure the bug breaks. If none fits, add one to `PRD.md` first (with its Caps,
+Proof and Fails; a failure gets its `R<n>.f<m>` line) and cover that. A `TC-B<n>` case's
+`Feature:` is the feature of the requirement it covers. If `TESTCASES.md` is approved,
+the app-e2e-maintain skill's "Changing an approved file" applies.
+
+Run `npx -y @codedroid/mcp e2e report e2e` (documents in another folder: pass that folder in place
+of `e2e`; `Unknown command: e2e` means the release is older than these skills: tell the user and go
+on without it); it must print no problems before you go on (fix each `file:line: message` and
+rerun). If the documents were written before these formats, stop and bring them up as step 1 says,
+with the user's OK; never rewrite approved documents on your own.
 
 ## 4. Prove it red
 
 Run the case twice, as app-e2e-run does (its "Before the run" too), with its screenshots and notes
 in a folder of its own, `e2e/reports/<date>-bug-<case>/`, so a full run's report of the same day
-stays as it was. It must fail both times, at the Expected line the bug
+stays as it was. Its `REPORT.md` has the results table as app-e2e-run writes it, with one row for
+this case (both runs in its Notes). It must fail both times, at the Expected line the bug
 breaks, with the evidence (screen text, screenshot, crash line). Failing elsewhere means the case
 is wrong: fix it and run again.
 

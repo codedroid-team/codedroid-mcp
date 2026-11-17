@@ -155,6 +155,83 @@ no adb, `setup` says how to pair by hand. If the phone removed this computer, `s
 again. Pairing over USB needs a CodeDroid version that has it; older ones are told to update.
 `setup` exits with 1 when the phone isn't set up (signed out, declined outside a terminal, failed).
 
+### Quality report for an app's e2e folder
+
+```bash
+npx -y @codedroid/mcp e2e report [dir] [--check]
+```
+
+Run it in an app's repo after writing the `app-e2e` documents. It reads `dir` (default `./e2e`:
+`INVENTORY.md`, `PRD.md`, `CUJs.md`, `TESTCASES.md` and one report, below) and
+writes `QUALITY.md`, `quality.json` and the HTML pages (`PRD.html`, `CUJs.html`, `TESTCASES.html`,
+`QUALITY.html`, and a `REPORT.html` beside the report in use) into that folder, overwriting earlier
+copies on every run and deleting nothing. Commit them with the Markdown. It writes each file under a
+temp name beside it, then renames it into place, and never changes a file outside the folder. It
+prints the counts, each problem it found in the documents as `file:line: message`, and the path of
+`QUALITY.html`. It needs Node 20 or later, and no phone, daemon or network.
+`REPORT.html` embeds each screenshot beside the report, so it is about one and a third times the
+size of those screenshots together.
+
+The report in use is the newest folder named exactly `YYYY-MM-DD` (zero-padded, compared as dates)
+under `reports/`: the full run. The partial runs the skills write beside it (`<date>-bug-<case>`,
+`<date>-maintain`, `<date>-smoke`) are not used, so "exercised" and "passing" come from the full
+run. A control is exercised when a runnable case covering it has a `pass` or `fail` row in that
+report, and passing when at least one such case passed and none failed; a `not run` row neither
+helps nor hurts. Only when no folder has that exact name does the last folder by name stand in. A
+folder shaped like a date but not zero-padded (`2026-11-9`) or not a calendar date (`2026-13-45`)
+is a problem and is not used, and so is a newer dated folder with no `REPORT.md`. Only the first table whose columns
+start with `Case` and `Result` is read; a second one is a problem. `QUALITY.md` and
+`QUALITY.html` say which report their numbers come from.
+
+It never reads through a link: a source file, a `reports` folder, a report folder or a report that
+is a symbolic link, or leads outside the folder, is a problem and is not read, and so is a source
+that is not a regular file. `quality.json` lists
+its sources as the name under the folder and a sha256, with no path, so the same folder gives the
+same file wherever it is run from.
+
+The four documents are written in that order. One that is missing while no later one exists is not
+written yet, not a problem: the command names it (`Not written yet: PRD.md, CUJs.md, TESTCASES.md.
+Next: PRD.md.`) and its page says so. One missing before a document that exists is a problem.
+
+With `--check` it writes nothing and prints `stale: <file>` for every page that is missing, is a
+link or not a regular file, or was built from older documents (and for a missing `QUALITY.md` or
+`quality.json`).
+
+It also reads two lines the skills teach. In `PRD.md`, `- Non-goal: C40, C41 · reason` sets
+capabilities aside: they leave "not in any feature", the percentages count the capabilities in
+scope, and the quality pages list them with the reason. A requirement with no control in the
+inventory writes `Caps: none`; `Fails:` is either failure items (`- R<n>.f<m> · text`, each starting with its own
+requirement's id) below it or `none in source`; any other list item under `Fails:` is a problem. A
+`Gap:` or `Non-goal:` line starts at the beginning of the line, with `-` or `*`. A heading of any
+level ends a block, and a feature, journey, case or screen heading at the wrong level is a problem.
+
+In `TESTCASES.md`, `- Gap: <ref> · reason` acknowledges something no case covers. `<ref>` is a
+requirement (`R4`), a failure line (`R1.f2`), a feature with no deep case (`F1 deep`) or a
+requirement with a case but none deep enough for its Proof (`R3 depth`). A `Covers:` entry with no
+brackets counts every control in that requirement's `Caps:`, also when the entry is a failure id
+(`R1.f2`); write the controls in brackets (`R1.f2 (C4)`) to count fewer. A gap is never counted as
+covered; the quality pages list it under "Acknowledged gaps". A case with `Type: setup` needs only
+its `Run mode:` line and is counted apart. Every case has a `Feature:` line (`Feature: all` for a
+setup case). A line `Retired: <date> - <why>` in a case or journey retires it: it keeps its id, may
+point at what no longer exists, and counts for nothing (it appears on its page under "Retired", and
+quality gains `cases.retired` and `cujs.retired`). Only a runnable case (phone or task) counts as covering
+something or as a deep case.
+
+"Left open" is what has no runnable case that settles it and no Gap line: P0 features with no deep case, requirements
+with no runnable case, requirements too shallow for their Proof, and failure lines under a P0 or P1
+feature. When there are any, the command prints `N left open: see
+<dir>/QUALITY.md`; the full "Left open" and "Acknowledged gaps" lists are in that Markdown file
+(and in `QUALITY.html`), and so is the full problem list that the line `and M more: see
+<dir>/QUALITY.md` points to. Open items are not problems and do not change the exit code.
+
+Exit codes: 0 when all is well, 1 when the documents have problems, 2 for a usage error (an
+unknown flag too), a folder that does not exist or holds none of the four documents, a source it
+cannot read, or a file it cannot write. With `--check`: 0 when every page is current, 1 when a page
+is stale or missing, 2 as above. It refuses to write through a link, into a folder that leads
+outside, or over anything that is not a regular file (a folder, a named pipe), with exit 2, and
+writes nothing then. Outputs are written to temporary names first and then renamed one after
+another, so a failure during the renames can leave some outputs new: the message names the file. With more than 20 problems it prints a count per kind and the first 20; the pages list all.
+
 ### Standalone Claude Code server
 
 ```bash
