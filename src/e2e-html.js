@@ -192,7 +192,7 @@ export function renderPages(model, q) {
   const caseList = (link, cs) => (cs.length ? `<ul class="plain">${cs.map((c) => caseLine(link, c)).join("")}</ul>` : chip("no case", "warn"));
   const featureOf = (id) => model.features.find((f) => f.id === id);
   const noCuj = (link) => (q.requirements.no_cuj.length
-    ? `<h2>Requirements no journey proves</h2>\n<ul class="plain">${q.requirements.no_cuj.map((id) => `<li>${link(id)} ${inline(reqs.get(id).text)}</li>`).join("")}</ul>`
+    ? `<section class="card"><h2>Requirements no journey proves</h2>\n<ul class="plain">${q.requirements.no_cuj.map((id) => `<li>${link(id)} ${inline(reqs.get(id).text)}</li>`).join("")}</ul></section>`
     : "");
 
   const prd = page(PRD, "", "PRD", (link) => {
