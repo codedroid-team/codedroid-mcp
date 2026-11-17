@@ -272,6 +272,12 @@ assert.equal(r.status, 0, r.stdout + r.stderr);
 assert.equal(fs.readFileSync(hardOutside, "utf8"), "precious");
 assert.equal(fs.statSync(path.join(hard, "QUALITY.md")).nlink, 1);
 assert.notEqual(fs.readFileSync(path.join(hard, "QUALITY.md"), "utf8"), "precious");
+// A temp name that already exists, here a link to an outside file, is never opened: exit 2 and nothing changes.
+const planted = copy();
+fs.symlinkSync(hardOutside, path.join(planted, `QUALITY.md.tmp-${process.pid}`));
+assert.deepEqual(runE2eReport({ dir: planted }), { code: 2, lines: ["Cannot write QUALITY.md: EEXIST"] });
+assert.equal(fs.readFileSync(hardOutside, "utf8"), "precious");
+assert.ok(!fs.existsSync(path.join(planted, "QUALITY.md")));
 
 if (process.getuid?.() !== 0) {
   // One output that cannot be written: exit 2, no output changed, no temp file left.
@@ -315,6 +321,8 @@ if (process.getuid?.() !== 0) {
   }
   assert.equal(r.status, 1, r.stdout + r.stderr);
   assert.ok(r.stdout.includes("reports/2026-01-02/TC-1a.png:0: reports/2026-01-02/TC-1a.png cannot be read: EACCES"), r.stdout + r.stderr);
+  const qj = JSON.parse(fs.readFileSync(path.join(shotLocked, "quality.json"), "utf8"));
+  assert.deepEqual([qj.ok, qj.problems.length], [false, 1], "quality.json lists it too");
 }
 
 assert.deepEqual(fs.readdirSync(home), [], "HOME still empty");
