@@ -13,6 +13,7 @@ import { readE2e } from "../src/e2e-model.js";
 import { quality } from "../src/e2e-quality.js";
 
 const fixture = new URL("./fixtures/e2e-sample", import.meta.url).pathname;
+const bin = new URL("../src/index.js", import.meta.url).pathname;
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "e2e-cmd-"));
 const home = fs.mkdtempSync(path.join(os.tmpdir(), "e2e-cmd-home-"));
 let n = 0;
@@ -25,7 +26,7 @@ const copy = (edit) => {
 };
 const run = (...args) => {
   const t = Date.now();
-  const r = spawnSync(process.execPath, ["src/index.js", "e2e", ...args], {
+  const r = spawnSync(process.execPath, [bin, "e2e", ...args], {
     encoding: "utf8", timeout: 10000, env: { ...process.env, HOME: home, USERPROFILE: home },
   });
   assert.ok(Date.now() - t < 3000, "finishes quickly: no daemon, no phone");
@@ -130,7 +131,7 @@ assert.ok(fs.existsSync(path.join(broken, "QUALITY.html")));
 assert.ok(r.stdout.trimEnd().split("\n").at(-1).startsWith("Open "));
 
 // Default dir is ./e2e of the working directory.
-const cwdRun = spawnSync(process.execPath, [path.resolve("src/index.js"), "e2e", "report", "--check"], { cwd: path.dirname(dir), encoding: "utf8", env: { ...process.env, HOME: home } });
+const cwdRun = spawnSync(process.execPath, [bin, "e2e", "report", "--check"], { cwd: path.dirname(dir), encoding: "utf8", env: { ...process.env, HOME: home } });
 assert.equal(cwdRun.status, 1);
 assert.equal(cwdRun.stdout.trim(), "stale: quality.json", "reads ./e2e");
 
@@ -248,6 +249,46 @@ r = run("report", copy((d) => { fs.rmSync(path.join(d, "PRD.md")); fs.mkdirSync(
 assert.equal(r.status, 1, r.stdout + r.stderr);
 assert.ok(r.stdout.includes("PRD.md:0: PRD.md is not a regular file: not read"), r.stdout + r.stderr);
 
+// A REPORT.md that is a folder or a named pipe is a problem: no report page, and --check does not ask for one.
+for (const make of [(p) => fs.mkdirSync(p), (p) => assert.equal(spawnSync("mkfifo", [p]).status, 0)]) {
+  const odd = copy((d) => { fs.rmSync(path.join(d, "reports/2026-01-02/REPORT.md")); make(path.join(d, "reports/2026-01-02/REPORT.md")); });
+  r = run("report", odd);
+  assert.equal(r.status, 1, r.stdout + r.stderr);
+  assert.ok(r.stdout.includes("reports/2026-01-02/REPORT.md:0: reports/2026-01-02/REPORT.md is not a regular file: not read"), r.stdout + r.stderr);
+  assert.ok(!fs.existsSync(path.join(odd, "reports/2026-01-02/REPORT.html")));
+  r = run("report", odd, "--check");
+  assert.deepEqual([r.status, r.stdout.trim()], [0, "All pages are current."]);
+}
+
+// An existing target that is not a regular file is refused before anything is written, with no temp file left.
+const notFile = [["reports/2026-01-02/REPORT.html", (p) => fs.mkdirSync(p)], ["QUALITY.md", (p) => assert.equal(spawnSync("mkfifo", [p]).status, 0)]];
+for (const [rel, make] of notFile) {
+  const d = copy();
+  run("report", d);
+  subst(d, "PRD.md", "#", "# ");
+  fs.rmSync(path.join(d, rel));
+  make(path.join(d, rel));
+  const outs = ["QUALITY.md", "quality.json", "PRD.html", "CUJs.html", "TESTCASES.html", "QUALITY.html", "reports/2026-01-02/REPORT.html"].filter((f) => f !== rel);
+  const was = outs.map((f) => fs.readFileSync(path.join(d, f), "utf8"));
+  const names = listing(d);
+  r = run("report", d);
+  assert.deepEqual([r.status, r.stdout.trim()], [2, `Refusing to write ${rel}: it is not a regular file`], rel);
+  assert.deepEqual(outs.map((f) => fs.readFileSync(path.join(d, f), "utf8")), was, `${rel}: nothing written`);
+  assert.deepEqual(listing(d), names, `${rel}: no temp file`);
+}
+
+// A file of the user's named like a temp file is never touched, after a run that writes and after one that is refused.
+const own = copy();
+fs.writeFileSync(path.join(own, "QUALITY.md.tmp-1"), "mine");
+r = run("report", own);
+assert.equal(r.status, 0, r.stdout);
+assert.equal(fs.readFileSync(path.join(own, "QUALITY.md.tmp-1"), "utf8"), "mine");
+fs.rmSync(path.join(own, "PRD.html"));
+fs.symlinkSync(path.join(own, "CUJs.html"), path.join(own, "PRD.html"));
+r = run("report", own);
+assert.equal(r.status, 2, r.stdout);
+assert.equal(fs.readFileSync(path.join(own, "QUALITY.md.tmp-1"), "utf8"), "mine");
+
 // --check never opens a page through a link or a page that is not a regular file: both are stale.
 const linkPage = copy();
 run("report", linkPage);
@@ -321,6 +362,16 @@ if (process.getuid?.() !== 0) {
   } finally {
     fs.chmodSync(locked, 0o755);
   }
+  const dayLocked = copy();
+  fs.chmodSync(path.join(dayLocked, "reports/2026-01-02"), 0);
+  try {
+    for (const mode of [[], ["--check"]]) {
+      r = run("report", dayLocked, ...mode);
+      assert.deepEqual([r.status, r.stdout.trim()], [2, "Cannot read reports/2026-01-02: EACCES"], `a dated report folder that cannot be read ${mode}`);
+    }
+  } finally {
+    fs.chmodSync(path.join(dayLocked, "reports/2026-01-02"), 0o755);
+  }
   const shotLocked = copy();
   const shot = path.join(shotLocked, "reports/2026-01-02/TC-1a.png");
   fs.chmodSync(shot, 0);
@@ -333,6 +384,11 @@ if (process.getuid?.() !== 0) {
   assert.ok(r.stdout.includes("reports/2026-01-02/TC-1a.png:0: reports/2026-01-02/TC-1a.png cannot be read: EACCES"), r.stdout + r.stderr);
   const qj = JSON.parse(fs.readFileSync(path.join(shotLocked, "quality.json"), "utf8"));
   assert.deepEqual([qj.ok, qj.problems.length], [false, 1], "quality.json lists it too");
+  const SHOT = "reports/2026-01-02/TC-1a.png cannot be read: EACCES";
+  assert.ok(fs.readFileSync(path.join(shotLocked, "QUALITY.md"), "utf8").includes(`- reports/2026-01-02/TC-1a.png:0: ${SHOT}`), "QUALITY.md lists it");
+  const qh = fs.readFileSync(path.join(shotLocked, "QUALITY.html"), "utf8");
+  assert.ok(qh.includes(SHOT) && !qh.includes("No problems found"), "QUALITY.html lists it");
+  for (const page of ["PRD.html", "reports/2026-01-02/REPORT.html"]) assert.ok(fs.readFileSync(path.join(shotLocked, page), "utf8").includes("See the 1 problem"), `${page} banner`);
 }
 
 assert.deepEqual(fs.readdirSync(home), [], "HOME still empty");

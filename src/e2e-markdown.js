@@ -18,7 +18,8 @@ export function inline(raw) {
 const FENCE = /^\s*```/;
 const HEADING = /^(#{1,6})\s+(.*?)\s*#*\s*$/;
 const ITEM = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/;
-const RULE = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
+/** A table's separator row; outer pipes are optional. The model reads a results table with it too. */
+export const RULE = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
 const isRow = (l) => l !== undefined && l.trim().startsWith("|");
 
 function list(items) {

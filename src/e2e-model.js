@@ -5,6 +5,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { RULE } from "./e2e-markdown.js";
 
 const PROOF = ["screen", "elsewhere", "kept"];
 const TIERS = ["smoke", "core", "deep", "edge"];
@@ -14,6 +15,7 @@ const TYPES = ["happy", "negative", "setup"];
 const RESULTS = ["pass", "fail", "not run"];
 const PRIORITIES = ["P0", "P1", "P2"];
 const SOURCES = ["INVENTORY.md", "PRD.md", "CUJs.md", "TESTCASES.md"];
+const DEPTH_TWICE = (id) => `${id} gives Depth twice: on its Tier: line and on a Depth: line`;
 const FAILS_FORM = (id) => `${id} Fails: must list failures or say "none in source"`;
 const UNREADABLE = {
   screen: 'screen heading is not readable: use "## S<n> · <source> · "<title>""',
@@ -190,7 +192,8 @@ export function readE2e(dir) {
         if (!caps.length) problem("PRD.md", n, "Non-goal line names no capability");
         else if (!reason) problem("PRD.md", n, `Non-goal ${caps.join(", ")} has no reason`);
         for (const c of caps) refs.push(["PRD.md", n, c, "cap"]);
-      } else if (feature && /^(?:[-*+]|\d+[.)])\s+[*_\s]*R\d/.test(t) && !/^- (R\d+) · /.test(t)) {
+      } else if (feature && (h = t.match(/^( {0,3})(?:[-*+•–]|\d+[.)])\s+[*_\s]*[RrＲｒ][0-9０-９]+(\S*)/)) && !(h[1] && /^\.f/.test(h[2])) && !/^- (R\d+) · /.test(t)) {
+        // Another list form, an indent, or a lower-case or full-width R; an indented R<n>.f<m> is a failure item.
         finish();
         problem("PRD.md", n, UNREADABLE.requirement);
       } else if ((h = t.match(/^- (R\d+) · (.*)$/))) {
@@ -336,12 +339,16 @@ export function readE2e(dir) {
           tc.has.tier = true;
           const parts = Object.fromEntries(h[0].split("·").map((p) => p.trim().split(/:\s*/)).filter((p) => p.length === 2));
           tc.tier = parts.Tier ?? null;
-          if (parts.Depth !== undefined && !again("TESTCASES.md", n, tc.has, "depth", tc.id, "Depth:")) { tc.has.depth = true; tc.depth = parts.Depth; }
+          if (parts.Depth !== undefined) {
+            if (tc.has.depth) problem("TESTCASES.md", n, DEPTH_TWICE(tc.id));
+            else { tc.has.depth = "tier"; tc.depth = parts.Depth; }
+          }
           if (!oneOf(tc.tier, TIERS)) problem("TESTCASES.md", n, `Tier must be ${words(TIERS)}`);
           if (tc.has.depth && !oneOf(tc.depth, PROOF)) problem("TESTCASES.md", n, `Depth must be ${words(PROOF)}`);
         } else if ((h = t.match(/^Depth:\s*(.*)$/))) {
+          if (tc.has.depth === "tier") { problem("TESTCASES.md", n, DEPTH_TWICE(tc.id)); continue; }
           if (again("TESTCASES.md", n, tc.has, "depth", tc.id, "Depth:")) continue;
-          tc.has.depth = true;
+          tc.has.depth = "line";
           tc.depth = h[1].trim();
           if (!oneOf(tc.depth, PROOF)) problem("TESTCASES.md", n, `Depth must be ${words(PROOF)}`);
         } else if ((h = t.match(/^Needs:\s*(.*)$/))) {
@@ -375,7 +382,16 @@ export function readE2e(dir) {
     else if (!fs.lstatSync(rdir).isDirectory()) problem("reports", 0, "reports is not a folder: not read");
     else names = fs.readdirSync(rdir).sort();
   }
-  const withReport = names.filter((f) => lexists(path.join(rdir, f, "REPORT.md")));
+  // In a dated folder an error other than "not there" is thrown, so a folder that cannot be read is exit 2.
+  const hasReport = (f) => {
+    if (!isDay(f)) return lexists(path.join(rdir, f, "REPORT.md"));
+    try { return !!fs.lstatSync(path.join(rdir, f, "REPORT.md"), { throwIfNoEntry: false }); } catch (e) {
+      if (e.code === "ENOTDIR") return false;
+      e.path = path.join(rdir, f);
+      throw e;
+    }
+  };
+  const withReport = names.filter(hasReport);
   const folders = [];
   for (const f of withReport) {
     const rel = `reports/${f}/REPORT.md`;
@@ -404,7 +420,7 @@ export function readE2e(dir) {
     }
     const sep = at < 0 ? "" : rep[at + 1]?.t.trim() ?? "";
     if (at < 0) { if (m.files[name]) problem(name, 0, 'REPORT.md has no Case/Result table: its results table must start with the columns "Case" and "Result"'); } // one not read is a problem already
-    else if (!sep.startsWith("|") || !splitCells(sep).every((c) => /^:?-+:?$/.test(c))) problem(name, rep[at].n, "Case/Result table has no separator row");
+    else if (!RULE.test(sep)) problem(name, rep[at].n, "Case/Result table has no separator row");
     else {
       for (let i = at + 2; i < rep.length && rep[i].t.trim().startsWith("|"); i++) {
         const [id, res] = splitCells(rep[i].t);
@@ -443,7 +459,7 @@ export function readE2e(dir) {
       const r = m.requirements.find((q) => q.id === g.ref);
       if (!r) continue;
       if (!covering.length) problem("TESTCASES.md", g.line, `${g.ref} has a depth Gap line but no runnable case`);
-      else if (covering.some((c) => PROOF.indexOf(c.depth) >= PROOF.indexOf(r.proof))) problem("TESTCASES.md", g.line, `${g.ref} has a depth Gap line but is tested deep enough`);
+      else if (covering.some((c) => PROOF.indexOf(c.depth) >= PROOF.indexOf(r.proof))) problem("TESTCASES.md", g.line, `${g.ref} has a depth Gap line but already has a case deep enough`);
     } else if (covering.length) {
       problem("TESTCASES.md", g.line, `${g.ref} has a Gap line and a case`);
     }

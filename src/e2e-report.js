@@ -42,13 +42,16 @@ export function runE2eReport({ dir, check = false }) {
   }
   const refuse = (rel) => ({ code: 2, lines: [`Refusing to write ${rel}: it is a link or leads outside ${dir}`] });
   const targets = Object.keys(files).map((rel) => [rel, path.join(root, rel)]);
-  // Check every target before writing any: no link may lead a write outside the folder.
+  // Check every target before writing any: no link may lead a write outside the folder, and only a regular file is replaced.
   for (const [rel, full] of targets) {
     let at = path.dirname(full);
     while (!fs.existsSync(at)) at = path.dirname(at); // the nearest folder that exists; the rest is made below it
     const real = fs.realpathSync(at);
     if (real !== root && !real.startsWith(root + path.sep)) return refuse(rel);
-    try { if (fs.lstatSync(full).isSymbolicLink()) return refuse(rel); } catch { /* not there yet */ }
+    let st;
+    try { st = fs.lstatSync(full); } catch { /* not there yet */ }
+    if (st?.isSymbolicLink()) return refuse(rel);
+    if (st && !st.isFile()) return { code: 2, lines: [`Refusing to write ${rel}: it is not a regular file`] };
   }
   // Each output goes to a new temp file beside it, then all are renamed over their targets: a write never goes
   // through a link swapped in after the check, and a failure before the renames changes no target.

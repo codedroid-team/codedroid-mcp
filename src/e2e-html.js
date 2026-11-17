@@ -18,8 +18,8 @@ const MIME = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg" 
 
 // `extra` is more [name, sha256] pairs for a page, such as the screenshots a report page embeds.
 const sources = (model, extra = []) => esc([...Object.entries(model.files).map(([n, f]) => [n, f.sha256]), ...extra].sort(([a], [b]) => (a < b ? -1 : 1)).map(([n, h]) => `${n}:${h}`).join(" "));
-// Only a path of the shape the model accepts becomes a page name (and so a key and an href).
-const reportPage = (model) => (/^reports\/[A-Za-z0-9._-]+\/REPORT\.md$/.test(model.results.report ?? "") ? model.results.report.replace(/\.md$/, ".html") : null);
+// Only a report that was read, at a path of the shape the model accepts, becomes a page name (and so a key and an href).
+const reportPage = (model) => (model.files[model.results.report] && /^reports\/[A-Za-z0-9._-]+\/REPORT\.md$/.test(model.results.report) ? model.results.report.replace(/\.md$/, ".html") : null);
 /** The screenshots beside the used report that belong to a case: { id, name, buf }, by file name. A link is never read. */
 function screenshots(model) {
   const f = model.files[model.results.report];
@@ -133,6 +133,7 @@ function loose(model, name, items) {
 }
 
 export function renderPages(model, q) {
+  const found = reportPage(model) ? screenshots(model) : []; // first: one it cannot read is a problem every page shows
   const byCase = model.results.byCase;
   const hasReport = !!model.results.report;
   const caps = new Map(model.capabilities.map((c) => [c.id, c]));
@@ -167,7 +168,7 @@ export function renderPages(model, q) {
     const nav = [[QUAL, "Quality"], [PRD, "PRD"], [CUJS, "CUJs"], [TCS, "Test cases"]]
       .map(([f, label]) => `<a href="${esc(root + f)}"${f === cur ? ' aria-current="page"' : ""}>${label}</a>`);
     nav.push(rp ? `<a href="${esc(rp === cur ? path.basename(rp) : root + rp)}"${rp === cur ? ' aria-current="page"' : ""}>Report</a>` : "<span>Report (none yet)</span>");
-    const banner = q.ok ? "" : `<p class="banner" role="alert">The documents have problems, so the counts may be wrong. <a href="${cur === QUAL ? "" : esc(root + QUAL)}#problems">See the ${q.problems.length} problem${q.problems.length === 1 ? "" : "s"}</a>.</p>`;
+    const banner = !q.problems.length ? "" : `<p class="banner" role="alert">The documents have problems, so the counts may be wrong. <a href="${cur === QUAL ? "" : esc(root + QUAL)}#problems">See the ${q.problems.length} problem${q.problems.length === 1 ? "" : "s"}</a>.</p>`;
     return {
       link,
       html: `<!doctype html>
@@ -348,7 +349,6 @@ ${inventory}`;
   if (rp) {
     const f = model.files[model.results.report];
     const date = path.basename(path.dirname(model.results.report));
-    const found = screenshots(model);
     const shots = new Map();
     for (const { id, name, buf } of found) shots.set(id, [...(shots.get(id) ?? []), { name, uri: `data:${MIME[path.extname(name).toLowerCase()]};base64,${buf.toString("base64")}` }]);
     pages[rp] = page(rp, "../../", `Test report ${date}`, (link) => {

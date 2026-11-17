@@ -227,8 +227,10 @@ feature. When there are any, the command prints `N left open: see
 Exit codes: 0 when all is well, 1 when the documents have problems, 2 for a usage error (an
 unknown flag too), a folder that does not exist or holds none of the four documents, a source it
 cannot read, or a file it cannot write. With `--check`: 0 when every page is current, 1 when a page
-is stale or missing, 2 as above. It refuses to write through a link, or into a folder that leads
-outside, with exit 2, and writes nothing then. With more than 20 problems it prints a count per kind and the first 20; the pages list all.
+is stale or missing, 2 as above. It refuses to write through a link, into a folder that leads
+outside, or over anything that is not a regular file (a folder, a named pipe), with exit 2, and
+writes nothing then. Outputs are written to temporary names first and then renamed one after
+another, so a failure during the renames can leave some outputs new: the message names the file. With more than 20 problems it prints a count per kind and the first 20; the pages list all.
 
 ### Standalone Claude Code server
 
