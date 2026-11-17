@@ -475,6 +475,7 @@ try {
     for (const [f, n] of Object.entries(files)) {
       fs.mkdirSync(path.dirname(path.join(repo, f)), { recursive: true });
       if (n === "dir") fs.mkdirSync(path.join(repo, f));
+      else if (typeof n === "string") fs.writeFileSync(path.join(repo, f), n);
       else fs.writeFileSync(path.join(repo, f), "x\n".repeat(n));
     }
     return readE2e(path.join(repo, "e2e")).problems.map((x) => `${x.line}: ${x.message}`);
@@ -484,6 +485,8 @@ try {
   assert.deepEqual(inRepo({ [L]: 74, [E]: 140 }), [`8: C3 Source line 75 is past the end of ${L} (74 lines)`, `15: C6 Source line 141 is past the end of ${E} (140 lines)`]);
   assert.deepEqual(inRepo({ [L]: 80 }), [`13: C4 Source ${E} is not in the repo`, `14: C5 Source ${E} is not in the repo`, `15: C6 Source ${E} is not in the repo`]);
   assert.deepEqual(inRepo({ [L]: 80, [E]: "dir" }), [], "a folder where the file should be is not read");
+  assert.deepEqual(inRepo({ [L]: 80, [E]: "x\n".repeat(140) + "x" }), [], "a last line with no newline is a line");
+  assert.deepEqual(inRepo({ [L]: 80, [E]: "x\n".repeat(139) + "x" }), [`15: C6 Source line 141 is past the end of ${E} (140 lines)`]);
   assert.deepEqual(inRepo({ "lib/x.kt": 1 }), [], "the paths' first folder app/ is not in the repo: nothing checked");
   const ranged = fs.mkdtempSync(path.join(os.tmpdir(), "e2e-repo-"));
   tmps.push(ranged);
