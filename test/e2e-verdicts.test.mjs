@@ -540,6 +540,28 @@ try {
     console.error(`property test failed with SEED=${seed}`);
     throw e;
   }
+  // A folder the reader cannot open is exit 2 with its error code, as in `e2e report`: never a stack trace.
+  if (process.getuid?.() !== 0 && process.platform !== "win32") {
+    const dir = copy();
+    const day = path.join(dir, "reports", "2026-01-01");
+    fs.mkdirSync(day, { recursive: true });
+    const vf = put(dir, [v("TC-1a", "approved")]);
+    fs.chmodSync(day, 0);
+    try {
+      const run = (...a) => spawnSync(process.execPath, [bin, "e2e", "verdicts", ...a], { encoding: "utf8", timeout: 10000, env: { ...process.env, HOME: home, USERPROFILE: home } });
+      for (const r of [run("--due", dir), run(vf, dir)]) {
+        assert.equal(r.status, 2, r.stderr);
+        assert.equal(r.stdout, "Cannot read reports/2026-01-01: EACCES\n");
+        assert.equal(r.stderr, "");
+      }
+      assert.ok(!fs.existsSync(path.join(dir, ".VERIFY.lock")));
+    } finally { fs.chmodSync(day, 0o755); }
+    fs.chmodSync(dir, 0); // the documents folder itself: the link check reads it before the model does
+    try {
+      const r = spawnSync(process.execPath, [bin, "e2e", "verdicts", "--due", dir], { encoding: "utf8", timeout: 10000, env: { ...process.env, HOME: home, USERPROFILE: home } });
+      assert.deepEqual([r.status, r.stdout, r.stderr], [2, "Cannot read VERIFY.md: EACCES\n", ""]);
+    } finally { fs.chmodSync(dir, 0o755); }
+  }
   console.log("e2e verdicts: ok");
 } finally {
   fs.rmSync(root, { recursive: true, force: true });

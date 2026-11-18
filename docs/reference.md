@@ -315,7 +315,7 @@ latest row (`TC-1a: this verdict is already recorded`), an id twice, a fourth ve
 not yet hold three attempts (`reopen` is allowed once it does, even if the case text has changed
 since). One line otherwise: `the documents have problems: run "e2e report" and fix them first` for
 problems in `TESTCASES.md` or `PRD.md` (fix them, then record again; `--due` refuses the same way),
-a usage error (an unknown flag too), a missing file or folder, a file with no verdicts, a `VERIFY.md` with no table or one that ends
+a usage error (an unknown flag too), a missing file or folder, a file or folder in it that cannot be read (`Cannot read reports/2026-01-01: EACCES`; `--due` too), a file with no verdicts, a `VERIFY.md` with no table or one that ends
 inside an unclosed code fence, or a write failure. If the rows it appended do not read back, it
 restores `VERIFY.md` to its previous bytes (or removes it if this run created it) and says `nothing
 was recorded`. It needs no phone, daemon or network.

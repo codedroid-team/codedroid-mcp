@@ -20,6 +20,11 @@ const clean = (s) => s.replace(/[\r\n]+/g, " ").trim();
 const shown = (id) => (/[\u0000-\u001f\u007f-\u009f]/.test(id) ? JSON.stringify(id) : id);
 const today = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const fail = (...lines) => ({ code: 2, lines });
+/** An I/O error is exit 2 naming what could not be read, as in `e2e report`; anything else is a bug and is thrown. */
+const cannotRead = (dir, e) => {
+  if (!e.code) throw e;
+  return fail(`Cannot read ${path.relative(fs.realpathSync(dir), e.path ?? dir)}: ${e.code}`);
+};
 
 export function recordVerdicts({ dir, file, now = new Date() }) {
   if (!fs.existsSync(file) || !fs.statSync(file).isFile()) return fail(`No such file: ${file}`);
@@ -39,7 +44,8 @@ function recordLocked({ dir, file, now }) {
   const lines = fs.readFileSync(file, "utf8").replace(/^\uFEFF/, "").split(/\r?\n/).map((text, i) => ({ text, n: i + 1 })).filter((l) => l.text.trim());
   if (!lines.length) return fail(`${file} holds no verdicts`);
 
-  const model = readE2e(dir);
+  let model;
+  try { model = readE2e(dir); } catch (e) { return cannotRead(dir, e); } // before any write: a failed rollback still escapes
   if (docsProblems(model)) return fail(DOCS_PROBLEMS);
 
   const faults = [];
@@ -162,10 +168,12 @@ export function dueCases(model) {
 
 /** `codedroid-mcp e2e verdicts --due [dir]`: prints dueCases; writes nothing. */
 export function listDue({ dir }) {
-  if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) return { code: 2, lines: [`No such folder: ${dir}`] };
-  const refused = badLedger(dir);
-  if (refused) return { code: 2, lines: [refused] };
-  const model = readE2e(dir);
-  if (docsProblems(model)) return { code: 2, lines: [DOCS_PROBLEMS] };
-  return { code: 0, lines: dueCases(model) };
+  if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) return fail(`No such folder: ${dir}`);
+  try {
+    const refused = badLedger(dir);
+    if (refused) return fail(refused);
+    const model = readE2e(dir);
+    if (docsProblems(model)) return fail(DOCS_PROBLEMS);
+    return { code: 0, lines: dueCases(model) };
+  } catch (e) { return cannotRead(dir, e); }
 }
