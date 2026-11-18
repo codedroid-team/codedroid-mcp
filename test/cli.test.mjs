@@ -359,6 +359,21 @@ try {
     }
   }
 
+  // ── flow run needs a file and a pairing, and starts no daemon without one ──
+  {
+    const { home, env } = sandbox("flow");
+    const usage = await cli(["flow"], env);
+    assert.equal(usage.code, 2);
+    assert.match(usage.stderr, /Usage: codedroid-mcp flow run <file\.yaml>/);
+    const badEnv = await cli(["flow", "run", "x.yaml", "--env=novalue"], env);
+    assert.equal(badEnv.code, 2);
+    assert.match(badEnv.stderr, /--env takes KEY=VALUE/);
+    const pairingNeeded = await cli(["flow", "run", "x.yaml", `--port=${await freePort()}`], env);
+    assert.equal(pairingNeeded.code, 1);
+    assert.match(pairingNeeded.stderr, /not paired with a phone/);
+    assert.equal(fs.existsSync(daemonTokenPath(home)), false, "no daemon started for nothing");
+  }
+
   console.log("cli.test.mjs: ALL PASS");
 } finally {
   for (const pid of started) {
