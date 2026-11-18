@@ -102,7 +102,7 @@ try {
   // The phone's "echo" and the daemon's own codedroid_status; no adb with CODEDROID_MCP_ADB=0.
   assert.deepEqual(
     toolsA.tools.map((t) => t.name).sort(),
-    ["codedroid_devices", "codedroid_status", "echo", "install_apk"],
+    ["batch", "codedroid_devices", "codedroid_status", "echo", "install_apk", "record_start", "record_stop", "run_flow"],
     "adb must not appear in tools/list when turned off",
   );
 
@@ -272,7 +272,7 @@ try {
   const tools = await c.client.listTools();
   assert.deepEqual(
     tools.tools.map((t) => t.name).sort(),
-    ["adb", "codedroid_devices", "codedroid_setup_phone", "codedroid_status", "echo", "install_apk"],
+    ["adb", "batch", "codedroid_devices", "codedroid_setup_phone", "codedroid_status", "echo", "install_apk", "record_start", "record_stop", "run_flow"],
     "the daemon merges the host-side adb tool into tools/list",
   );
 

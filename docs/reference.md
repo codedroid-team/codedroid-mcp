@@ -25,11 +25,74 @@ read progress, or `cancel_task` to stop the task.
 | `adb` | Run local adb commands against the phone attached to this computer. Turn off with `--no-adb` or `CODEDROID_MCP_ADB=0`. |
 | `codedroid_devices` | List the paired phones (id, model, server) and whether each is connected, without connecting. |
 | `codedroid_status` | Connect to the paired phones, report each connection, and get instructions for resolving problems. |
+| `batch` | Run up to 20 screen tool calls in one round trip with the phone held; stops at the first failure. |
+| `record_start`, `record_stop` | Record the session's phone actions as a Maestro flow and write the YAML. See [Flows](#flows-record-and-replay). |
+| `run_flow` | Replay a Maestro flow (a file or inline YAML) on the phone with no model in the loop. |
 | `codedroid_setup_phone` | Set up the phone on this computer's adb: install CodeDroid (only with `install` set, after the user agrees), turn on its accessibility service, and pair with no code to type. `serial` picks the phone when several are on adb. A long setup answers "still working": call it again. Offered with the `adb` tool. |
+
+`get_screen` takes three options the local bridge applies on your computer: `interactive_only`
+(only the elements a person could act on, with the labels inside them), `max_depth` (cut deep
+nesting) and `diff` (only what changed since the session's last read, one line when nothing did). Node numbers stay the phone's,
+so a tap by node after a filtered read still lands. `batch`, the recording tools and `run_flow`
+are the local bridge's; the remote server has the phone tools alone.
+
+The local bridge marks the tools of the look-act-check loop (`get_screen`, `tap`, `type_text`,
+`swipe`, `press_key`, `open_app`, `wait_for`, `batch`, `codedroid_status`, `codedroid_devices`) with
+`_meta: {"anthropic/alwaysLoad": true}`, so Claude Code keeps them loaded when it defers MCP tools
+and finds the rest by search.
 
 Screen interaction tools return an `after` observation with the current app, keyboard state,
 screen changes, and visible elements. Phone tool errors include an error code, message, and
 hint for recovery.
+
+## Flows: record and replay
+
+A flow is a file in [Maestro's](https://docs.maestro.dev) YAML format holding the steps of a
+sequence on the phone. The agent records one while it drives (`record_start`, drive,
+`record_stop` with `save_to`), and anyone replays it with no model in the loop:
+
+```bash
+npx -y @codedroid/mcp flow run e2e/flows/TC-12a.yaml
+npx -y @codedroid/mcp flow run login.yaml --env=USER=ada,PASSWORD=secret --screenshots=e2e/reports/shots
+```
+
+Run it from the project: the file, nested `runFlow` files and `--screenshots` must be in the
+project directory or the temp directory. It prints each step's result and exits 1 when a step
+fails, with the screen's first lines at that point. A run longer than 50 s keeps waiting in the
+background; the command polls until it ends.
+
+Call `record_start` before `open_app`, so the flow starts by launching the app; a flow with no
+`launchApp` starts wherever the phone is. Recording turns each successful `open_app`, `tap`, `long_press`, `type_text`, `swipe`,
+`press_key`, `wait_for`, `take_screenshot` and `run_task` into a step; reads are not steps, and a
+step that failed is not recorded. A tap by node is written as a tap by the text, resource id or
+content description that node showed, and by its point only when it had none. What Maestro cannot
+express (a wait for an app, the clipboard) stays in the file as a comment.
+
+Replay supports `launchApp`, `tapOn`, `longPressOn` (by text, `id`, or `point: "x,y"` in pixels),
+`inputText`, `eraseText`, `pressKey` (Enter, Home, Back, Recents), `back`, `swipe` (points or a
+direction), `scroll`, `scrollUntilVisible`, `assertVisible`, `assertNotVisible` (both wait up to 7 s
+like Maestro), `extendedWaitUntil`, `waitForAnimationToEnd`, `takeScreenshot`, `runFlow` (a file),
+`repeat` (with `times`), `optional: true`, `${VAR}` from the flow's `env:` and `--env`, and
+`codedroidTask`, a CodeDroid extension that hands CodeDroid's agent a goal. Any other command
+fails the run at that step, so a pass means every step ran: a flow that skipped a command it did not
+know would say "passed" about what it never checked. A flow with no `codedroidTask` runs in Maestro
+on an emulator too (`maestro test <file>`).
+
+The phone is held for the whole run or batch: another client's call waits, it does not interleave.
+
+## Live view: the viewer
+
+```bash
+npx -y @codedroid/mcp viewer
+npx -y @codedroid/mcp viewer "Pixel 9" --interval=5
+```
+
+It prints a localhost URL. The page shows the phone's screen every few seconds while the tab is
+visible (pause it any time), and lets you take over: click the picture to tap there, press Back,
+Home or Recents, type into the focused field, or cancel a task by id. It is a client of the
+daemon like the agent, so its screenshots queue with the agent's calls and never interleave with
+them. The URL holds a random path, the server listens on loopback only, and a page from another
+origin cannot reach it.
 
 ## Manage access
 
@@ -411,13 +474,20 @@ npx -y @codedroid/mcp setup
 npx -y @codedroid/mcp pair ABCD-EFGH
 npx -y @codedroid/mcp connect
 npx -y @codedroid/mcp status
+npx -y @codedroid/mcp doctor
 npx -y @codedroid/mcp call get_screen
 npx -y @codedroid/mcp call tap '{"text": "Display"}'
+npx -y @codedroid/mcp flow run e2e/flows/TC-12a.yaml
+npx -y @codedroid/mcp viewer
 npx -y @codedroid/mcp unpair "Pixel 9"
 npx -y @codedroid/mcp stop
 ```
 
 `setup` adds CodeDroid to your coding clients ([details](#setup-command)). `connect` reconnects a paired computer. `stop` shuts down the local daemon.
+`doctor` checks Node, adb, this computer's pairing and token, the daemon, each phone's link and
+which coding clients have CodeDroid, one line each with what to fix, and exits 1 when something
+needs fixing. `flow run` replays a [flow](#flows-record-and-replay); `viewer` opens the
+[live view](#live-view-the-viewer).
 
 ### Several phones
 
@@ -440,8 +510,8 @@ takes `device` the same way: `npx -y @codedroid/mcp call get_screen '{"device": 
 
 ## Troubleshooting
 
-Run `npx -y @codedroid/mcp status` or call `codedroid_status` from your agent to diagnose a
-connection problem.
+Run `npx -y @codedroid/mcp doctor` for every check at once, `npx -y @codedroid/mcp status` for the
+phones, or call `codedroid_status` from your agent to diagnose a connection problem.
 
 | Problem | Action |
 | --- | --- |

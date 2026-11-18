@@ -134,16 +134,28 @@ function copiedHostFiles(subcommand, rest) {
   return [];
 }
 
-/** Why [file] on this computer is out of reach, or null. [user] is what asked for it. */
-function fileRefusal(file, user, project) {
+/** Why [file] on this computer is out of reach, or null. [user] is what asked for it; [tool] the tool. */
+function fileRefusal(file, user, project, tool = "adb") {
   const roots = [project, os.tmpdir(), "/tmp"].filter(Boolean).map(realPath);
   if (!path.isAbsolute(file) && !project) {
-    return `adb: '${file}' is relative and this client has no project directory. Use an absolute path in ${roots.join(" or ")}.`;
+    return `${tool}: '${file}' is relative and this client has no project directory. Use an absolute path in ${roots.join(" or ")}.`;
   }
   if (!roots.some((root) => isInside(root, realPath(path.resolve(project ?? "/", file))))) {
-    return `adb: '${user}' can only use local files in ${roots.join(" or ")}, not '${file}'. Copy it there, or ask the user to run this adb command.`;
+    const advice = tool === "adb" ? "Copy it there, or ask the user to run this adb command." : "Use a path there.";
+    return `${tool}: '${user}' can only use local files in ${roots.join(" or ")}, not '${file}'. ${advice}`;
   }
   return null;
+}
+
+/**
+ * [file] as an absolute path a tool of this client may read or write: in the client's project
+ * directory or the temp directory. Throws saying why not, naming [tool] and its [argument].
+ */
+export function confinedFile(file, cwd, tool, argument = "path") {
+  const project = projectDir(cwd);
+  const refusal = fileRefusal(String(file), argument, project, tool);
+  if (refusal) throw new Error(refusal);
+  return path.resolve(project ?? "/", String(file));
 }
 
 /**

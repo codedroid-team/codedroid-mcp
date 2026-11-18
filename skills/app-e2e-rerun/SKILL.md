@@ -30,6 +30,12 @@ No `e2e/` yet? Say so and offer the app-e2e skill, which writes the cases first.
 Add each case's `Needs:` cases first, in order, or it fails for the wrong reason. Cases that run a
 CodeDroid task only with the user's OK for this run. Say the list before you start.
 
+A case with a flow in `e2e/flows/<case>.yaml` (the local bridge writes one on a passing run):
+`run_flow` it, then check its Expected lines on the screen it leaves. A flow that passes is the
+case's result; one that fails names the step: drive the case by hand from there, as app-e2e-run
+says, and judge the failure with its table (a flow that no longer matches the app is a test bug:
+record it again). Without the local bridge, drive every case by hand.
+
 ## The cases a change touches
 
 1. Read the change: `git diff` against the base branch (or the commits the user names).

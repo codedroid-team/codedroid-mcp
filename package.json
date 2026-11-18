@@ -1,6 +1,6 @@
 {
   "name": "@codedroid/mcp",
-  "version": "0.1.16",
+  "version": "0.1.17",
   "mcpName": "io.github.codedroid-team/codedroid-mcp",
   "description": "MCP server for controlling Android devices through CodeDroid from Claude Code, Codex, Antigravity, and other MCP clients.",
   "type": "module",
@@ -28,7 +28,8 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "jsonc-parser": "^3.3.1",
-    "ws": "^8.22.0"
+    "ws": "^8.22.0",
+    "yaml": "^2.9.1"
   },
   "keywords": [
     "mcp",
