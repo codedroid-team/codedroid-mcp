@@ -322,8 +322,9 @@ export function readE2e(dir) {
         tc = { id: h[1], priority: h[2], title: h[3], feature: null, type: null, covers: [], tier: null, depth: null, mode: null, needs: [], retired: null, line: n, lines: [n, 0], has: {} };
         m.cases.push(tc);
       } else if (hd) {
-        if (/^TC-/.test(hd.text)) problem("TESTCASES.md", n, UNREADABLE.case);
-        tc = null;
+        const broken = /^TC-/.test(hd.text);
+        if (broken) problem("TESTCASES.md", n, UNREADABLE.case);
+        if (broken || hd.level <= 3) tc = null; // other h4–h6 stay inside the case: its fields go on below them
       }
       else if (/^\s+[-*] Gap:/.test(t)) problem("TESTCASES.md", n, "Gap line must start at the beginning of the line");
       else if ((h = t.match(/^[-*] Gap:\s*(.*)$/))) {
