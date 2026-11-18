@@ -19,11 +19,23 @@ const clean = (s) => s.replace(/[\r\n]+/g, " ").trim();
 /** An id as echoed in a fault line: quoted when it holds a control character. */
 const shown = (id) => (/[\u0000-\u001f\u007f-\u009f]/.test(id) ? JSON.stringify(id) : id);
 const today = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const fail = (...lines) => ({ code: 2, lines });
 
 export function recordVerdicts({ dir, file, now = new Date() }) {
-  const fail = (...lines) => ({ code: 2, lines });
   if (!fs.existsSync(file) || !fs.statSync(file).isFile()) return fail(`No such file: ${file}`);
   if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) return fail(`No such folder: ${dir}`);
+  const lock = path.join(fs.realpathSync(dir), ".VERIFY.lock");
+  // ponytail: fail-fast per-ledger lock; manual crash recovery until an OS-managed lock is needed.
+  try { fs.mkdirSync(lock, { mode: 0o700 }); } catch (e) {
+    return fail(e.code === "EEXIST"
+      ? `VERIFY.md is locked: retry after the other writer finishes; after a crash, remove ${lock} only when no writer is running`
+      : `Cannot lock VERIFY.md: ${e.code ?? e.message}`);
+  }
+  try { return recordLocked({ dir, file, now }); }
+  finally { fs.rmdirSync(lock); }
+}
+
+function recordLocked({ dir, file, now }) {
   const lines = fs.readFileSync(file, "utf8").replace(/^\uFEFF/, "").split(/\r?\n/).map((text, i) => ({ text, n: i + 1 })).filter((l) => l.text.trim());
   if (!lines.length) return fail(`${file} holds no verdicts`);
 
@@ -84,7 +96,7 @@ export function recordVerdicts({ dir, file, now = new Date() }) {
   // Exit 2 means nothing was recorded: on any failure after this point VERIFY.md goes back to its old bytes.
   const created = !fs.existsSync(full);
   const oldSize = created ? 0 : fs.statSync(full).size;
-  const restore = () => { try { if (created) fs.rmSync(full, { force: true }); else fs.truncateSync(full, oldSize); } catch { /* reported below */ } };
+  const restore = () => { if (created) fs.rmSync(full, { force: true }); else fs.truncateSync(full, oldSize); };
   try {
     if (created) fs.writeFileSync(full, HEADER + rows, { flag: "wx" });
     else {
@@ -98,7 +110,11 @@ export function recordVerdicts({ dir, file, now = new Date() }) {
   }
 
   // Self-check: the reader must see each row just written as its case's latest.
-  const back = readE2e(dir).verify.rows;
+  let back;
+  try { back = readE2e(dir).verify.rows; } catch (e) {
+    restore();
+    return fail(`Cannot read back VERIFY.md: ${e.code ?? e.message}; nothing was recorded`);
+  }
   for (const t of todo) {
     const last = back.findLast((r) => r.item === t.id);
     if (!last || last.verdict !== t.verdict || last.attempt !== t.attempt || last.by !== t.by || last.text !== t.hash || last.date !== date || last.reason !== t.reason) {
@@ -118,6 +134,7 @@ function badLedger(dir) {
   const full = path.join(root, "VERIFY.md");
   if (escapesRoot(root, full)) return `Refusing to write VERIFY.md: it is a link or leads outside ${dir}`;
   if (notRegular(full)) return "Refusing to write VERIFY.md: it is not a regular file";
+  if (fs.lstatSync(full, { throwIfNoEntry: false })?.nlink > 1) return "Refusing to write VERIFY.md: it has multiple hard links";
   return null;
 }
 
@@ -133,8 +150,9 @@ export function dueCases(model) {
   const due = (c) => {
     const v = c.verify;
     if (!v) return false; // setup, retired
+    if (cycleOf(v.history, v.rejected).length >= MAX_ATTEMPTS) return false;
     if (v.history.at(-1)?.verdict === "reopen") return true;
-    return DUE.includes(v.status) && cycleOf(v.history, v.rejected).length < MAX_ATTEMPTS;
+    return DUE.includes(v.status);
   };
   const byFeature = new Map();
   for (const c of model.cases.filter(due)) byFeature.set(c.feature, [...(byFeature.get(c.feature) ?? []), `${c.id}@${c.verify.hash}`]);

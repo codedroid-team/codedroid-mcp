@@ -165,6 +165,7 @@ try {
   assert.deepEqual(ok.problems, []);
   assert.deepEqual(ok.rows[0], { item: "TC-1a", attempt: 1, verdict: "repair", by: "independent", text: H, date: "2026-11-14", reason: "a | b `unbalanced", line: 3 });
   const bad = (line, message) => assert.deepEqual(pv(line + "\n").problems, [{ line: 3, message }], message);
+  bad(row("TC-1a", 1, "repair").slice(1), "row must start with |");
   bad("| TC-1a | 1 | repair | independent | " + H + " | 2026-11-14 |", "row has 6 cells, expected 7");
   bad(row("TC-1a", 1, "maybe"), "verdict must be approved, repair, question or reopen");
   bad(row("TC-1a", 1, "repair").replace("independent", "robot"), "By must be independent, same or user");
@@ -200,6 +201,11 @@ try {
   assert.equal(six.rows.length, 2);
   const inv = (body, extra) => readE2e(copy((d) => fs.appendFileSync(path.join(d, "VERIFY.md"), body)));
   const sixM = inv(badRow("TC-1a") + "\n");
+  const missingPipe = inv(row("TC-1a", 1, "repair", caseHash(m, "TC-1a")).slice(1) + "\n");
+  assert.equal(missingPipe.cases[0].verify.status, "invalid", "a missing delimiter must not restore the old approval");
+  assert.equal(missingPipe.cases[0].verify.rejected.length, 1);
+  assert.equal(cycleOf(missingPipe.cases[0].verify.history, missingPipe.cases[0].verify.rejected).length, 1);
+  assert.deepEqual(missingPipe.problems.map((p) => p.message), ["row must start with |"]);
   assert.equal(sixM.cases[0].verify.status, "invalid");
   assert.match(sixM.cases[0].verify.reason, /^VERIFY\.md line \d+ cannot be read$/);
   assert.equal(sixM.problems.length, 1);

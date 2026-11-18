@@ -180,6 +180,28 @@ try {
   assert.deepEqual(r, { code: 2, lines: ["VERIFY.md has no verdict table: delete it or restore it"] });
   assert.equal(fs.readFileSync(path.join(dir, "VERIFY.md"), "utf8"), "just notes\n");
 
+  // Subheadings rendered inside a case are judged text too: weakening their assertions stales its approval.
+  for (const level of [4, 5, 6]) {
+    dir = copy((d) => {
+      const p = path.join(d, "TESTCASES.md");
+      fs.writeFileSync(p, fs.readFileSync(p, "utf8").replace("Expected: the title is in the list.", `${"#".repeat(level)} Assertions\nExpected: the title is in the list.`));
+    });
+    const file = put(dir, [v("TC-1a", "approved", "R1: the saved title is listed.")]);
+    assert.equal(recordVerdicts({ dir, file, now: NOW }).code, 0);
+    assert.equal(status(dir, "TC-1a").status, "approved");
+    const hash = status(dir, "TC-1a").hash;
+    const sibling = status(dir, "TC-1b").hash;
+    const p = path.join(dir, "TESTCASES.md");
+    fs.writeFileSync(p, fs.readFileSync(p, "utf8").replace("Expected: the title is in the list.", "Expected: anything at all."));
+    assert.equal(status(dir, "TC-1a").status, "stale", `h${level}: displayed assertions must invalidate approval`);
+    assert.notEqual(status(dir, "TC-1a").hash, hash);
+    assert.equal(status(dir, "TC-1b").hash, sibling, "the next case is unchanged");
+    assert.equal(recordVerdicts({ dir, file, now: NOW }).code, 2, "cannot replay the old approval");
+    assert.ok(dueCases(readE2e(dir)).join(" ").includes("TC-1a@"));
+    assert.equal(e2eReport(dir).status, 0);
+    assert.match(fs.readFileSync(path.join(dir, "TESTCASES.html"), "utf8"), /anything at all/);
+  }
+
   // H1. A verdict is bound to the text it was judged on. The reviewer's repro: approve, weaken the case, record the
   // same file again: refused, and the case stays stale.
   dir = copy();
@@ -276,6 +298,21 @@ try {
   dir = copy((d) => fs.appendFileSync(path.join(d, "VERIFY.md"), "| TC-1a | x | approved | independent | 0123456789abcdef | 2026-11-14 | r |\n"));
   assert.ok(due(dir)[0].startsWith(`F1: ${at(dir, "TC-1a")} `));
 
+  // Damaged rows after a reopen still consume attempts: --due and the writer must agree on the cap.
+  dir = copy();
+  assert.equal(rec(dir, [v("TC-3a", "reopen", "the user allowed more")]).code, 0);
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    fs.appendFileSync(path.join(dir, "VERIFY.md"), `| TC-3a | ${attempt} | repair | robot | ${caseHash(readE2e(dir), "TC-3a")} | 2026-11-20 | damaged |\n`);
+    assert.equal(status(dir, "TC-3a").status, "invalid");
+    assert.equal(due(dir).join(" ").includes("TC-3a@"), attempt < 3, `reopened cycle with ${attempt} rejected rows`);
+  }
+  keep = verifyBytes(dir);
+  assert.equal(rec(dir, [v("TC-3a", "repair"), v("TC-3b", "approved")]).code, 2);
+  assert.ok(verifyBytes(dir).equals(keep));
+  assert.equal(rec(dir, [v("TC-3a", "reopen", "the user allowed another cycle")]).code, 0);
+  assert.ok(due(dir).join(" ").includes("TC-3a@"));
+  assert.equal(rec(dir, [v("TC-3a", "approved")]).code, 0);
+
   // Exit 2 records nothing. A reason that is not well-formed Unicode is a fault.
   dir = copy();
   keep = verifyBytes(dir);
@@ -304,6 +341,88 @@ try {
   assert.equal(recordVerdicts({ dir, file: put(dir, [v("TC-3b", "repair")]), now: far }).code, 2);
   assert.ok(!fs.existsSync(path.join(dir, "VERIFY.md")), "a VERIFY.md this run created is removed");
 
+  // An I/O exception on the mandatory readback must undo an actual append, not leave an attempt recorded.
+  dir = copy();
+  keep = verifyBytes(dir);
+  const readbackFile = put(dir, [v("TC-3b", "repair")]);
+  const readbackPrd = path.join(fs.realpathSync(dir), "PRD.md");
+  const readFile = fs.readFileSync;
+  let prdReads = 0;
+  fs.readFileSync = (p, ...args) => {
+    if (p === readbackPrd && ++prdReads === 2) throw Object.assign(new Error("readback failed"), { code: "EIO" });
+    return readFile(p, ...args);
+  };
+  try { r = recordVerdicts({ dir, file: readbackFile, now: NOW }); }
+  finally { fs.readFileSync = readFile; }
+  assert.equal(prdReads, 2, "the error was injected on readback, after the write");
+  assert.equal(r.code, 2);
+  assert.match(r.lines.join("\n"), /EIO/);
+  assert.ok(verifyBytes(dir).equals(keep), "readback exception restores the original bytes");
+  assert.ok(!fs.existsSync(path.join(dir, ".VERIFY.lock")), "readback failure releases the lock");
+  // No injection: umask 0444 creates a write-only ledger; the actual CLI cannot read it back.
+  if (process.platform !== "win32" && process.getuid?.() !== 0) {
+    dir = copy((d) => fs.rmSync(path.join(d, "VERIFY.md")));
+    const file = put(dir, [v("TC-3b", "repair")]);
+    // The restrictive umask would also make this child's coverage output unreadable.
+    const b = spawnSync("/bin/sh", ["-c", 'umask 0444; exec "$@"', "readback", process.execPath, bin, "e2e", "verdicts", file, dir], { encoding: "utf8", timeout: 10000, env: { ...process.env, HOME: home, USERPROFILE: home, NODE_V8_COVERAGE: "" } });
+    assert.equal(b.status, 2, b.stdout + b.stderr);
+    assert.match(b.stdout, /EACCES/);
+    assert.ok(!fs.existsSync(path.join(dir, "VERIFY.md")), "failed CLI readback removes a new ledger");
+  }
+
+  // A failed rollback must escape, never return exit 2's promise that nothing was recorded.
+  dir = copy();
+  const rollbackFile = put(dir, [v("TC-3b", "repair")]);
+  const waitingFile = put(dir, [v("TC-1c", "repair", "waiting for rollback")]);
+  const truncate = fs.truncateSync;
+  let waiting;
+  fs.truncateSync = () => {
+    waiting = spawnSync(process.execPath, [bin, "e2e", "verdicts", waitingFile, dir], { encoding: "utf8", timeout: 10000, env: { ...process.env, HOME: home, USERPROFILE: home } });
+    throw Object.assign(new Error("rollback failed"), { code: "EIO" });
+  };
+  try { assert.throws(() => recordVerdicts({ dir, file: rollbackFile, now: far }), { code: "EIO" }); }
+  finally { fs.truncateSync = truncate; }
+  assert.equal(waiting.status, 2, "the lock is held through rollback");
+  assert.match(waiting.stdout, /locked/);
+  assert.ok(!fs.existsSync(path.join(dir, ".VERIFY.lock")), "even a failed rollback releases the lock");
+
+  // Pause A before its real append; a second process B must not slip a successful verdict into A's rollback.
+  dir = copy();
+  const aFile = put(dir, [v("TC-1c", "repair", "writer A")]);
+  const bFile = put(dir, [v("TC-1c", "repair", "writer B")]);
+  const alias = path.join(root, "concurrent-alias");
+  fs.symlinkSync(dir, alias, "dir");
+  const ledger = path.join(fs.realpathSync(dir), "VERIFY.md");
+  const append = fs.appendFileSync;
+  let concurrent;
+  fs.appendFileSync = (p, ...args) => {
+    if (p === ledger) concurrent = spawnSync(process.execPath, [bin, "e2e", "verdicts", bFile, alias], { encoding: "utf8", timeout: 10000, env: { ...process.env, HOME: home, USERPROFILE: home } });
+    return append(p, ...args);
+  };
+  try { r = recordVerdicts({ dir, file: aFile, now: NOW }); }
+  finally { fs.appendFileSync = append; }
+  assert.ok(concurrent, "B ran at A's append boundary");
+  if (concurrent.status === 0) assert.ok(status(dir, "TC-1c").history.some((row) => row.reason === "writer B"), "A's rollback deleted B's successful verdict");
+  assert.equal(concurrent.status, 2, concurrent.stdout + concurrent.stderr);
+  assert.match(concurrent.stdout, /locked/);
+  assert.equal(r.code, 0, r.lines.join("\n"));
+  assert.ok(!fs.existsSync(path.join(dir, ".VERIFY.lock")), "success releases the lock");
+  assert.equal(recordVerdicts({ dir: alias, file: bFile, now: NOW }).code, 0, "B can retry after A finishes");
+  assert.deepEqual(status(dir, "TC-1c").history.slice(-2).map((row) => [row.attempt, row.reason]), [[2, "writer A"], [3, "writer B"]]);
+
+  // Failure to acquire the lock is a refusal, never permission to write without it.
+  dir = copy();
+  keep = verifyBytes(dir);
+  const lockFile = put(dir, [v("TC-3b", "repair")]);
+  const mkdir = fs.mkdirSync;
+  for (const error of [Object.assign(new Error("denied"), { code: "EACCES" }), new Error("lock unavailable")]) {
+    fs.mkdirSync = () => { throw error; };
+    try { r = recordVerdicts({ dir, file: lockFile, now: NOW }); }
+    finally { fs.mkdirSync = mkdir; }
+    assert.deepEqual(r, { code: 2, lines: [`Cannot lock VERIFY.md: ${error.code ?? error.message}`] });
+    assert.ok(verifyBytes(dir).equals(keep));
+  }
+
   // A byte order mark at the start of the verdicts file is skipped.
   dir = copy();
   { const f = put(dir, [v("TC-3b", "repair")]); fs.writeFileSync(f, "\uFEFF" + fs.readFileSync(f, "utf8")); r = recordVerdicts({ dir, file: f, now: NOW }); }
@@ -324,6 +443,20 @@ try {
   r = rec(dir, [v("TC-3b", "repair", "a | b\nc <script>alert(1)</script> \\| `x`")]);
   assert.equal(r.code, 0);
   assert.equal(status(dir, "TC-3b").reason, "a | b c <script>alert(1)</script> \\| `x`");
+
+  // Appending through a hard link would modify the outside file too: refuse it in the writer and --due.
+  dir = copy();
+  const hardlink = path.join(root, "linked-ledger.md");
+  fs.linkSync(path.join(dir, "VERIFY.md"), hardlink);
+  keep = verifyBytes(dir);
+  r = rec(dir, [v("TC-3b", "repair")]);
+  assert.equal(r.code, 2, "hard-linked ledger must be refused");
+  assert.match(r.lines[0], /hard link/);
+  assert.ok(fs.readFileSync(hardlink).equals(keep), "outside bytes unchanged");
+  assert.ok(verifyBytes(dir).equals(keep));
+  const linkedDue = spawnSync(process.execPath, [bin, "e2e", "verdicts", "--due", dir], { encoding: "utf8", timeout: 10000, env: { ...process.env, HOME: home, USERPROFILE: home } });
+  assert.equal(linkedDue.status, 2);
+  assert.match(linkedDue.stdout, /hard link/);
 
   // A symlinked VERIFY.md leading outside is refused and nothing is written through it.
   const outside = path.join(root, "outside.md");

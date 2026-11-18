@@ -290,6 +290,10 @@ a `reopen` row is `0`), the case's code and today's local date. A reason's line 
 space and `|` is written `\|`. Existing lines are never rewritten, and nothing is written through a
 link, outside `dir`, or over a `VERIFY.md` that is not a regular file (a folder, a named pipe).
 
+Recording holds a per-folder `.VERIFY.lock` directory from the initial read through readback or
+rollback. Another writer exits 2 without recording anything; retry after the active writer finishes.
+A crashed writer may leave the lock: remove it only after confirming no writer is running.
+
 A row the reader cannot trust marks its case `invalid` and is a problem in `e2e report`: one it
 cannot parse, one whose attempt does not follow its cycle, or one whose date is not a calendar date.
 Such a row still takes one attempt of the case's cycle. A new verdict recorded for the case
@@ -316,7 +320,7 @@ inside an unclosed code fence, or a write failure. If the rows it appended do no
 restores `VERIFY.md` to its previous bytes (or removes it if this run created it) and says `nothing
 was recorded`. It needs no phone, daemon or network.
 
-`VERIFY.md` is bookkeeping for honest agents, not a lock: anyone who edits it by hand can forge a
+`VERIFY.md` is bookkeeping for honest agents, not an access-control boundary: anyone who edits it by hand can forge a
 row, so review it like any other file in a pull request.
 
 ### Standalone Claude Code server

@@ -315,7 +315,7 @@ export function readE2e(dir) {
     for (const { n, t } of tcs) {
       let h;
       const hd = heading(t);
-      if (hd) bounds.push(n);
+      if (hd && hd.level <= 3) bounds.push(n); // h4–h6 are rendered inside the case, so they are judged too
       if (hd && (h = t.match(/^### (TC-[A-Za-z0-9]+) · (P\d+) · (.+?)\s*$/))) {
         defined("TESTCASES.md", n, h[1]);
         if (!oneOf(h[2], PRIORITIES)) problem("TESTCASES.md", n, `${h[1]} priority must be ${words(PRIORITIES)}`);

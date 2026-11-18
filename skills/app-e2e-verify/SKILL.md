@@ -6,15 +6,17 @@ description: Have a fresh agent judge each e2e test case's design before the use
 # Verify the test cases
 
 A case can pass on a broken app, and its author reads past it. A fresh agent with only the
-documents and the source hunts for that app; its verdicts go into `e2e/VERIFY.md`, which only the
+documents and the source hunts for that app; its verdicts go into `<dir>/VERIFY.md`, which only the
 `e2e verdicts` command writes (never edit it). Run this before gate 2, and for every case
 app-e2e-maintain or app-e2e-bug adds or edits.
+Use `<dir>` for the selected document folder (`e2e` unless the user chose another), relative to the
+app's repository root or absolute. Use that same folder in every command, brief and page path below.
 
 ## Who judges
 
-One fresh agent per feature with cases due, given the brief below verbatim with `<feature>`, `<ids>`
+One fresh agent per feature with cases due, given the brief below verbatim with `<dir>`, `<feature>`, `<ids>`
 (that feature's line from `e2e verdicts --due`, after the colon) and `<file>` (a new file in a temp
-folder, outside `e2e/`) filled in, and nothing else: not your notes, not why you wrote a case as you
+folder, outside `<dir>`) filled in, and nothing else: not your notes, not why you wrote a case as you
 did. Where the host cannot start another agent, judge in a separate pass: reread the documents and
 the source from the top, follow the brief to the letter, and write `by` as `same`: the pages show who judged.
 
@@ -25,7 +27,7 @@ someone else wrote them. Find the broken app that would still pass them. Judge e
 <ids>, which belong to feature <feature>; do not judge any other case. Each comes as `TC-1a@<code>`:
 the code ties your verdict to the text you judged.
 
-Work in the app's repository root: the documents are in its `e2e/` folder, the source is the rest of
+Work in the app's repository root: the documents are in its `<dir>` folder, the source is the rest of
 the repository. INVENTORY.md: each screen's controls (C<n>), each with its handler's source file and
 line. PRD.md: features (F<n>) and requirements (R<n>), each with Caps (its controls), Fails (its
 failure lines, R<n>.f<m>) and Proof, how deep its check must go: `screen` where the user acted,
@@ -36,7 +38,7 @@ every control in that requirement's Caps. A control in the Caps that a bracketed
 is not the case's to exercise. Tier is smoke, core, deep or edge; Depth is the deepest place its
 Expected lines check. EXPLORE.md: labels seen on the phone. Read the source at each covered
 control's line, and what it calls. Do not read earlier verdicts: `VERIFY.md`, `QUALITY.md`,
-`quality.json` or the `.html` pages. Do not edit any file under `e2e/`. Run nothing on the phone.
+`quality.json` or the `.html` pages. Do not edit any file under `<dir>`. Run nothing on the phone.
 
 Judge a case against what it claims: the requirements and failures in its Covers, to the depth its
 Depth line says. It need not reach a requirement's Proof alone: an honest Depth shallower than the
@@ -82,18 +84,20 @@ fields `id` (the case id), `verdict`, `by` (`independent`; `same` if you wrote t
 
 ## The loop
 
-1. `npx -y @codedroid/mcp e2e report e2e` lists no problems in `TESTCASES.md` or `PRD.md`. Run
-   `npx -y @codedroid/mcp e2e verdicts --due e2e`: one line per feature, `F2: TC-2a@<code> ...`.
+1. `npx -y @codedroid/mcp e2e report "<dir>"` lists no problems in `TESTCASES.md` or `PRD.md`. Run
+   `npx -y @codedroid/mcp e2e verdicts --due "<dir>"`: one line per feature, `F2: TC-2a@<code> ...`.
    Start one verifier per line, each its own `<file>`, with that line's cases as `<ids>`.
-2. Record each file: `npx -y @codedroid/mcp e2e verdicts <file> e2e`, then `e2e report`. A refused
+2. Record each file: `npx -y @codedroid/mcp e2e verdicts <file> "<dir>"`, then `e2e report "<dir>"`. A refused
    file (exit 2) records nothing. Faults come as `<file>:<line>: <message>`: have the verifier
    correct its output and record again; a "changed since it was judged" fault means the case goes
    to a verifier again, never that you edit the code. The one line "the documents have problems":
-   fix them with `e2e report`, then record again.
+   fix them with `e2e report "<dir>"`, then record again.
+   If the ledger is locked, retry after the other writer finishes; follow the command's recovery advice
+   after a crash. Do not change the verifier output.
 3. Each `repair`: change the case to answer every finding in its reason, without weakening another
    check. Add to `Covers:` a control the repaired steps now use; never remove one to escape a
    finding. If the answer is a new case or a Gap line, say so and write that. It shows as `stale`.
-4. Run `npx -y @codedroid/mcp e2e verdicts --due e2e` again and send each line to a new verifier,
+4. Run `npx -y @codedroid/mcp e2e verdicts --due "<dir>"` again and send each line to a new verifier,
    never the one that judged before (or, with no agents, a new pass from the top). A case that used
    its three attempts is not listed: it waits for the user. Every verdict, `question` included,
    uses an attempt; a `reopen` does not. Record its file.
@@ -109,11 +113,13 @@ verifier in the documents. Only when the user says to give a case more attempts,
 
 ## Gate 2
 
-Give the user `e2e/TESTCASES.html` and `e2e/QUALITY.html`. From the Verifier section of
-`e2e/QUALITY.md`, say how many cases were approved on the first attempt, after a repair, and not at
-all, each unapproved one with its last reason (a case not judged yet has none: say so); ask each
-`question`; say whether an independent agent or the same agent judged. An approved case has a sound
-design, not a passing run.
+Run `npx -y @codedroid/mcp e2e report "<dir>"` after the final repair, even if no case is due.
+Fix any reported document problems and rerun before presenting the pages.
+Give the user `<dir>/TESTCASES.html` and `<dir>/QUALITY.html`. From the Verifier section of
+`<dir>/QUALITY.md`, say how many cases were approved on the first attempt, after a repair, and not at
+all. For each unapproved case, take its last reason from the case's verifier history in
+`<dir>/TESTCASES.html` (a case not judged yet has none: say so); ask each `question`; say whether an
+independent agent or the same agent judged. An approved case has a sound design, not a passing run.
 
 ## Never
 

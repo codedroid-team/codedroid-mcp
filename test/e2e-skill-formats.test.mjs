@@ -11,8 +11,9 @@ import os from "node:os";
 import path from "node:path";
 import { readE2e } from "../src/e2e-model.js";
 import { quality } from "../src/e2e-quality.js";
-import { recordVerdicts } from "../src/e2e-verdicts.js";
+import { dueCases, recordVerdicts } from "../src/e2e-verdicts.js";
 import { caseHash } from "../src/e2e-verify.js";
+import { runE2eReport } from "../src/e2e-report.js";
 import { skillSource } from "../src/skill.js";
 
 const NAMES = ["app-e2e", "app-e2e-explore", "app-e2e-prd", "app-e2e-cujs", "app-e2e-testcases", "app-e2e-run", "app-e2e-maintain", "app-e2e-bug", "app-e2e-verify"];
@@ -42,10 +43,15 @@ assert.match(fs.readFileSync(skillSource("app-e2e-explore"), "utf8"), /INVENTORY
 // The verify skill: the command, the ledger, and the brief handed to the verifier, with its words and fields.
 const verify = fs.readFileSync(skillSource("app-e2e-verify"), "utf8");
 assert.match(verify, /e2e verdicts/, "verify names the e2e verdicts command");
-assert.match(verify, /e2e verdicts --due e2e/, "the loop takes the cases to judge from e2e verdicts --due");
+assert.match(verify, /e2e verdicts --due "<dir>"/, "the loop uses the selected document folder");
 assert.match(verify, /VERIFY\.md/, "verify names VERIFY.md");
 const brief = verify.match(/^=== VERIFIER BRIEF ===\r?\n([\s\S]*?)^=== END OF VERIFIER BRIEF ===/m);
 assert.ok(brief, "verify holds the brief between === VERIFIER BRIEF === and === END OF VERIFIER BRIEF ===");
+for (const selected of ["e2e", "qa/acceptance cases"]) {
+  const dispatched = brief[1].replaceAll("<dir>", selected);
+  assert.ok(dispatched.includes(`the documents are in its \`${selected}\` folder`), "the verifier receives the selected document folder");
+  assert.ok(dispatched.includes(`Do not edit any file under \`${selected}\``), "the no-edit boundary follows the selected folder");
+}
 for (const word of ["approved", "repair", "question", "id", "verdict", "by", "reason", "text"]) {
   assert.match(brief[1], new RegExp(`\`${word}\``), `the brief names \`${word}\``);
 }
@@ -69,7 +75,8 @@ assert.ok(verdict, "the brief shows a repair line");
 
 for (const [kind, blocks] of Object.entries(stitched)) assert.ok(blocks.length, `no skill has a ${FILES[kind]} example`);
 
-const dir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "e2e-skill-formats-")), "e2e");
+const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "e2e-skill-formats-"));
+const dir = path.join(workspace, "qa", "acceptance cases");
 try {
   for (const [kind, file] of Object.entries(FILES)) {
     fs.mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
@@ -92,8 +99,31 @@ try {
   const recorded = recordVerdicts({ dir, file: jsonl });
   assert.equal(recorded.code, 0, recorded.lines.join("\n"));
   assert.equal(readE2e(dir).cases.find((c) => c.id === verdict.id)?.verify?.status, "repair");
+
+  // Follow the loop through its final repair, when the attempt cap stops further judging.
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const current = readE2e(dir);
+    if (attempt > 1) {
+      fs.writeFileSync(jsonl, JSON.stringify({ ...verdict, reason: `Fixture repair ${attempt}`, text: caseHash(current, verdict.id) }) + "\n");
+      assert.equal(recordVerdicts({ dir, file: jsonl }).code, 0);
+    }
+    assert.equal(runE2eReport({ dir }).code, 0);
+    const file = path.join(dir, "TESTCASES.md");
+    const lines = fs.readFileSync(file, "utf8").split("\n");
+    lines.splice(current.cases.find((c) => c.id === verdict.id).line, 0, `Expected: repair ${attempt} is observable.`);
+    fs.writeFileSync(file, lines.join("\n"));
+  }
+  assert.ok(!dueCases(readE2e(dir)).join(" ").includes(`${verdict.id}@`), "three repairs exhaust the case's attempts");
+  assert.equal(runE2eReport({ dir, check: true }).code, 1, "the last edit needs a refresh");
+  const gate = verify.split("## Gate 2\n")[1].split("Give the user")[0];
+  if (gate.includes('`npx -y @codedroid/mcp e2e report "<dir>"`')) assert.equal(runE2eReport({ dir }).code, 0);
+  assert.equal(runE2eReport({ dir, check: true }).code, 0, "Gate 2 must refresh after the final repair");
+  assert.match(fs.readFileSync(path.join(dir, "TESTCASES.html"), "utf8"), /repair 3 is observable/);
+  const reasonSource = verify.split("## Gate 2\n")[1].match(/last reason from the case's verifier history in\s+`<dir>\/([^`]+)`/)?.[1] ?? "QUALITY.md";
+  const lastReason = readE2e(dir).cases.find((c) => c.id === verdict.id).verify.reason;
+  assert.ok(fs.readFileSync(path.join(dir, reasonSource), "utf8").includes(lastReason), "Gate 2's prescribed source must contain the last reason, not just a stale label");
 } finally {
-  fs.rmSync(path.dirname(dir), { recursive: true, force: true });
+  fs.rmSync(workspace, { recursive: true, force: true });
 }
 
 // The formats the skills teach inline, in their prose: each is in its skill word for word (line breaks

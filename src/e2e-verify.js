@@ -68,7 +68,7 @@ export function parseVerify(markdown) {
   markdown.split(/\r?\n/).forEach((t, i) => {
     const line = i + 1;
     if (/^\s*```/.test(t)) { fenced = !fenced; return; }
-    if (fenced || !t.trim().startsWith("|")) return;
+    if (fenced || !/^\s*(?:\||TC-[A-Za-z0-9]+\s*\|)/.test(t)) return;
     const c = cellsOf(t);
     if (c[0] === "Item" || c.every((x) => /^:?-+:?$/.test(x))) return; // header, separator
     const bad = (message) => {
@@ -77,6 +77,7 @@ export function parseVerify(markdown) {
       next.set(c[0] ?? "", (next.get(c[0] ?? "") ?? 0) + 1); // it occupied a slot
       return null;
     };
+    if (!t.trim().startsWith("|")) return bad("row must start with |");
     if (c.length !== COLS) return bad(`row has ${c.length} cells, expected ${COLS}`);
     const [item, att, verdict, by, text, date, reason] = c;
     if (!VERDICTS.includes(verdict)) return bad(`verdict must be ${words(VERDICTS)}`);
