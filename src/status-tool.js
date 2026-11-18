@@ -32,6 +32,7 @@ export function createDevicesTool(phones) {
       description: DEVICES_DESCRIPTION,
       inputSchema: { type: "object", properties: {} },
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+      _meta: { "anthropic/alwaysLoad": true },
     },
     async handler() {
       const devices = phones.select().map(({ pairing, manager }) => ({
@@ -56,6 +57,7 @@ export function createStatusTool(phones) {
       description: DESCRIPTION,
       inputSchema: { type: "object", properties: { device: DEVICE_SCHEMA } },
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+      _meta: { "anthropic/alwaysLoad": true },
     },
     async handler({ device } = {}) {
       let entries;

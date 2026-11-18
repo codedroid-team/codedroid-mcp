@@ -73,12 +73,13 @@ export function clients({ home = os.homedir(), platform = process.platform, env 
   const appData = appDataDir({ home, platform, env });
   const onPath = (command) => () => run(command, ["--version"]).ok;
   return [
-    { id: "claude-code", name: "Claude Code", installed: onPath("claude"), setup: () => setupClaudeCode(run) },
+    { id: "claude-code", name: "Claude Code", installed: onPath("claude"), setup: () => setupClaudeCode(run), check: () => checkClaudeCode(run) },
     {
       id: "codex",
       name: "Codex",
       installed: onPath("codex"),
       setup: () => setupCodex(run, env.CODEX_HOME ?? path.join(home, ".codex")),
+      check: () => checkCodex(env.CODEX_HOME ?? path.join(home, ".codex")),
     },
     antigravity({ home, platform, env }),
     jsonClient("cursor", "Cursor", path.join(home, ".cursor"), "mcp.json", "mcpServers", SERVER),
@@ -99,6 +100,24 @@ export function pickClients(all, only) {
 }
 
 const failed = (result) => ({ status: "failed", detail: `failed: ${result.reason}` });
+
+/**
+ * Each client's `check` says how CodeDroid stands there without changing anything (for doctor):
+ * present (the plugin or this package's server), other (some other codedroid server), or absent.
+ */
+function checkClaudeCode(run) {
+  const plugins = parseJson(run("claude", ["plugin", "list", "--json"]).stdout);
+  if (Array.isArray(plugins) && plugins.some((p) => p.id === PLUGIN)) return { status: "present", detail: "has the CodeDroid plugin" };
+  if (run("claude", ["mcp", "get", "codedroid"]).ok) return { status: "other", detail: "has a codedroid MCP server added by hand" };
+  return { status: "absent", detail: "has neither the CodeDroid plugin nor a codedroid server" };
+}
+
+function checkCodex(codexHome) {
+  const config = readText(path.join(codexHome, "config.toml")) ?? "";
+  if (/^\s*\[plugins\."codedroid@codedroid"\]/m.test(config)) return { status: "present", detail: "has the CodeDroid plugin" };
+  if (/^\s*\[mcp_servers\.codedroid\]/m.test(config)) return { status: "other", detail: "has a codedroid MCP server added by hand" };
+  return { status: "absent", detail: `no CodeDroid in ${path.join(codexHome, "config.toml")}` };
+}
 
 function setupClaudeCode(run) {
   const plugins = parseJson(run("claude", ["plugin", "list", "--json"]).stdout);
@@ -137,6 +156,16 @@ function antigravity({ home, platform, env }) {
     id: "antigravity",
     name: "Antigravity",
     installed: () => apps.some((dir) => fs.existsSync(dir)),
+    check: () => {
+      const existing = pluginManifest(pluginDir);
+      if (existing?.name === "codedroid") {
+        const outdated = compareVersions(existing.version, VERSION) < 0;
+        return { status: "present", detail: `has the CodeDroid plugin ${existing.version}${outdated ? ` (this is ${VERSION}: run setup to update it)` : ""}` };
+      }
+      const server = parseJson(readText(configPath))?.mcpServers?.codedroid;
+      if (server) return launchesCodeDroid(server) ? { status: "present", detail: `has the server in ${configPath}` } : { status: "other", detail: `has another codedroid server in ${configPath}` };
+      return { status: "absent", detail: `no CodeDroid plugin in ${pluginDir}` };
+    },
     setup: () => {
       const existing = pluginManifest(pluginDir);
       if (fs.existsSync(pluginDir) && existing?.name !== "codedroid") {
@@ -176,7 +205,19 @@ function compareVersions(a, b) {
 
 function jsonClient(id, name, dir, file, key, entry) {
   const configPath = path.join(dir, file);
-  return { id, name, installed: () => fs.existsSync(dir), setup: () => addServer(configPath, key, entry) };
+  const check = () => {
+    const text = readText(configPath);
+    if (text === undefined) return { status: "absent", detail: `no ${configPath}` };
+    const config = parseJson(text);
+    if (config === undefined) return { status: "other", detail: `${configPath} is not JSON` };
+    const existing = config?.[key]?.codedroid;
+    if (!existing) return { status: "absent", detail: `no codedroid server in ${configPath}` };
+    if (!launchesCodeDroid(existing)) return { status: "other", detail: `another codedroid server in ${configPath}` };
+    const pinned = existing.args.find((arg) => String(arg).startsWith(`${PACKAGE}@`))?.slice(PACKAGE.length + 1);
+    const outdated = pinned && compareVersions(pinned, VERSION) < 0;
+    return { status: "present", detail: `set up in ${configPath}${outdated ? ` (pinned to ${pinned}, this is ${VERSION}: run setup to update it)` : ""}` };
+  };
+  return { id, name, installed: () => fs.existsSync(dir), setup: () => addServer(configPath, key, entry), check };
 }
 
 const isObject = (value) => typeof value === "object" && value !== null && !Array.isArray(value);

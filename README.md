@@ -130,10 +130,16 @@ Android platform-tools and a USB or wireless debugging connection. See [adb setu
   the cases current as the app changes. After writing the documents, the agent runs
   `npx -y @codedroid/mcp e2e report`, which writes a quality report and HTML pages into `e2e/`
   and lists any problems in them; it needs no phone ([details](docs/reference.md#quality-report-for-an-apps-e2e-folder)).
+- **Flows**: the agent records what it does as a [Maestro](https://docs.maestro.dev) flow
+  (`record_start`, `record_stop`), and `run_flow` or `npx -y @codedroid/mcp flow run <file>` replays
+  it on the phone with no model in the loop, from a terminal or CI. A flow written for Maestro runs
+  too. `batch` runs several known steps in one call. See [flows](docs/reference.md#flows-record-and-replay).
+- **A live view**: `npx -y @codedroid/mcp viewer` shows the phone's screen in your browser while the
+  agent drives it, and lets you tap, type and press Back or Home yourself.
 - **`install_apk`** to install a build from your computer, with no cable or shared network.
 - **An `adb` tool** that runs adb commands on your computer, to read logs and run tests. You can [turn it off](docs/reference.md#adb-setup).
 
-The last two run on your computer, so they come with the local install only. The directory's
+The flows, the viewer and the last two run on your computer, so they come with the local install only. The directory's
 plugin has the phone tools and the skills; the connector, and adding the server by URL, have the
 phone tools alone. `claude-plugin/` in this repository is what the directory lists.
 
@@ -177,10 +183,10 @@ under its own data policies. CodeDroid is not intended for users under 18. See t
 
 ## Need help?
 
-Check your connection:
+Check everything at once (Node, adb, pairing, the daemon, each phone, your coding clients):
 
 ```bash
-npx -y @codedroid/mcp status
+npx -y @codedroid/mcp doctor
 ```
 
 Manage or revoke computer access in **CodeDroid → Settings → Computers**.

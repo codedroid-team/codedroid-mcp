@@ -84,7 +84,7 @@ depend on each other fail with `not_found`.
 
 | Tool | Use |
 |---|---|
-| `get_screen` | The element list; `screenshot: true` adds a picture |
+| `get_screen` | The element list; `screenshot: true` adds a picture. Local bridge: `interactive_only` keeps only what you can act on and its labels, `max_depth` cuts deep nesting, `diff` returns only what changed since your last read (one line when nothing did); node numbers stay the phone's |
 | `take_screenshot` | A picture, for what the list cannot show: images, colours, layout, a game. A black one means the app blocks screenshots |
 | `tap`, `long_press` | By `node` / `text` / `resource_id` / `content_description`, or `x`, `y` |
 | `type_text` | Into the focused field: tap it first. `clear` (default true) replaces what is there, `submit` presses Enter after |
@@ -99,6 +99,35 @@ depend on each other fail with `not_found`.
 | `install_apk` | Local bridge only: install an APK from this computer, with no cable or shared network |
 | `adb` | Local bridge only: this computer's adb, when the phone is on USB or Wireless debugging. `device` picks the phone as elsewhere; `save_to` keeps binary or very long output in a file |
 | `codedroid_status`, `codedroid_setup_phone` | Local bridge only: the pairing's state and what to fix; set the phone up over USB |
+| `batch` | Local bridge only: up to 20 screen steps (`tap`, `type_text`, `wait_for`, `get_screen`...) in one call with the phone held; stops at the first failure (`stop_on_error`). For a sequence you already know, never for exploring |
+| `record_start`, `record_stop`, `run_flow` | Local bridge only: record what you do as a Maestro flow, and replay a flow with no model in the loop (below) |
+
+## Repeating what you did
+
+A flow is a Maestro YAML file (https://docs.maestro.dev) of the steps you took. With the local bridge:
+
+1. `record_start` (with the case or job as `name`) before you drive a sequence you will want again:
+   an e2e case, a setup, a login. Call it before `open_app`, so the flow starts by launching the
+   app. Reads are not recorded; a tap by `node` is written as a tap by what the node showed, so the
+   file does not depend on node numbers.
+2. Drive it as usual. A step that failed is not recorded.
+3. `record_stop` with `save_to`, e.g. `e2e/flows/TC-12a.yaml` in the project. It returns the YAML
+   and keeps what Maestro cannot say as comments.
+
+`run_flow` with `path` (or inline `yaml`) replays it: every step runs, and the first failure stops
+the run with that step and the screen's first lines. Pick it up by hand from there. Keep flows
+runnable: a case whose flow passes needs no driving by you, and `npx -y @codedroid/mcp flow run
+<file>` runs it from a terminal or CI with no model at all. `screenshot_dir` is where its
+`takeScreenshot` steps save images. A flow written for Maestro runs too, except commands CodeDroid
+does not have (openLink, clearState, hideKeyboard, index selectors, percent points), which fail the
+run where they are rather than being skipped.
+
+## iPhones
+
+CodeDroid is Android only. iOS gives no app a way to see or drive other apps, so nothing like it
+can run on an iPhone; what drives a real iPhone is a test runner signed and launched from a Mac
+with Xcode (agent-device, mobile-mcp, Appium), which also needs Developer Mode and a tunnel. Tell
+the user that, and that the phone tools here are for the Android phone; do not promise iOS steps.
 
 ## Handing CodeDroid a task
 

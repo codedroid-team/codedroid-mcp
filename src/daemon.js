@@ -31,6 +31,7 @@ import { createSetupPhoneTool } from "./phone-setup.js";
 import { Phones } from "./phones.js";
 import { buildProxyServer, broadcastNotification } from "./proxy-core.js";
 import { RelayPhoneTransport } from "./relay-transport.js";
+import { createSessionTools } from "./session-tools.js";
 import { createDevicesTool, createStatusTool } from "./status-tool.js";
 import { VERSION } from "./version.js";
 
@@ -326,6 +327,7 @@ export async function startDaemon({
   /** Installs under way: a new session can pick one up. */
   const installJobs = new Map();
   const setupJobs = new Map();
+  const flowJobs = new Map();
 
   phones.onNotification = (notification) =>
     broadcastNotification(
@@ -411,6 +413,8 @@ export async function startDaemon({
         if (!sessionId && isInitializeRequest(body)) {
           let server;
           try {
+            // This session's own state: its screen options, its recording, its batch and flow tools.
+            const session = createSessionTools({ phones, cwd: clientCwd(req), flowJobs });
             // Phones queues each phone's calls itself and proves its links alive.
             server = await buildProxyServer({
               getClient: async () => phones,
@@ -425,10 +429,13 @@ export async function startDaemon({
                 createDevicesTool(phones),
                 createStatusTool(phones),
                 createInstallTool({ phones, cwd: clientCwd(req), jobs: installJobs }),
+                ...session.localTools,
                 ...(enableAdbTool && req.headers[CLIENT_ADB_HEADER] !== "off"
                   ? [createAdbTool({ cwd: clientCwd(req), phones }), createSetupPhoneTool({ jobs: setupJobs })]
                   : []),
               ],
+              shapeTool: session.shapeTool,
+              interceptCall: session.interceptCall,
               connectWaitMs: CONNECT_WAIT_MS,
               listWaitMs: LIST_WAIT_MS,
             });

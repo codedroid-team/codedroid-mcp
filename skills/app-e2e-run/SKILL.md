@@ -35,8 +35,13 @@ follow its steps.
 1. Put the app in the case's start state: `open_app`, then Back to its first screen. If Back does
    not get there, `adb` `shell am force-stop <package>` (the app under test, never
    com.codedroid.agent) and `open_app` again.
-2. Follow the steps with `get_screen`, `tap`, `type_text`, `swipe`, `press_key` and `wait_for`,
-   reading `after` each time. A step you cannot do as written fails the case: stop there.
+2. A case that has `e2e/flows/<case>.yaml` from an earlier run: `run_flow` it first; when it
+   passes, check the Expected lines on the screen it leaves and move on; when it fails, drive the
+   rest by hand from the step it names, then record the case again from its start state.
+   Otherwise, with the local bridge, `record_start` with the case id as `name`, then `open_app`
+   once more, so the flow starts by launching the app. Follow the steps with `get_screen`, `tap`,
+   `type_text`, `swipe`, `press_key` and `wait_for`, reading `after` each time. A step you cannot
+   do as written fails the case: stop there.
 3. While a step runs CodeDroid's own agent (`run_task`), poll `get_task`; when it shows a
    `question`, answer with `answer_task` as the case says, or ask the user if the case does not.
    A task started from the composer keeps acting tools `busy`, so its steps tap with `adb` `shell
@@ -48,14 +53,17 @@ follow its steps.
 4. Hide the keyboard (`press_key` back) only when `after` says it is up: Back with no keyboard
    leaves the screen. It covers the tab bar, so hide it before tapping a tab.
 5. Check each Expected line on `get_screen`, or `take_screenshot` for anything visual.
-6. Save the end state, pass or fail: `adb` `shell screencap -p /sdcard/e2e-shot.png`, then `adb`
+6. When the case passed by hand, `record_stop` with `save_to` `e2e/flows/<case>.yaml` (the
+   remote connector has no recording: skip this). A flow with a `codedroidTask` step runs only in
+   CodeDroid; the others run in Maestro too. Commit the flows with the report.
+7. Save the end state, pass or fail: `adb` `shell screencap -p /sdcard/e2e-shot.png`, then `adb`
    `pull /sdcard/e2e-shot.png <absolute path of the report folder>/<case>.png`. Use the absolute path
    of the folder you write REPORT.md in: `adb` resolves a relative one from the folder its server was
    started in, which can be another checkout (a git worktree's main repo). If `adb` refuses the path
    as outside the project, pull into the temp directory and move the file with your file tools.
    Without adb, describe the screen.
    A case with two states to show (before and after) saves one each: `<case>-<state>.png`.
-7. Run the cleanup even after a failure, then `adb` `logcat -d -b crash`: a new line for the app
+8. Run the cleanup even after a failure, then `adb` `logcat -d -b crash`: a new line for the app
    fails the case. For apps that play media, check nothing is left: `adb` `shell dumpsys
    media_session`, and `shell dumpsys notification | grep "NotificationRecord(.*pkg=<package>"`
    (a bare grep also matches the notification archive).

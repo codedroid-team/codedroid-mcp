@@ -13,13 +13,23 @@ import path from "node:path";
 import { createAdbTool } from "../src/adb-tool.js";
 import { createInstallTool } from "../src/install-tool.js";
 import { createSetupPhoneTool } from "../src/phone-setup.js";
+import { GET_SCREEN_OPTIONS } from "../src/screen-text.js";
+import { createSessionTools } from "../src/session-tools.js";
 import { installSkills, SKILLS, SKILLS_SOURCE, skillSource } from "../src/skill.js";
 import { createDevicesTool, createStatusTool } from "../src/status-tool.js";
 
 const phone = JSON.parse(fs.readFileSync(new URL("./fixtures/phone-tools.json", import.meta.url), "utf8")).tools;
-const local = [createAdbTool({ env: {} }).definition, createDevicesTool({}).definition, createStatusTool({}).definition, createInstallTool({}).definition, createSetupPhoneTool().definition];
+const local = [
+  createAdbTool({ env: {} }).definition,
+  createDevicesTool({}).definition,
+  createStatusTool({}).definition,
+  createInstallTool({}).definition,
+  createSetupPhoneTool().definition,
+  ...createSessionTools({ phones: {} }).localTools.map((t) => t.definition),
+];
 const tools = new Set([...phone, ...local].map((t) => t.name));
-const params = new Set([...phone, ...local].flatMap((t) => Object.keys(t.inputSchema.properties ?? {})));
+// The daemon adds get_screen's options to the phone's schema (session-tools.js).
+const params = new Set([...[...phone, ...local].flatMap((t) => Object.keys(t.inputSchema.properties ?? {})), ...Object.keys(GET_SCREEN_OPTIONS)]);
 // What the phone's replies carry: error codes, the `after` observation, and how get_task's task
 // ended (`ended`) and what it cost (`credits.status`).
 const replyWords = new Set([

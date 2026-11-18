@@ -11,6 +11,7 @@
  * `?device=<id>` on a resource URI. With one phone paired, naming it is optional.
  */
 import { PAIRING_STEPS, describeHost, deviceKey, findHost } from "./host.js";
+import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import { RoutingError, UNQUEUED_TOOLS, within } from "./proxy-core.js";
 
 export const DEVICE_SCHEMA = {
@@ -170,6 +171,35 @@ export class Phones {
     // One queue per screen: calls to different phones do not wait on each other.
     const queued = method === "tools/call" && !UNQUEUED_TOOLS.has(params.name);
     return queued ? entry.manager.runExclusive(send) : send();
+  }
+
+  /**
+   * Runs [fn] with one phone's screen held: nothing else drives it until fn is done (a batch, a
+   * flow). fn gets {call(name, args), pairing}; call sends one tool call to the phone. A phone
+   * that cannot be reached rejects with a RoutingError, as a single call would.
+   */
+  async withPhone(device, fn, { timeout = 120_000, meta } = {}) {
+    const entries = this.sync();
+    const entry = this._target(entries, device);
+    return entry.manager.runExclusive(async () => {
+      let client;
+      try {
+        client = await entry.manager.getClient();
+      } catch (e) {
+        const which = entries.length > 1 ? describeHost(entry.pairing) : "the phone";
+        throw new RoutingError(`CodeDroid on ${which} is not connected: ${e.message}\nCall codedroid_status once it is fixed.`);
+      }
+      const call = async (name, args = {}) => {
+        const result = await client.request(
+          { method: "tools/call", params: { name, arguments: args, ...(meta ? { _meta: meta } : {}) } },
+          CallToolResultSchema,
+          { timeout, resetTimeoutOnProgress: true },
+        );
+        entry.manager.markAlive();
+        return result;
+      };
+      return fn({ call, pairing: entry.pairing });
+    });
   }
 
   /** The phone a request goes to: the one [device] names, or the only one paired. */
