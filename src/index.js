@@ -21,6 +21,7 @@
  *   codedroid-mcp skill install|path  the agent skills, for clients without the plugin
  *   codedroid-mcp e2e report [dir] [--check]  quality report and HTML pages for an app's e2e folder
  *   codedroid-mcp flow run <file>  replay a Maestro flow on the phone, with no model in the loop
+ *   codedroid-mcp doctor           check Node, adb, pairing, the daemon, the phones and the clients
  *
  * Options: --port=<n> (or CODEDROID_MCP_PORT), default 4826. --server=<url> for pair. --no-adb (or
  * CODEDROID_MCP_ADB=0) leaves out the host-side adb tool. CODEDROID_SERIAL picks its device.
@@ -99,6 +100,8 @@ Usage:
   codedroid-mcp flow run <file>     Replay a Maestro flow on the phone with no model in the loop
                                     (--device=<phone>, --env=KEY=VALUE, --screenshots=<dir>);
                                     exit 1 when a step fails. Run it from the project.
+  codedroid-mcp doctor              Check Node, adb, this computer's pairing, the daemon, each
+                                    phone's link and which coding clients have CodeDroid
 
 Pair first: plug the phone in with USB debugging on and run setup, or on the phone, open CodeDroid >
 Settings > Computers > Pair a computer, and run the command it shows here; do the same on every
@@ -248,6 +251,28 @@ async function main() {
     printResult(result);
     await client.close();
     process.exit(result.isError ? 1 : 0);
+  }
+
+  if (command === "doctor") {
+    const { collectDoctorReport, formatDoctorReport, realProbes } = await import("./doctor.js");
+    const { readHosts } = await import("./host.js");
+    const report = await collectDoctorReport(
+      realProbes({
+        daemonHealth: () => daemonHealth(port),
+        phoneStatus: async () => {
+          if (!readHosts().length) return null;
+          const client = await daemonClient(port, enableAdbTool);
+          try {
+            const result = await client.callTool({ name: "codedroid_status", arguments: {} }, undefined, { timeout: 150_000 });
+            return JSON.parse(result.content?.[0]?.text ?? "null");
+          } finally {
+            await client.close();
+          }
+        },
+      }),
+    );
+    process.stdout.write(formatDoctorReport(report).join("\n") + "\n");
+    process.exit(report.ok ? 0 : 1);
   }
 
   if (command === "setup") {

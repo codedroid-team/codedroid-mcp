@@ -359,6 +359,18 @@ try {
     }
   }
 
+  // ── doctor says what to fix and exits 1 ──
+  {
+    const { home, env } = sandbox("doctor");
+    const doctor = await cli(["doctor", `--port=${await freePort()}`], { ...env, ADB: path.join(home, "no-adb-here"), PATH: "" });
+    assert.equal(doctor.code, 1, doctor.stderr);
+    assert.match(doctor.stdout, /^ok   Node\.js: v\d+/);
+    assert.match(doctor.stdout, /^fix  adb: not found\n       The adb tool and setup over USB need Android platform-tools/m);
+    assert.match(doctor.stdout, /^fix  Pairings: this computer is not paired with a phone\n       Plug the phone/m);
+    assert.match(doctor.stdout, /^ok   Daemon: not running/m);
+    assert.match(doctor.stdout, /things to fix\.$/m);
+  }
+
   // ── flow run needs a file and a pairing, and starts no daemon without one ──
   {
     const { home, env } = sandbox("flow");
