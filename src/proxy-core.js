@@ -123,6 +123,12 @@ function toolError(text) {
  * @param {number} [options.connectWaitMs] how long a new session waits for the backend before
  *   opening with the local tools alone
  * @param {number} [options.listWaitMs] in such a session, how long tools/list waits for it
+ * @param {(definition: object) => object} [options.shapeTool]
+ *   Reshapes each backend tool in tools/list (options this computer adds, loading hints). The
+ *   daemon passes it; the shim lists what the daemon shaped.
+ * @param {(call: {name: string, args: object, forward: (args: object) => Promise<object>}) => Promise<object>} [options.interceptCall]
+ *   Wraps each backend tool call: it may change the arguments the phone gets and the result the
+ *   model sees, by calling forward (once, or not at all). The daemon's session tools use it.
  */
 export async function buildProxyServer({
   getClient,
@@ -134,6 +140,8 @@ export async function buildProxyServer({
   localTools = [],
   connectWaitMs = Infinity,
   listWaitMs = connectWaitMs,
+  shapeTool = (definition) => definition,
+  interceptCall = ({ args, forward }) => forward(args),
 }) {
   const localToolsByName = new Map(localTools.map((t) => [t.definition.name, t]));
   let backend = null;
@@ -249,7 +257,7 @@ export async function buildProxyServer({
       return {
         ...backendResult,
         tools: [
-          ...backendResult.tools,
+          ...backendResult.tools.map((definition) => shapeTool(definition)),
           ...[...localToolsByName.values()].map((t) => t.definition),
         ],
       };
@@ -263,53 +271,54 @@ export async function buildProxyServer({
       if (local) return local.handler(request.params.arguments ?? {});
 
       // The first proxy a call passes is the one its real client connected to: a later one keeps its stamp.
-      const params = {
-        ...request.params,
-        _meta: {
-          [CLIENT_INFO_META_KEY]: clientInfo(),
-          [SESSION_META_KEY]: currentSession(),
-          ...request.params._meta,
-        },
-      };
-      // A failure comes back as a tool error, not a protocol one, so the model reads why. Only a
-      // call that never left is tried again: a tap whose answer was lost still happened, and
-      // replaying it is worse than saying so.
-      const call = async () => {
-        let client;
-        try {
-          client = await getClient();
-        } catch (e) {
-          return { unreachable: e };
-        }
-        return client.request(
-          { method: request.method, params },
-          CallToolResultSchema,
-          { timeout: CALL_TOOL_TIMEOUT_MS, resetTimeoutOnProgress: true },
-        );
+      const meta = {
+        [CLIENT_INFO_META_KEY]: clientInfo(),
+        [SESSION_META_KEY]: currentSession(),
+        ...request.params._meta,
       };
       const name = request.params.name;
-      const run = UNQUEUED_TOOLS.has(name) ? call : () => runExclusive(call);
-      let result;
-      for (let attempt = 0; ; attempt++) {
-        try {
-          result = await run();
-          break;
-        } catch (e) {
-          if (e instanceof RoutingError) return toolError(e.message);
-          const message = e?.message ?? String(e);
-          if (NEVER_SENT.test(message) && attempt === 0) continue;
-          if (NEVER_SENT.test(message)) return toolError(`CodeDroid on the phone is not connected: ${message} Call codedroid_status.`);
-          return toolError(
-            `The link to the phone failed during ${name} (${message}). It may or may not have happened on the ` +
-              "phone: read the screen with get_screen before trying again. If calls keep failing, call codedroid_status.",
+      const forward = async (args) => {
+        const params = { ...request.params, arguments: args, _meta: meta };
+        // A failure comes back as a tool error, not a protocol one, so the model reads why. Only a
+        // call that never left is tried again: a tap whose answer was lost still happened, and
+        // replaying it is worse than saying so.
+        const call = async () => {
+          let client;
+          try {
+            client = await getClient();
+          } catch (e) {
+            return { unreachable: e };
+          }
+          return client.request(
+            { method: request.method, params },
+            CallToolResultSchema,
+            { timeout: CALL_TOOL_TIMEOUT_MS, resetTimeoutOnProgress: true },
           );
+        };
+        const run = UNQUEUED_TOOLS.has(name) ? call : () => runExclusive(call);
+        let result;
+        for (let attempt = 0; ; attempt++) {
+          try {
+            result = await run();
+            break;
+          } catch (e) {
+            if (e instanceof RoutingError) return toolError(e.message);
+            const message = e?.message ?? String(e);
+            if (NEVER_SENT.test(message) && attempt === 0) continue;
+            if (NEVER_SENT.test(message)) return toolError(`CodeDroid on the phone is not connected: ${message} Call codedroid_status.`);
+            return toolError(
+              `The link to the phone failed during ${name} (${message}). It may or may not have happened on the ` +
+                "phone: read the screen with get_screen before trying again. If calls keep failing, call codedroid_status.",
+            );
+          }
         }
-      }
-      if (result.unreachable) {
-        return toolError(`CodeDroid on the phone is not connected: ${result.unreachable.message}\nCall codedroid_status once it is fixed.`);
-      }
-      onBackendAlive();
-      return result;
+        if (result.unreachable) {
+          return toolError(`CodeDroid on the phone is not connected: ${result.unreachable.message}\nCall codedroid_status once it is fixed.`);
+        }
+        onBackendAlive();
+        return result;
+      };
+      return interceptCall({ name, args: request.params.arguments ?? {}, forward });
     });
   }
   if (backendCaps.prompts) {
