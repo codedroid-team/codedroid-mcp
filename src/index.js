@@ -22,6 +22,7 @@
  *   codedroid-mcp e2e report [dir] [--check]  quality report and HTML pages for an app's e2e folder
  *   codedroid-mcp flow run <file>  replay a Maestro flow on the phone, with no model in the loop
  *   codedroid-mcp doctor           check Node, adb, pairing, the daemon, the phones and the clients
+ *   codedroid-mcp viewer [phone]   a page showing the phone's screen, where you can take over
  *
  * Options: --port=<n> (or CODEDROID_MCP_PORT), default 4826. --server=<url> for pair. --no-adb (or
  * CODEDROID_MCP_ADB=0) leaves out the host-side adb tool. CODEDROID_SERIAL picks its device.
@@ -102,6 +103,9 @@ Usage:
                                     exit 1 when a step fails. Run it from the project.
   codedroid-mcp doctor              Check Node, adb, this computer's pairing, the daemon, each
                                     phone's link and which coding clients have CodeDroid
+  codedroid-mcp viewer [phone]      Open a page that shows the phone's screen while an agent drives
+                                    it, where you can tap, type and press Back or Home
+                                    (--interval=<seconds>, default 3)
 
 Pair first: plug the phone in with USB debugging on and run setup, or on the phone, open CodeDroid >
 Settings > Computers > Pair a computer, and run the command it shows here; do the same on every
@@ -273,6 +277,30 @@ async function main() {
     );
     process.stdout.write(formatDoctorReport(report).join("\n") + "\n");
     process.exit(report.ok ? 0 : 1);
+  }
+
+  if (command === "viewer") {
+    const { readHosts, PAIRING_STEPS } = await import("./host.js");
+    if (!readHosts().length) fatal(`This computer is not paired with a phone. ${PAIRING_STEPS}`);
+    const { startViewer } = await import("./viewer.js");
+    const seconds = Number(args.interval ?? 3);
+    if (!(seconds >= 1 && seconds <= 60)) fatal("--interval takes 1 to 60 seconds.", 2);
+    const device = args._.slice(1).join(" ") || undefined;
+    const client = await daemonClient(port, enableAdbTool);
+    const viewer = await startViewer({
+      callTool: (name, toolArgs) => client.callTool({ name, arguments: toolArgs }, undefined, { timeout: 150_000 }),
+      device,
+      intervalMs: seconds * 1000,
+    });
+    process.stdout.write(`Open ${viewer.url}\nIt shows the phone every ${seconds} s while the tab is visible. Press Ctrl+C to stop.\n`);
+    const stop = async () => {
+      await viewer.close();
+      await client.close();
+      process.exit(0);
+    };
+    process.on("SIGINT", stop);
+    process.on("SIGTERM", stop);
+    return;
   }
 
   if (command === "setup") {

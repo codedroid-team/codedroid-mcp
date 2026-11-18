@@ -386,6 +386,14 @@ try {
     assert.equal(fs.existsSync(daemonTokenPath(home)), false, "no daemon started for nothing");
   }
 
+  // ── viewer needs a pairing ──
+  {
+    const { env } = sandbox("viewer");
+    const viewerNeedsPairing = await cli(["viewer", `--port=${await freePort()}`], env);
+    assert.equal(viewerNeedsPairing.code, 1);
+    assert.match(viewerNeedsPairing.stderr, /not paired with a phone/);
+  }
+
   console.log("cli.test.mjs: ALL PASS");
 } finally {
   for (const pid of started) {
