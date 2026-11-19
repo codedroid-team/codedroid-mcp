@@ -48,7 +48,7 @@ try {
     fails: [
       { id: "R1.f1", text: `saving with no connection shows "Couldn't save" and keeps the text` },
       { id: "R1.f2", text: `an empty title leaves "Save" disabled` },
-    ], line: 9,
+    ], line: 9, lines: [9, 14],
   });
   assert.deepEqual(m.requirements[1].caps, ["C1", "C3"]);
   assert.deepEqual(m.requirements[2].fails, []);
@@ -61,9 +61,11 @@ try {
   assert.equal(m.cujs[0].priority, "P0");
   assert.equal(m.cases.length, 6);
   assert.deepEqual(m.cases.map((c) => c.mode), ["phone", "phone", "task", "manual", "phone", "phone"]);
-  assert.deepEqual(m.cases[1], {
+  const { verify: v1b, ...tc1b } = m.cases[1]; // the verifier's status is tested in e2e-verify.test.mjs
+  assert.equal(v1b.status, "approved");
+  assert.deepEqual(tc1b, {
     id: "TC-1b", priority: "P1", title: "Saving with no connection keeps the text", feature: "F1", type: "negative",
-    covers: [{ ref: "R1.f1", caps: ["C4"] }, { ref: "R1.f2", caps: [] }], tier: "core", depth: "screen", mode: "phone", needs: [], retired: null, line: 14,
+    covers: [{ ref: "R1.f1", caps: ["C4"] }, { ref: "R1.f2", caps: [] }], tier: "core", depth: "screen", mode: "phone", needs: [], retired: null, line: 14, lines: [14, 20],
   });
   assert.equal(m.results.report, "reports/2026-01-02/REPORT.md");
   const r = Object.values(m.results.byCase);
@@ -71,7 +73,7 @@ try {
   assert.equal(r.filter((x) => x === "fail").length, 1);
   assert.equal(r.filter((x) => x === "not run").length, 1);
   assert.equal(m.results.byCase["TC-3b"], "fail");
-  assert.deepEqual(Object.keys(m.files).sort(), ["CUJs.md", "INVENTORY.md", "PRD.md", "TESTCASES.md", "reports/2026-01-02/REPORT.md"]);
+  assert.deepEqual(Object.keys(m.files).sort(), ["CUJs.md", "INVENTORY.md", "PRD.md", "TESTCASES.md", "VERIFY.md", "reports/2026-01-02/REPORT.md"]);
   const f = m.files["PRD.md"];
   assert.equal(f.path, path.join(fixture, "PRD.md"));
   assert.equal(f.sha256, crypto.createHash("sha256").update(fs.readFileSync(f.path)).digest("hex"));
@@ -80,7 +82,7 @@ try {
 
   // A case covering an undefined requirement.
   let p = readE2e(copy((d) => sub(d, "TESTCASES.md", "Covers: R4 (C2)", "Covers: R9 (C2)"))).problems;
-  assert.deepEqual(p, [{ file: "TESTCASES.md", line: 34, message: "R9 is referenced but not defined" }]);
+  assert.deepEqual(p, [{ file: "TESTCASES.md", line: 38, message: "R9 is referenced but not defined" }]);
 
   // A duplicate capability id.
   p = readE2e(copy((d) => sub(d, "INVENTORY.md", "| C6 |", "| C4 |"))).problems;
@@ -116,7 +118,7 @@ try {
 
   // An old-style folder: PRD.md and TESTCASES.md only, no new lines.
   const old = readE2e(copy((d) => {
-    for (const n of ["INVENTORY.md", "CUJs.md", "reports"]) fs.rmSync(path.join(d, n), { recursive: true });
+    for (const n of ["INVENTORY.md", "CUJs.md", "reports", "VERIFY.md"]) fs.rmSync(path.join(d, n), { recursive: true });
     fs.writeFileSync(path.join(d, "PRD.md"), "### F1 · Notes · P0\n- R1 · A saved note appears.\n");
     fs.writeFileSync(path.join(d, "TESTCASES.md"), "### TC-1a · P0 · Save\nFeature: F1 · Type: happy\n\n### TC-1b · P1 · Open\nFeature: F1 · Type: happy\n");
   }));
@@ -153,13 +155,13 @@ try {
 
   // An unclosed code fence is a problem and does not hide what follows.
   const fence = readE2e(copy((d) => sub(d, "TESTCASES.md", "### TC-1c", "```\n### TC-1c")));
-  assert.deepEqual(fence.problems, [{ file: "TESTCASES.md", line: 20, message: "code fence opened here is never closed" }]);
+  assert.deepEqual(fence.problems, [{ file: "TESTCASES.md", line: 21, message: "code fence opened here is never closed" }]);
   assert.equal(fence.cases.length, 6);
 
   // A Covers bracket naming a capability that is not in that requirement's Caps is a problem, on the Covers line
   // (TC-3a's is line 34; TC-1b's R1.f1 entry checks R1's Caps, line 16). An undefined cap is only "not defined".
   let notIn = readE2e(copy((d) => sub(d, "TESTCASES.md", "Covers: R4 (C2)", "Covers: R4 (C6)")));
-  assert.deepEqual(notIn.problems, [{ file: "TESTCASES.md", line: 34, message: "C6 is not in R4's Caps" }]);
+  assert.deepEqual(notIn.problems, [{ file: "TESTCASES.md", line: 38, message: "C6 is not in R4's Caps" }]);
   notIn = readE2e(copy((d) => sub(d, "TESTCASES.md", "R1.f1 (C4)", "R1.f1 (C1)")));
   assert.deepEqual(notIn.problems, [{ file: "TESTCASES.md", line: 16, message: "C1 is not in R1's Caps" }]);
 
@@ -189,7 +191,7 @@ try {
 
   // A Covers, Proves or Caps line that names nothing is a problem.
   p = readE2e(copy((d) => sub(d, "TESTCASES.md", "Covers: R4 (C2)", "Covers:"))).problems;
-  assert.deepEqual(p, [{ file: "TESTCASES.md", line: 34, message: "TC-3a Covers: names nothing" }]);
+  assert.deepEqual(p, [{ file: "TESTCASES.md", line: 38, message: "TC-3a Covers: names nothing" }]);
   p = readE2e(copy((d) => sub(d, "CUJs.md", "Proves: R4", "Proves: "))).problems.map((x) => x.message);
   assert.deepEqual(p, ["CUJ-3 Proves: names nothing"]);
   p = readE2e(copy((d) => sub(d, "PRD.md", "  Caps: C2\n", "  Caps:\n"))).problems.map((x) => x.message);
@@ -202,7 +204,7 @@ try {
 
   // Any letters or digits after TC- make a case id (a bug case TC-B1 too); its report row is stored.
   const bug = readE2e(copy((d) => {
-    fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n### TC-B1 · P1 · Saving twice keeps one note\nFeature: F1 · Type: negative\nCovers: R1 (C4)\nTier: edge · Depth: kept\nRun mode: phone\n");
+    fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n### TC-B1 · P1 · Saving twice keeps one note\nFeature: F1 · Type: negative\nCovers: R1 (C4)\nTier: edge · Depth: kept\nRun mode: phone\nExpected: one note in the list.\n");
     fs.appendFileSync(path.join(d, "reports/2026-01-02/REPORT.md"), "| TC-B1 | fail | P1 | Saving twice keeps one note | |\n");
   }));
   assert.deepEqual(bug.problems, []);
@@ -264,8 +266,8 @@ try {
   p = readE2e(copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n### TC-00 · P1 · Remove leftovers\nFeature: all · Type: setup\nCovers: R1\nTier: core · Depth: kept\nRun mode: phone\n"))).problems;
   assert.deepEqual(p, []);
   // A case that is not setup still needs all four.
-  p = readE2e(copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n### TC-4a · P1 · Plain\nFeature: F1 · Type: happy\nRun mode: phone\n"))).problems.map((x) => x.message);
-  assert.deepEqual(p, ["TC-4a has no Covers: line", "TC-4a has no Tier: line (smoke, core, deep or edge)", "TC-4a has no Depth: line (screen, elsewhere or kept)"]);
+  p = readE2e(copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n### TC-1d · P1 · Plain\nFeature: F1 · Type: happy\nRun mode: phone\nExpected: the list.\n"))).problems.map((x) => x.message);
+  assert.deepEqual(p, ["TC-1d has no Covers: line", "TC-1d has no Tier: line (smoke, core, deep or edge)", "TC-1d has no Depth: line (screen, elsewhere or kept)"]);
 
   // Non-goal lines: capabilities the PRD sets aside, with a reason. Prose bullets under Non-goals are ignored.
   const ng = (line) => readE2e(copy((d) => fs.appendFileSync(path.join(d, "PRD.md"), `${line}\n`)));
@@ -317,7 +319,7 @@ try {
   assert.deepEqual(readE2e(copy((d) => sub(d, "CUJs.md", "Proves: R4", "Proves: none"))).problems.map((x) => x.message), ["none is referenced but not defined"]);
 
   // Round 2. A manual deep case is not a deep case: it neither closes F2 nor blocks `Gap: F2 deep`.
-  const manualDeep = "\n### TC-3m · P2 · Manual deep\nFeature: F2 · Type: happy\nCovers: R4 (C2)\nTier: deep · Depth: screen\nRun mode: manual\n";
+  const manualDeep = "\n### TC-3m · P2 · Manual deep\nFeature: F2 · Type: happy\nCovers: R4 (C2)\nTier: deep · Depth: screen\nRun mode: manual\nWhy manual: x\nExpected: x\n";
   g = readE2e(copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), `${manualDeep}\n## Gaps\n- Gap: F2 deep · only a wipe goes deeper\n`)));
   assert.deepEqual(g.problems, []);
   g = readE2e(copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), `${manualDeep.replace("manual", "phone")}\n## Gaps\n- Gap: F2 deep · x\n`)));
@@ -361,9 +363,9 @@ try {
   }));
   assert.deepEqual(twice.problems.map((x) => `${x.file}:${x.line}: ${x.message}`), [
     "PRD.md:11: R1 has two Caps: lines", "PRD.md:13: R1 has two Proof: lines", "PRD.md:15: R1 has two Fails: lines",
-    "CUJs.md:18: CUJ-3 has two Proves: lines",
-    "TESTCASES.md:43: TC-3b has two Feature: lines", "TESTCASES.md:44: TC-3b has two Covers: lines", "TESTCASES.md:45: TC-3b has two Tier: lines",
-    "TESTCASES.md:46: TC-3b gives Depth twice: on its Tier: line and on a Depth: line", "TESTCASES.md:47: TC-3b has two Run mode: lines",
+    "CUJs.md:19: CUJ-3 has two Proves: lines",
+    "TESTCASES.md:49: TC-3b has two Feature: lines", "TESTCASES.md:50: TC-3b has two Covers: lines", "TESTCASES.md:51: TC-3b has two Tier: lines",
+    "TESTCASES.md:52: TC-3b gives Depth twice: on its Tier: line and on a Depth: line", "TESTCASES.md:53: TC-3b has two Run mode: lines",
   ]);
   assert.deepEqual([twice.requirements[0].caps, twice.requirements[0].proof, twice.requirements[0].fails.length], [["C4"], "kept", 2]);
   assert.deepEqual(twice.cujs[2].proves, ["R4"]);
@@ -432,16 +434,67 @@ try {
   // CUJs.md: a feature group heading at another level than 2 is a problem.
   for (const h of ["### F2 · Search", "# F2 · Search"]) {
     p = readE2e(copy((d) => sub(d, "CUJs.md", "## F2 · Search", h))).problems;
-    assert.deepEqual(p, [{ file: "CUJs.md", line: 14, message: 'feature heading is not readable: use "## F<n> · <name>"' }], h);
+    assert.deepEqual(p, [{ file: "CUJs.md", line: 15, message: 'feature heading is not readable: use "## F<n> · <name>"' }], h);
   }
   // Values and lines each check reads: feature priority, CUJ run mode, a missing Proves:, a case's Tier.
   assert.deepEqual(readE2e(copy((d) => sub(d, "PRD.md", "### F2 · Search · P1", "### F2 · Search · P7"))).problems, [{ file: "PRD.md", line: 25, message: "F2 priority must be P0, P1 or P2" }]);
-  assert.deepEqual(readE2e(copy((d) => sub(d, "CUJs.md", "· P1 · phone", "· P1 · robot"))).problems, [{ file: "CUJs.md", line: 16, message: "CUJ-3 mode must be phone, task or manual" }]);
-  assert.deepEqual(readE2e(copy((d) => sub(d, "CUJs.md", "Proves: R4\n", ""))).problems, [{ file: "CUJs.md", line: 16, message: "CUJ-3 has no Proves: line" }]);
-  assert.deepEqual(readE2e(copy((d) => sub(d, "TESTCASES.md", "Tier: smoke · Depth: screen", "Tier: sideways · Depth: screen"))).problems, [{ file: "TESTCASES.md", line: 35, message: "Tier must be smoke, core, deep or edge" }]);
+  assert.deepEqual(readE2e(copy((d) => sub(d, "CUJs.md", "· P1 · phone", "· P1 · robot"))).problems, [{ file: "CUJs.md", line: 17, message: "CUJ-3 mode must be phone, task or manual" }]);
+  assert.deepEqual(readE2e(copy((d) => sub(d, "CUJs.md", "Proves: R4\n", ""))).problems, [{ file: "CUJs.md", line: 17, message: "CUJ-3 has no Proves: line" }]);
+  assert.deepEqual(readE2e(copy((d) => sub(d, "TESTCASES.md", "Tier: smoke · Depth: screen", "Tier: sideways · Depth: screen"))).problems, [{ file: "TESTCASES.md", line: 39, message: "Tier must be smoke, core, deep or edge" }]);
   // A level-2 heading that is not a feature ends the feature group: the journey under it has none.
   const ungrouped = readE2e(copy((d) => fs.appendFileSync(path.join(d, "CUJs.md"), "\n## Extras\n\n### CUJ-4 · Export · P2 · phone\nProves: R4\n")));
   assert.deepEqual([ungrouped.problems, ungrouped.cujs[3].feature], [[], null]);
+
+  // A case checks something: every case but a setup case has an Expected: line.
+  const said = (file, from, to) => readE2e(copy((d) => sub(d, file, from, to))).problems.map((x) => x.message);
+  assert.deepEqual(said("TESTCASES.md", 'Expected: "No notes match".\n', ""), ["TC-3b has no Expected: line"]);
+  // A manual case or CUJ says why on a Why manual: line with a reason; a retired one need not.
+  assert.deepEqual(said("TESTCASES.md", "Why manual: needs a note deleted from a second phone.\n", ""), ["TC-2a is manual and has no Why manual: line"]);
+  assert.deepEqual(said("TESTCASES.md", "Why manual: needs a note deleted from a second phone.\n", "Why manual:\n"), ["TC-2a is manual and has no Why manual: line"]);
+  assert.deepEqual(said("CUJs.md", "Why manual: needs a second phone to delete the note elsewhere.\n", ""), ["CUJ-2 is manual and has no Why manual: line"]);
+  assert.deepEqual(said("CUJs.md", "Why manual: needs a second phone to delete the note elsewhere.\n", "Retired: 2026-01-01 - gone\n"), []);
+  assert.deepEqual(said("CUJs.md", "Why manual: needs a second phone to delete the note elsewhere.\n", "Why manual:\n"), ["CUJ-2 is manual and has no Why manual: line"]);
+  // A numbered case is for the CUJ of its number and has that CUJ's feature; zero-padding is fine.
+  assert.deepEqual(said("CUJs.md", "### CUJ-3 ·", "### CUJ-7 ·"), ["TC-3a is numbered for CUJ-3, which is not in CUJs.md", "TC-3b is numbered for CUJ-3, which is not in CUJs.md"]);
+  const padded = readE2e(copy((d) => { sub(d, "TESTCASES.md", "### TC-3b ·", "### TC-03b ·"); sub(d, "reports/2026-01-02/REPORT.md", "| TC-3b |", "| TC-03b |"); }));
+  assert.deepEqual(padded.problems, []);
+  assert.deepEqual(said("TESTCASES.md", "Feature: F2 · Type: negative", "Feature: F1 · Type: negative"), ["TC-3b has Feature: F1, but CUJ-3 is under F2"]);
+  // Covers: is one line: a wrapped rest is reported, not silently dropped.
+  for (const rest of ["  R1.f2", "R1.f2"]) {
+    const w = readE2e(copy((d) => sub(d, "TESTCASES.md", "Covers: R1.f1 (C4), R1.f2\n", `Covers: R1.f1 (C4),\n${rest}\n`))).problems;
+    assert.deepEqual(w, [{ file: "TESTCASES.md", line: 17, message: "TC-1b Covers: goes on to this line: keep it on one line" }], rest);
+  }
+
+  assert.deepEqual(said("TESTCASES.md", "1. Tap \"New note\", type a title, tap \"Save\".\n", "1. Tap \"New note\", type a title, tap \"Save\".\n   then wait.\n"), [], "an indented line elsewhere in a case");
+
+  // A Source path:line is checked in the repo holding the e2e folder, once the path's first folder is there.
+  const inRepo = (files) => {
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), "e2e-repo-"));
+    tmps.push(repo);
+    fs.cpSync(fixture, path.join(repo, "e2e"), { recursive: true });
+    for (const [f, n] of Object.entries(files)) {
+      fs.mkdirSync(path.dirname(path.join(repo, f)), { recursive: true });
+      if (n === "dir") fs.mkdirSync(path.join(repo, f));
+      else if (typeof n === "string") fs.writeFileSync(path.join(repo, f), n);
+      else fs.writeFileSync(path.join(repo, f), "x\n".repeat(n));
+    }
+    return readE2e(path.join(repo, "e2e")).problems.map((x) => `${x.line}: ${x.message}`);
+  };
+  const L = "app/src/main/java/notes/ListFragment.kt", E = "app/src/main/java/notes/EditorFragment.kt";
+  assert.deepEqual(inRepo({ [L]: 80, [E]: 141 }), []);
+  assert.deepEqual(inRepo({ [L]: 74, [E]: 140 }), [`8: C3 Source line 75 is past the end of ${L} (74 lines)`, `15: C6 Source line 141 is past the end of ${E} (140 lines)`]);
+  assert.deepEqual(inRepo({ [L]: 80 }), [`13: C4 Source ${E} is not in the repo`, `14: C5 Source ${E} is not in the repo`, `15: C6 Source ${E} is not in the repo`]);
+  assert.deepEqual(inRepo({ [L]: 80, [E]: "dir" }), [], "a folder where the file should be is not read");
+  assert.deepEqual(inRepo({ [L]: 80, [E]: "x\n".repeat(140) + "x" }), [], "a last line with no newline is a line");
+  assert.deepEqual(inRepo({ [L]: 80, [E]: "x\n".repeat(139) + "x" }), [`15: C6 Source line 141 is past the end of ${E} (140 lines)`]);
+  assert.deepEqual(inRepo({ "lib/x.kt": 1 }), [], "the paths' first folder app/ is not in the repo: nothing checked");
+  const ranged = fs.mkdtempSync(path.join(os.tmpdir(), "e2e-repo-"));
+  tmps.push(ranged);
+  fs.cpSync(fixture, path.join(ranged, "e2e"), { recursive: true });
+  for (const [f, n] of [[L, 80], [E, 141]]) { fs.mkdirSync(path.dirname(path.join(ranged, f)), { recursive: true }); fs.writeFileSync(path.join(ranged, f), "x\n".repeat(n)); }
+  sub(path.join(ranged, "e2e"), "INVENTORY.md", `${L}:75`, `${L}:75-81`);
+  sub(path.join(ranged, "e2e"), "INVENTORY.md", `${L}:62`, `../outside.kt:9`);
+  assert.deepEqual(readE2e(path.join(ranged, "e2e")).problems.map((x) => x.message), [`C3 Source line 81 is past the end of ${L} (80 lines)`]);
 
   assert.throws(() => readE2e(path.join(fixture, "nope")));
   console.log("ok e2e-model");

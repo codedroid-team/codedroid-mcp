@@ -7,6 +7,7 @@ import path from "node:path";
 import { readE2e } from "./e2e-model.js";
 import { quality, qualityJson, qualityMd } from "./e2e-quality.js";
 import { renderPages, stalePages } from "./e2e-html.js";
+import { escapesRoot, notRegular } from "./e2e-write.js";
 
 const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 const DOCS = ["INVENTORY.md", "PRD.md", "CUJs.md", "TESTCASES.md"];
@@ -44,14 +45,8 @@ export function runE2eReport({ dir, check = false }) {
   const targets = Object.keys(files).map((rel) => [rel, path.join(root, rel)]);
   // Check every target before writing any: no link may lead a write outside the folder, and only a regular file is replaced.
   for (const [rel, full] of targets) {
-    let at = path.dirname(full);
-    while (!fs.existsSync(at)) at = path.dirname(at); // the nearest folder that exists; the rest is made below it
-    const real = fs.realpathSync(at);
-    if (real !== root && !real.startsWith(root + path.sep)) return refuse(rel);
-    let st;
-    try { st = fs.lstatSync(full); } catch { /* not there yet */ }
-    if (st?.isSymbolicLink()) return refuse(rel);
-    if (st && !st.isFile()) return { code: 2, lines: [`Refusing to write ${rel}: it is not a regular file`] };
+    if (escapesRoot(root, full)) return refuse(rel);
+    if (notRegular(full)) return { code: 2, lines: [`Refusing to write ${rel}: it is not a regular file`] };
   }
   // Each output goes to a new temp file beside it, then all are renamed over their targets: a write never goes
   // through a link swapped in after the check, and a failure before the renames changes no target.
@@ -73,13 +68,17 @@ export function runE2eReport({ dir, check = false }) {
   }
 
   const c = q.capabilities, r = q.requirements, f = q.failures;
-  const scope = c.set_aside ? `${c.total - c.set_aside} ${c.total - c.set_aside === 1 ? "capability" : "capabilities"} in scope (${c.set_aside} set aside)` : count(c.total, "capability", "capabilities");
+  const scope = c.set_aside ? `${c.total - c.set_aside} ${c.total - c.set_aside === 1 ? "control" : "controls"} in scope (${c.set_aside} set aside)` : count(c.total, "control", "controls");
   const ack = (n) => (n ? `, ${n} acknowledged` : "");
   const lines = [
-    `${scope}, ${c.with_case} with a case; ${count(r.total, "requirement", "requirements")}, ${r.with_case} with a case${ack(r.acknowledged)}, ${r.at_depth} with a case deep enough; ${count(f.total, "failure", "failures")}, ${f.with_case} with a case${ack(f.acknowledged)}; ${count(q.cases.total, "case", "cases")}.`,
+    `${scope}, ${c.with_case} with a case, ${c.approved} with an approved case; ${count(r.total, "requirement", "requirements")}, ${r.with_case} with a case${ack(r.acknowledged)}, ${r.at_depth} with a case deep enough; ${count(f.total, "failure", "failures")}, ${f.with_case} with a case${ack(f.acknowledged)}; ${count(q.cases.total, "case", "cases")}.`,
   ];
-  if (model.pending.length) lines.push(`Not written yet: ${model.pending.join(", ")}. Next: ${model.pending[0]}.`);
+  if (q.report) lines.push(`Last report ${q.report}: ${q.results.pass} passed, ${q.results.fail} failed, ${q.results["not run"]} not run; ${r.passing} of ${count(r.total, "requirement", "requirements")} passing.`);
   const md = `${dir.replace(/\/+$/, "") || "/"}/QUALITY.md`;
+  const v = q.verify;
+  if (v.judged && v.unverified === v.judged) lines.push("No case has been judged by the verifier yet.");
+  else if (q.not_approved.length) lines.push(`${q.not_approved.length} of ${v.judged} ${v.judged === 1 ? "case" : "cases"} not approved by the verifier${v.unverified ? ` (${v.unverified} not judged yet)` : ""}: see ${md}`);
+  if (model.pending.length) lines.push(`Not written yet: ${model.pending.join(", ")}. Next: ${model.pending[0]}.`);
   const ps = q.problems, MAX = 20;
   if (ps.length) {
     lines.push(`${count(ps.length, "problem", "problems")}:`);

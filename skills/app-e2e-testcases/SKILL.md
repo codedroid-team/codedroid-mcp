@@ -11,7 +11,7 @@ runs them with CodeDroid's tools.
 ## A case
 
 ```markdown
-### TC-10 · P1 · Save a skill: it appears under "My skills"
+### TC-12 · P1 · Save a skill: it appears under "My skills"
 Feature: F3 · Type: happy
 Covers: R7 (C14)
 Tier: core · Depth: screen
@@ -26,7 +26,7 @@ Feature: F3 · Type: happy
 Covers: R8 (C17, C18), R8.f1 (C18)
 Tier: core · Depth: elsewhere
 Run mode: phone
-Needs: TC-10 (makes e2e-timer)
+Needs: TC-12 (makes e2e-timer)
 Start: Chat, a new empty session.
 Steps:
 1. Tap the Skills tab (`content_description` "Skills"), then "My skills".
@@ -142,7 +142,11 @@ Steps:
 ## Before handing to the user
 
 Run `npx -y @codedroid/mcp e2e report e2e`; it must print no problems before you go on (fix each
-`file:line: message` and rerun). Give the user `e2e/TESTCASES.html` to review and `e2e/QUALITY.html`
-for what no runnable case covers; its "Left open" list should be empty, or each item explained. List
-the cases by feature, with priority, type and which run a CodeDroid task; the CUJs without a case
-and the Gate and Harm lines without a negative case, and why. Ask for approval before running.
+`file:line: message` and rerun). Then send the cases through the app-e2e-verify skill, and finish
+its loop before the user sees anything.
+
+Only then give the user the pages, as that skill's gate 2 says: `e2e/TESTCASES.html` to review and
+`e2e/QUALITY.html` for what no runnable case covers. Add: its "Left open" list should be empty, or
+each item explained; the cases by feature, with priority, type and which run a CodeDroid task; the
+CUJs without a case and the Gate and Harm lines without a negative case, and why. Ask for approval
+before running.

@@ -16,27 +16,33 @@ Feature: F1 · Type: negative
 Covers: R1.f1 (C4), R1.f2
 Tier: core · Depth: screen
 Run mode: phone
+Expected: "Couldn't save", and the text is still there.
 
 ### TC-1c · P1 · Opening a note shows its text
 Feature: F1 · Type: happy
 Covers: R2 (C1, C3)
 Tier: core · Depth: screen
 Run mode: task
+Expected: the note's text shows.
 
 ### TC-2a · P1 · Deleting a note asks first
 Feature: F1 · Type: happy
 Covers: R3 (C5)
 Tier: edge · Depth: elsewhere
 Run mode: manual
+Why manual: needs a note deleted from a second phone.
+Expected: "Delete this note?" shows first.
 
 ### TC-3a · P1 · Search narrows the list
 Feature: F2 · Type: happy
 Covers: R4 (C2)
 Tier: smoke · Depth: screen
 Run mode: phone
+Expected: only matching titles stay in the list.
 
 ### TC-3b · P2 · Search with no match says so
 Feature: F2 · Type: negative
 Covers: R4
 Tier: edge · Depth: screen
 Run mode: phone
+Expected: "No notes match".

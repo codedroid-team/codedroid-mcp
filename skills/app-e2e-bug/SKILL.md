@@ -45,7 +45,9 @@ Run `npx -y @codedroid/mcp e2e report e2e` (documents in another folder: pass th
 of `e2e`; `Unknown command: e2e` means the release is older than these skills: tell the user and go
 on without it); it must print no problems before you go on (fix each `file:line: message` and
 rerun). If the documents were written before these formats, stop and bring them up as step 1 says,
-with the user's OK; never rewrite approved documents on your own.
+with the user's OK; never rewrite approved documents on your own. Then send the case, and any case
+you edited, through the app-e2e-verify skill. An edit to an approved case, or to a requirement or
+control it covers, makes it stale: the pages show it.
 
 ## 4. Prove it red
 

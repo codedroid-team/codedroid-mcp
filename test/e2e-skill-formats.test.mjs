@@ -1,6 +1,7 @@
 /**
  * The app-e2e skills teach the formats `e2e report` reads: their fenced `markdown` examples, stitched
- * into one e2e/ folder, must parse without a single problem, and every skill names the command.
+ * into one e2e/ folder, must parse without a single problem, and every skill names the command. The verify
+ * skill's example verdict line is accepted by `e2e verdicts` against those examples.
  *
  * Run: node test/e2e-skill-formats.test.mjs
  */
@@ -10,9 +11,12 @@ import os from "node:os";
 import path from "node:path";
 import { readE2e } from "../src/e2e-model.js";
 import { quality } from "../src/e2e-quality.js";
+import { dueCases, recordVerdicts } from "../src/e2e-verdicts.js";
+import { caseHash } from "../src/e2e-verify.js";
+import { runE2eReport } from "../src/e2e-report.js";
 import { skillSource } from "../src/skill.js";
 
-const NAMES = ["app-e2e", "app-e2e-explore", "app-e2e-prd", "app-e2e-cujs", "app-e2e-testcases", "app-e2e-run", "app-e2e-maintain", "app-e2e-bug"];
+const NAMES = ["app-e2e", "app-e2e-explore", "app-e2e-prd", "app-e2e-cujs", "app-e2e-testcases", "app-e2e-run", "app-e2e-maintain", "app-e2e-bug", "app-e2e-verify"];
 const FILES = { inventory: "INVENTORY.md", prd: "PRD.md", cujs: "CUJs.md", cases: "TESTCASES.md", report: "reports/2026-01-01/REPORT.md" };
 
 const kindOf = (block) => {
@@ -35,16 +39,51 @@ for (const name of NAMES) {
   }
 }
 assert.match(fs.readFileSync(skillSource("app-e2e-explore"), "utf8"), /INVENTORY\.md/, "explore names INVENTORY.md");
+
+// The verify skill: the command, the ledger, and the brief handed to the verifier, with its words and fields.
+const verify = fs.readFileSync(skillSource("app-e2e-verify"), "utf8");
+assert.match(verify, /e2e verdicts/, "verify names the e2e verdicts command");
+assert.match(verify, /e2e verdicts --due "<dir>"/, "the loop uses the selected document folder");
+assert.match(verify, /VERIFY\.md/, "verify names VERIFY.md");
+const brief = verify.match(/^=== VERIFIER BRIEF ===\r?\n([\s\S]*?)^=== END OF VERIFIER BRIEF ===/m);
+assert.ok(brief, "verify holds the brief between === VERIFIER BRIEF === and === END OF VERIFIER BRIEF ===");
+for (const selected of ["e2e", "qa/acceptance cases"]) {
+  const dispatched = brief[1].replaceAll("<dir>", selected);
+  assert.ok(dispatched.includes(`the documents are in its \`${selected}\` folder`), "the verifier receives the selected document folder");
+  assert.ok(dispatched.includes(`Do not edit any file under \`${selected}\``), "the no-edit boundary follows the selected folder");
+}
+for (const word of ["approved", "repair", "question", "id", "verdict", "by", "reason", "text"]) {
+  assert.match(brief[1], new RegExp(`\`${word}\``), `the brief names \`${word}\``);
+}
+for (const name of ["app-e2e", "app-e2e-testcases", "app-e2e-maintain", "app-e2e-bug"]) {
+  assert.match(fs.readFileSync(skillSource(name), "utf8"), /app-e2e-verify/, `${name} sends cases through app-e2e-verify`);
+}
+// The brief's example output lines: an approval and a repair, each one JSON object with exactly the five string
+// fields, `text` a 16-hex code.
+const example = brief[1].split("\n").filter((l) => l.startsWith("{"));
+const examples = example.map((l) => JSON.parse(l));
+assert.equal(examples.length, 2);
+for (const o of examples) {
+  assert.deepEqual(Object.keys(o).sort(), ["by", "id", "reason", "text", "verdict"]);
+  for (const v of Object.values(o)) assert.equal(typeof v, "string");
+  assert.match(o.text, /^[0-9a-f]{16}$/);
+}
+assert.match(brief[1], /`TC-1a@<code>`|TC-\w+@/, "the brief shows how a case comes with its code");
+assert.ok(examples.some((o) => o.verdict === "approved"), "the brief shows an approved line");
+const verdict = examples.find((o) => o.verdict === "repair");
+assert.ok(verdict, "the brief shows a repair line");
+
 for (const [kind, blocks] of Object.entries(stitched)) assert.ok(blocks.length, `no skill has a ${FILES[kind]} example`);
 
-const dir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "e2e-skill-formats-")), "e2e");
+const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "e2e-skill-formats-"));
+const dir = path.join(workspace, "qa", "acceptance cases");
 try {
   for (const [kind, file] of Object.entries(FILES)) {
     fs.mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
     fs.writeFileSync(path.join(dir, file), stitched[kind].join("\n"));
   }
   const m = readE2e(dir);
-  // The examples parse without a problem: TC-12a's `Needs: TC-10` names a case in the same example.
+  // The examples parse without a problem: TC-12a's `Needs: TC-12` names a case in the same example.
   assert.deepEqual(m.problems.map((p) => `${p.file}:${p.line}: ${p.message}`), []);
   // They show a Non-goal line, a setup case and the Gap lines (failure, deep, depth).
   assert.deepEqual(m.nonGoals.map((g) => g.caps), [["C19"]]);
@@ -53,8 +92,38 @@ try {
   // The examples join: the case in the report is the testcases example's, and it covers the PRD's requirement.
   assert.ok(m.cases.length && m.cases.every((c) => c.id in m.results.byCase), "the report example names the case example");
   assert.ok(m.cujs.every((j) => j.proves.length) && m.cases.filter((c) => c.type !== "setup").every((c) => c.covers.length), "Proves and Covers name something");
+  // The verify skill's example line is a verdict `e2e verdicts` records for a case in the examples, once its text
+  // is the stitched case's real code (as `--due` would hand it out).
+  const jsonl = path.join(path.dirname(dir), "verdicts.jsonl");
+  fs.writeFileSync(jsonl, JSON.stringify({ ...verdict, text: caseHash(m, verdict.id) }) + "\n");
+  const recorded = recordVerdicts({ dir, file: jsonl });
+  assert.equal(recorded.code, 0, recorded.lines.join("\n"));
+  assert.equal(readE2e(dir).cases.find((c) => c.id === verdict.id)?.verify?.status, "repair");
+
+  // Follow the loop through its final repair, when the attempt cap stops further judging.
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const current = readE2e(dir);
+    if (attempt > 1) {
+      fs.writeFileSync(jsonl, JSON.stringify({ ...verdict, reason: `Fixture repair ${attempt}`, text: caseHash(current, verdict.id) }) + "\n");
+      assert.equal(recordVerdicts({ dir, file: jsonl }).code, 0);
+    }
+    assert.equal(runE2eReport({ dir }).code, 0);
+    const file = path.join(dir, "TESTCASES.md");
+    const lines = fs.readFileSync(file, "utf8").split("\n");
+    lines.splice(current.cases.find((c) => c.id === verdict.id).line, 0, `Expected: repair ${attempt} is observable.`);
+    fs.writeFileSync(file, lines.join("\n"));
+  }
+  assert.ok(!dueCases(readE2e(dir)).join(" ").includes(`${verdict.id}@`), "three repairs exhaust the case's attempts");
+  assert.equal(runE2eReport({ dir, check: true }).code, 1, "the last edit needs a refresh");
+  const gate = verify.split("## Gate 2\n")[1].split("Give the user")[0];
+  if (gate.includes('`npx -y @codedroid/mcp e2e report "<dir>"`')) assert.equal(runE2eReport({ dir }).code, 0);
+  assert.equal(runE2eReport({ dir, check: true }).code, 0, "Gate 2 must refresh after the final repair");
+  assert.match(fs.readFileSync(path.join(dir, "TESTCASES.html"), "utf8"), /repair 3 is observable/);
+  const reasonSource = verify.split("## Gate 2\n")[1].match(/last reason from the case's verifier history in\s+`<dir>\/([^`]+)`/)?.[1] ?? "QUALITY.md";
+  const lastReason = readE2e(dir).cases.find((c) => c.id === verdict.id).verify.reason;
+  assert.ok(fs.readFileSync(path.join(dir, reasonSource), "utf8").includes(lastReason), "Gate 2's prescribed source must contain the last reason, not just a stale label");
 } finally {
-  fs.rmSync(path.dirname(dir), { recursive: true, force: true });
+  fs.rmSync(workspace, { recursive: true, force: true });
 }
 
 // The formats the skills teach inline, in their prose: each is in its skill word for word (line breaks
@@ -143,12 +212,14 @@ Feature: F1 · Type: happy
 Covers: R3 (C1)
 Tier: core · Depth: screen
 Run mode: phone
+Expected: the note is in the list.
 
 ### TC-1b · P0 · An empty title cannot be saved
 Feature: F1 · Type: negative
 Covers: R3.f1 (C1)
 Tier: edge · Depth: screen
 Run mode: phone
+Expected: "Save" stays disabled.
 
 ### TC-1c · P0 · Saving with no connection
 Feature: F1 · Type: negative
@@ -156,6 +227,7 @@ Covers: R3.f2 (C1)
 Tier: edge · Depth: screen
 Run mode: manual
 Why manual: the phone must be offline
+Expected: "Couldn't save".
 
 ### TC-2a · P1 · An upgrade keeps the order
 Feature: F1 · Type: happy
@@ -163,6 +235,7 @@ Covers: R9
 Tier: core · Depth: screen
 Run mode: manual
 Why manual: needs the previous release
+Expected: the order is kept.
 
 ### TC-00 · P1 · Remove leftovers
 Feature: all · Type: setup

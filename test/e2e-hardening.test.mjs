@@ -48,6 +48,7 @@ Feature: F1 · Type: happy
 Covers: R1
 Tier: deep · Depth: screen
 Run mode: phone
+Expected: a
 `;
 const BASE = { "INVENTORY.md": INV, "PRD.md": PRD, "CUJs.md": CUJ, "TESTCASES.md": TC };
 const REP = (rows) => `# R\n\n| Case | Result | Notes |\n| --- | --- | --- |\n${rows}\n`;
@@ -71,7 +72,7 @@ const all = (d) => {
   return { m, q, text: [qualityMd(q, m), qualityJson(q, m, new Date(0)), ...Object.values(renderPages(m, q))].join("\n") };
 };
 const CASE_FORM = 'case heading is not readable: use "### TC-<id> · <priority> · <title>"';
-const nextCase = (h, id = "TC-1b") => `\n${h} ${id} · P0 · second\nFeature: F1 · Type: happy\nCovers: R10\nTier: core · Depth: screen\nRun mode: manual\n`;
+const nextCase = (h, id = "TC-1b") => `\n${h} ${id} · P0 · second\nFeature: F1 · Type: happy\nCovers: R10\nTier: core · Depth: screen\nRun mode: manual\nWhy manual: x\nExpected: x\n`;
 
 try {
   // G1: a heading at any level ends the block; an item heading at the wrong level is a problem.
@@ -109,8 +110,8 @@ try {
   assert.deepEqual([m.screens.length, m.features.length, m.cases.length], [1, 1, 1]);
   // G11: Gap and Non-goal lines in the wrong place are problems; * is a bullet.
   const gap = (line) => probs(mk({ "TESTCASES.md": TC + line }));
-  assert.deepEqual(gap("\n  - Gap: R10 · indented\n"), ["TESTCASES.md:9 Gap line must start at the beginning of the line"]);
-  assert.deepEqual(gap("\n  * Gap: R10 · indented\n"), ["TESTCASES.md:9 Gap line must start at the beginning of the line"]);
+  assert.deepEqual(gap("\n  - Gap: R10 · indented\n"), ["TESTCASES.md:10 Gap line must start at the beginning of the line"]);
+  assert.deepEqual(gap("\n  * Gap: R10 · indented\n"), ["TESTCASES.md:10 Gap line must start at the beginning of the line"]);
   assert.deepEqual(gap("\n* Gap: R10 · star\n"), []);
   assert.deepEqual(gap("\n```\n  - Gap: R10 · fenced\n```\n"), []);
   assert.equal(model({ "TESTCASES.md": TC + "\n* Gap: R10 · star\n" }).gaps.length, 1);
@@ -134,7 +135,7 @@ try {
   assert.deepEqual(q.by_cuj.map((j) => j.id), ["CUJ-1"]);
   assert.deepEqual(m.results.byCase, { "TC-1a": "pass" }, "a report row for a retired case is ignored");
   assert.equal(q.cases.by_tier.core + q.cases.by_tier.deep + q.cases.by_tier.smoke + q.cases.by_tier.edge, 1);
-  assert.ok(probs(mk({ "TESTCASES.md": TC + retTc.replace("Retired: 2026-11-13 - feature removed", "Retired:") })).includes("TESTCASES.md:10 TC-2a Retired: has no reason"));
+  assert.ok(probs(mk({ "TESTCASES.md": TC + retTc.replace("Retired: 2026-11-13 - feature removed", "Retired:") })).includes("TESTCASES.md:11 TC-2a Retired: has no reason"));
   assert.ok(probs(mk({ "CUJs.md": CUJ + retCuj.replace("Retired: 2026-11-13 - feature removed", "Retired:") })).includes("CUJs.md:8 CUJ-2 Retired: has no reason"));
   assert.ok(probs(mk({ "TESTCASES.md": TC + retTc.replace("TC-2a", "TC-1a") })).some((x) => /TC-1a is defined twice/.test(x)), "a retired id stays taken");
   // A retired case covering a live requirement does not count; the requirement is open again.

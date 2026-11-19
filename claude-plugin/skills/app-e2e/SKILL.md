@@ -5,14 +5,16 @@ description: End-to-end test an Android app on the user's real phone through Cod
 
 # App e2e
 
-The run is five steps, each its own skill. Run them in order and stop at the two gates:
+The run is five steps, each its own skill, with the cases verified between 4 and 5. Run them in
+order and stop at the two gates:
 
 | Step | Skill | Writes (in the app's repo) | Then |
 | --- | --- | --- | --- |
 | 1 | app-e2e-explore | `e2e/EXPLORE.md`; `e2e/INVENTORY.md`: every screen and control | go on |
 | 2 | app-e2e-prd | `e2e/PRD.md`: features and requirements | go on |
 | 3 | app-e2e-cujs | `e2e/CUJs.md` | **Gate 1: the user reviews `e2e/CUJs.html`.** Stop until they approve or edit. |
-| 4 | app-e2e-testcases | `e2e/TESTCASES.md` | **Gate 2: the user approves `e2e/TESTCASES.html`, and any case that runs a CodeDroid task.** Point them at the "Left open" list on `e2e/QUALITY.html`. |
+| 4 | app-e2e-testcases | `e2e/TESTCASES.md` | go on |
+| 4b | app-e2e-verify | `e2e/VERIFY.md`, through `e2e verdicts` | **Gate 2: the user approves `e2e/TESTCASES.html`, and any case that runs a CodeDroid task.** Point them at the verifier's verdicts and the "Left open" list on `e2e/QUALITY.html`. |
 | 5 | app-e2e-run | `e2e/reports/<date>/REPORT.md` and screenshots | report (below) |
 
 Load each step's skill when you reach it; this table is not the step.
@@ -23,7 +25,8 @@ root. It must print no problems before you go on: exit 1 means it found some, pr
 `@codedroid/mcp` release is older than these skills: tell the user, and go on without the command
 (write the documents as the skills say; give the user the Markdown at the gates). It writes `QUALITY.md`, `quality.json` and HTML pages into `e2e/`
 (`PRD.html`, `CUJs.html`, `TESTCASES.html`, `QUALITY.html`, `REPORT.html` beside the report the numbers read: the newest folder named `e2e/reports/<date>/`).
-The Markdown stays the source: never edit a generated file, and commit them with the Markdown. At
+The Markdown stays the source: never edit a generated file, and commit them with the Markdown.
+`VERIFY.md` is written only by `npx -y @codedroid/mcp e2e verdicts`; never edit it either. At
 both gates give the user the page, not the Markdown, and `e2e/QUALITY.html` for what is not
 covered; at gate 2 the page to look at is its "Left open" list: requirements with no runnable case,
 requirements whose deepest case is shallower than their Proof, failure lines of P0 and P1 features

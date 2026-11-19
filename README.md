@@ -124,9 +124,10 @@ Android platform-tools and a USB or wireless debugging connection. See [adb setu
   `app-e2e` tests an app end to end: it explores the app, writes a test PRD, critical user
   journeys and test cases into its repo (`e2e/`), stops for your review of each, runs the cases on
   the phone and writes a report with a screenshot per case. Each step is its own skill
-  (`app-e2e-explore`, `-prd`, `-cujs`, `-testcases`, `-run`). Then `app-e2e-rerun` runs some
-  of the cases (by id, journey or priority, last failures, the ones a change touches, a flaky
-  check), `app-e2e-bug` turns a bug into a case that reproduces it, and `app-e2e-maintain` keeps
+  (`app-e2e-explore`, `-prd`, `-cujs`, `-testcases`, `-run`), and `app-e2e-verify` has a fresh
+  agent judge each test case's design, hunting for a broken app that would still pass it, before
+  you review them. Then `app-e2e-rerun` runs some of the cases (by id, journey or priority, last
+  failures, the ones a change touches, a flaky check), `app-e2e-bug` turns a bug into a case that reproduces it, and `app-e2e-maintain` keeps
   the cases current as the app changes. After writing the documents, the agent runs
   `npx -y @codedroid/mcp e2e report`, which writes a quality report and HTML pages into `e2e/`
   and lists any problems in them; it needs no phone ([details](docs/reference.md#quality-report-for-an-apps-e2e-folder)).

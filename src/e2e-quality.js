@@ -4,15 +4,16 @@
 const DEPTH = ["screen", "elsewhere", "kept"];
 const RUNNABLE = ["phone", "task"];
 
-/** The six capability counters for a set of capability ids. */
-function capCounts(ids, inFeature, withCase, exercised, passing, seenYes) {
+/** The seven capability counters for a set of capability ids. */
+function capCounts(ids, inFeature, withCase, approved, exercised, passing, seenYes) { // passing: a Set, or an id => boolean
   const a = [...ids];
   return {
     total: a.length,
     in_feature: a.filter((c) => inFeature.has(c)).length,
     with_case: a.filter((c) => withCase.has(c)).length,
+    approved: a.filter((c) => approved.has(c)).length,
     exercised: a.filter((c) => exercised.has(c)).length,
-    passing: a.filter((c) => passing.has(c)).length,
+    passing: a.filter((c) => (typeof passing === "function" ? passing(c) : passing.has(c))).length,
     not_seen: a.filter((c) => !seenYes.has(c)).length,
   };
 }
@@ -28,6 +29,8 @@ export function quality(model) {
   const result = (c) => model.results.byCase[c.id];
   const real = cases.filter((c) => c.type !== "setup"); // a setup case proves nothing: counted on its own
   const runnable = real.filter((c) => RUNNABLE.includes(c.mode));
+  // Approval is of a test's design: only a runnable case the verifier approved counts as approved.
+  const approvedCases = runnable.filter((c) => c.verify?.status === "approved");
 
   // What each case reaches. Covers entries the model reported as undefined are dropped here.
   const reach = (c) => {
@@ -40,6 +43,7 @@ export function quality(model) {
     return out;
   };
   const inFeature = new Set(model.requirements.flatMap((r) => r.caps).filter((id) => caps.has(id)));
+  const capsReached = (list) => new Set(list.flatMap((c) => [...reach(c)]));
   const withCase = new Set();
   const exercised = new Set();
   const passed = new Set();
@@ -52,23 +56,32 @@ export function quality(model) {
       if (result(c) === "fail") failed.add(id);
     }
   }
-  // Passing: a case on it passed and none failed. A case not run neither helps nor hurts.
+  // Passing: a case on it passed and none failed. A case not run neither helps nor hurts. In a feature or journey row,
+  // only that row's own cases can fail a control: a failure elsewhere does not make a clean journey look failed.
   const passing = new Set([...passed].filter((id) => !failed.has(id)));
+  const passingIn = (list) => { const bad = new Set(list.filter((c) => result(c) === "fail").flatMap((c) => [...reach(c)])); return (id) => passed.has(id) && !bad.has(id); };
+  // A requirement passes when a runnable case on it or on one of its failure lines passed and none failed.
+  const onReq = (r) => runnable.filter((c) => c.covers.some((e) => e.ref.replace(/\.f\d+$/, "") === r.id));
+  const reqPasses = (r) => onReq(r).some((c) => result(c) === "pass") && !onReq(r).some((c) => result(c) === "fail");
   const manualOnly = new Set(real.filter((c) => c.mode === "manual").flatMap((c) => [...reach(c)]));
   const seenYes = new Set(model.capabilities.filter((c) => c.seen.startsWith("yes")).map((c) => c.id));
-  const counts = (ids) => capCounts(ids, inFeature, withCase, exercised, passing, seenYes);
+  const approvedCaps = capsReached(approvedCases);
+  const counts = (ids, pass = passing) => capCounts(ids, inFeature, withCase, approvedCaps, exercised, pass, seenYes);
   // Capabilities a Non-goal line sets aside leave every counter and the untested list.
   const reasons = new Map();
   for (const g of model.nonGoals) for (const id of g.caps) if (caps.has(id) && !reasons.has(id)) reasons.set(id, g.reason);
 
-  const coverRefs = new Set(runnable.flatMap((c) => c.covers.map((e) => e.ref)));
+  const refsOf = (list) => new Set(list.flatMap((c) => c.covers.map((e) => e.ref)));
+  const coverRefs = refsOf(runnable);
+  const approvedRefs = refsOf(approvedCases);
   // A Gap line acknowledges a requirement or failure line no runnable case covers; it never counts as covered.
   const gapped = new Set(model.gaps.filter((g) => g.kind === "requirement" || g.kind === "failure").map((g) => g.ref));
   const acked = (id) => gapped.has(id) && !coverRefs.has(id);
   const depthGapped = new Set(model.gaps.filter((g) => g.kind === "depth").map((g) => g.ref));
   const deepest = (r) => Math.max(-1, ...runnable.filter((c) => c.covers.some((e) => e.ref === r.id)).map((c) => DEPTH.indexOf(c.depth)));
   // A requirement with no valid Proof: is never deep enough, nor too shallow: its Proof line is a problem.
-  const atDepth = (r) => DEPTH.includes(r.proof) && runnable.some((c) => c.covers.some((e) => e.ref === r.id) && DEPTH.indexOf(c.depth) >= DEPTH.indexOf(r.proof));
+  const atDepthIn = (list) => (r) => DEPTH.includes(r.proof) && list.some((c) => c.covers.some((e) => e.ref === r.id) && DEPTH.indexOf(c.depth) >= DEPTH.indexOf(r.proof));
+  const atDepth = atDepthIn(runnable);
   const shallow = (r) => coverRefs.has(r.id) && DEPTH.includes(r.proof) && !atDepth(r);
   const deepCases = (f) => runnable.filter((c) => c.feature === f.id && c.tier === "deep").length;
   const deepGap = (f) => model.gaps.find((g) => g.kind === "deep" && g.ref === f.id)?.reason ?? null;
@@ -76,12 +89,29 @@ export function quality(model) {
     total: list.length,
     with_case: list.filter((r) => coverRefs.has(r.id)).length,
     acknowledged: list.filter((r) => acked(r.id)).length,
+    approved: list.filter((r) => approvedRefs.has(r.id)).length,
     at_depth: list.filter(atDepth).length,
+    at_depth_approved: list.filter(atDepthIn(approvedCases)).length,
     depth_acknowledged: list.filter((r) => shallow(r) && depthGapped.has(r.id)).length,
+    passing: list.filter(reqPasses).length,
   });
   const failCounts = (list) => {
     const f = list.flatMap((r) => r.fails);
-    return { total: f.length, with_case: f.filter((x) => coverRefs.has(x.id)).length, acknowledged: f.filter((x) => acked(x.id)).length };
+    return { total: f.length, with_case: f.filter((x) => coverRefs.has(x.id)).length, approved: f.filter((x) => approvedRefs.has(x.id)).length, acknowledged: f.filter((x) => acked(x.id)).length };
+  };
+  // Verifier: every judged case (not setup, not retired), manual ones included.
+  const judged = real;
+  const status = (c) => c.verify.status;
+  const approvedRow = (c) => c.verify.history.filter((h) => h.verdict !== "reopen").at(-1);
+  const FIXED = { unverified: "Not judged yet", stale: "changed since it was judged" };
+  const verify = {
+    judged: judged.length,
+    approved: judged.filter((c) => status(c) === "approved").length,
+    approved_first: judged.filter((c) => status(c) === "approved" && approvedRow(c).attempt === 1).length,
+    approved_after_repair: judged.filter((c) => status(c) === "approved" && approvedRow(c).attempt > 1).length,
+    ...Object.fromEntries(["repair", "question", "unresolved", "stale", "unverified", "invalid"].map((k) => [k, judged.filter((c) => status(c) === k).length])),
+    superseded: judged.reduce((n, c) => n + c.verify.rejected.filter((r) => r.superseded).length, 0),
+    by: { independent: judged.filter((c) => c.verify.by === "independent").length, same: judged.filter((c) => c.verify.by === "same").length },
   };
   const tally = (list, key, values) => Object.fromEntries(values.map((v) => [v, list.filter((c) => c[key] === v).length]));
 
@@ -102,16 +132,18 @@ export function quality(model) {
       setup: cases.length - real.length,
       retired: retired.length,
       by_mode: tally(cases, "mode", ["phone", "task", "manual"]),
-      by_tier: tally(real, "tier", ["smoke", "core", "deep", "edge"]),
+      by_tier: tally(runnable, "tier", ["smoke", "core", "deep", "edge"]),
     },
+    // The newest report's rows, as REPORT.html counts them.
+    results: Object.fromEntries(["pass", "fail", "not run"].map((v) => [v, Object.values(model.results.byCase).filter((x) => x === v).length])),
     by_feature: model.features.map((f) => {
       const rs = model.requirements.filter((r) => r.feature === f.id);
       return {
         id: f.id, name: f.name, priority: f.priority,
-        capabilities: counts(capsOf(rs)),
+        capabilities: counts(capsOf(rs), passingIn(runnable.filter((c) => c.covers.some((e) => rs.some((r) => r.id === e.ref.replace(/\.f\d+$/, "")))))),
         requirements: reqCounts(rs),
         failures: failCounts(rs),
-        tiers: tally(real.filter((c) => c.feature === f.id), "tier", ["smoke", "core", "deep", "edge"]),
+        tiers: tally(runnable.filter((c) => c.feature === f.id), "tier", ["smoke", "core", "deep", "edge"]),
         deep_cases: deepCases(f),
         deep_gap: deepGap(f),
       };
@@ -119,10 +151,12 @@ export function quality(model) {
     cujs: { total: journeys.length, retired: model.cujs.length - journeys.length },
     by_cuj: journeys.map((j) => {
       const n = Number(j.id.replace("CUJ-", ""));
+      const own = real.filter((c) => /^TC-(\d+)[A-Za-z]*$/.test(c.id) && Number(c.id.match(/^TC-(\d+)/)[1]) === n);
       return {
         id: j.id, title: j.title, requirements: j.proves,
-        cases: real.filter((c) => /^TC-(\d+)[A-Za-z]*$/.test(c.id) && Number(c.id.match(/^TC-(\d+)/)[1]) === n).map((c) => c.id),
-        capabilities: counts(capsOf(j.proves.map((id) => reqs.get(id)).filter(Boolean))),
+        cases: own.map((c) => c.id),
+        manual: own.filter((c) => c.mode === "manual").length,
+        capabilities: counts(capsOf(j.proves.map((id) => reqs.get(id)).filter(Boolean)), passingIn(own.filter((c) => RUNNABLE.includes(c.mode)))),
       };
     }),
     open: [
@@ -145,7 +179,8 @@ export function quality(model) {
         why: !inFeature.has(c.id) ? "not in any feature" : manualOnly.has(c.id) ? "manual case only" : "no case",
       };
     }),
-    verified: "not verified", // until the verifier exists
+    verify,
+    not_approved: judged.filter((c) => status(c) !== "approved").map((c) => ({ id: c.id, status: status(c), reason: FIXED[status(c)] ?? c.verify.reason })),
   };
 }
 
@@ -164,7 +199,11 @@ export const modes = ({ total, by_mode: m }) => {
 
 export function qualityMd(q, model) {
   const out = ["# Test quality", ""];
-  out.push("These are counts of the documents, not test results. Nothing has been verified by the verifier yet.", "");
+  const v = q.verify;
+  const judgedAny = v.judged - v.unverified > 0;
+  out.push(judgedAny
+    ? `These are counts of the documents${q.report ? ", with the results of the last report" : ", not test results"}. The verifier approved ${v.approved} of ${v.judged} test cases; approval is of a test's design, not a run.`
+    : `These are counts of the documents${q.report ? ", with the results of the last report" : ", not test results"}. No test case has been judged by the verifier yet.`, "");
   out.push(q.report ? `Results come from ${q.report}.` : "There is no report yet, so no results.", "");
   if (q.problems.length) {
     out.push("## Problems", "");
@@ -176,14 +215,19 @@ export function qualityMd(q, model) {
   if (!q.ok) out.push("The counts below may be wrong until the problems above are fixed.", "");
   const scope = c.total - c.set_aside;
   out.push("| What | Count |", "| --- | --- |");
-  if (c.set_aside) out.push(`| Capabilities in scope | ${scope} (${c.set_aside} set aside as non-goals) |`);
-  out.push(`| Capabilities in features | ${frac(c.in_feature, scope)} |`);
-  out.push(`| Capabilities with a case | ${frac(c.with_case, scope)} |`);
-  out.push(`| Capabilities exercised in the last report | ${q.report ? frac(c.exercised, scope) : "no report yet"} |`);
-  out.push(`| Capabilities passing in the last report | ${q.report ? frac(c.passing, scope) : "no report yet"} |`);
-  out.push(`| Capabilities not seen on the phone | ${c.not_seen} of ${scope} |`);
+  if (c.set_aside) out.push(`| Controls in scope | ${scope} (${c.set_aside} set aside as non-goals) |`);
+  out.push(`| Controls in features | ${frac(c.in_feature, scope)} |`);
+  out.push(`| Controls with an approved case | ${frac(c.approved, scope)} |`);
+  out.push(`| Controls with a case | ${frac(c.with_case, scope)} |`);
+  out.push(`| Controls exercised in the last report | ${q.report ? frac(c.exercised, scope) : "no report yet"} |`);
+  out.push(`| Controls passing in the last report | ${q.report ? frac(c.passing, scope) : "no report yet"} |`);
+  out.push(`| Controls not seen on the phone | ${c.not_seen} of ${scope} |`);
+  out.push(`| Requirements with an approved case | ${frac(q.requirements.approved, q.requirements.total)} |`);
   out.push(`| Requirements with a case | ${frac(q.requirements.with_case, q.requirements.total)} |`);
+  out.push(`| Requirements with an approved case deep enough | ${frac(q.requirements.at_depth_approved, q.requirements.total)} |`);
   out.push(`| Requirements with a case deep enough | ${frac(q.requirements.at_depth, q.requirements.total)} |`);
+  out.push(`| Requirements passing in the last report | ${q.report ? frac(q.requirements.passing, q.requirements.total) : "no report yet"} |`);
+  out.push(`| Failures with an approved case | ${frac(q.failures.approved, q.failures.total)} |`);
   out.push(`| Failures with a case | ${frac(q.failures.with_case, q.failures.total)} |`);
   out.push(`| Requirements acknowledged as gaps | ${q.requirements.acknowledged} of ${q.requirements.total} |`);
   out.push(`| Failures acknowledged as gaps | ${q.failures.acknowledged} of ${q.failures.total} |`);
@@ -193,7 +237,7 @@ export function qualityMd(q, model) {
   out.push("");
 
   out.push("## By feature", "");
-  out.push("| Feature | Priority | Capabilities with a case | Exercised | Passing | Requirements with a case | Deep enough | Failures with a case | Cases (smoke/core/deep/edge) |");
+  out.push("| Feature | Priority | Controls with a case | Exercised | Passing | Requirements with a case | Deep enough | Failures with a case | Runnable cases (smoke/core/deep/edge) |");
   out.push("| --- | --- | --- | --- | --- | --- | --- | --- | --- |");
   for (const f of q.by_feature) {
     const k = f.capabilities, r = f.requirements, t = f.tiers;
@@ -201,12 +245,22 @@ export function qualityMd(q, model) {
   }
   out.push("", "A control used by requirements of two features is counted in both rows, so the rows can add up to more than the headline.");
   out.push("", "## By journey", "");
-  out.push("| CUJ | Title | Requirements | Cases | Capabilities with a case | Exercised | Passing |");
+  out.push("| CUJ | Title | Requirements | Cases | Controls with a case | Exercised | Passing |");
   out.push("| --- | --- | --- | --- | --- | --- | --- |");
   for (const j of q.by_cuj) {
     const k = j.capabilities;
-    out.push(`| ${j.id} | ${j.title} | ${j.requirements.join(", ")} | ${j.cases.length} | ${pct(k.with_case, k.total)} | ${pct(k.exercised, k.total)} | ${pct(k.passing, k.total)} |`);
+    out.push(`| ${j.id} | ${j.title} | ${j.requirements.join(", ")} | ${j.cases.length}${j.manual ? ` (${j.manual} manual)` : ""} | ${pct(k.with_case, k.total)} | ${pct(k.exercised, k.total)} | ${pct(k.passing, k.total)} |`);
   }
+  out.push("", "## Verifier", "");
+  if (!q.not_approved.length) out.push("Every test case is approved.", "");
+  // Judged cases one per line; the not-judged ones share a line, in document order.
+  const notJudged = q.not_approved.filter((n) => n.status === "unverified").map((n) => n.id);
+  for (const n of q.not_approved) if (n.status !== "unverified") out.push(`- ${n.id} · ${n.status} · ${n.reason}`);
+  if (notJudged.length) out.push(`- Not judged yet (${notJudged.length}): ${notJudged.join(", ")}`);
+  if (q.not_approved.length) out.push("");
+  out.push(`Judged by an independent agent: ${v.by.independent}. By the same agent: ${v.by.same}.`);
+  out.push(`Approved on the first attempt: ${v.approved_first}. After a repair: ${v.approved_after_repair}. Not approved: ${v.judged - v.approved}.`);
+  if (v.superseded) out.push(`Unreadable rows superseded by a later verdict: ${v.superseded}.`);
   if (q.requirements.no_cuj.length) {
     out.push("", "## Requirements no journey proves", "");
     for (const id of q.requirements.no_cuj) out.push(`- ${id} · ${model.requirements.find((r) => r.id === id).text}`);
@@ -220,7 +274,7 @@ export function qualityMd(q, model) {
     for (const g of q.gaps) out.push(`- ${g.kind === "deep" || g.kind === "depth" ? `${g.ref} ${g.kind}` : g.ref}: ${g.reason}`);
   }
   out.push("", "## Not covered by a runnable case", "");
-  if (!q.untested.length) out.push("Every capability has a case.");
+  if (!q.untested.length) out.push("Every control has a case.");
   const byScreen = (list) => {
     const g = new Map();
     for (const u of list) g.set(u.screen, [...(g.get(u.screen) ?? []), u]);

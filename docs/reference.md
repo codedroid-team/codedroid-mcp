@@ -230,8 +230,9 @@ writes `QUALITY.md`, `quality.json` and the HTML pages (`PRD.html`, `CUJs.html`,
 `QUALITY.html`, and a `REPORT.html` beside the report in use) into that folder, overwriting earlier
 copies on every run and deleting nothing. Commit them with the Markdown. It writes each file under a
 temp name beside it, then renames it into place, and never changes a file outside the folder. It
-prints the counts, each problem it found in the documents as `file:line: message`, and the path of
-`QUALITY.html`. It needs Node 20 or later, and no phone, daemon or network.
+prints the counts, then, when there is a report, its results (`Last report reports/<date>/REPORT.md:
+52 passed, 6 failed, 3 not run; 38 of 45 requirements passing.`), each problem it found in the
+documents as `file:line: message`, and the path of `QUALITY.html`. It needs Node 20 or later, and no phone, daemon or network.
 `REPORT.html` embeds each screenshot beside the report, so it is about one and a third times the
 size of those screenshots together.
 
@@ -240,7 +241,10 @@ under `reports/`: the full run. The partial runs the skills write beside it (`<d
 `<date>-maintain`, `<date>-smoke`) are not used, so "exercised" and "passing" come from the full
 run. A control is exercised when a runnable case covering it has a `pass` or `fail` row in that
 report, and passing when at least one such case passed and none failed; a `not run` row neither
-helps nor hurts. Only when no folder has that exact name does the last folder by name stand in. A
+helps nor hurts. In a feature's or journey's row only its own cases (those on the feature's
+requirements; the journey's numbered cases) can fail a control, so a failure in another journey does
+not mark a journey whose cases all passed. A requirement passes when a runnable case on it or on one
+of its failure lines passed and none failed. Only when no folder has that exact name does the last folder by name stand in. A
 folder shaped like a date but not zero-padded (`2026-11-9`) or not a calendar date (`2026-13-45`)
 is a problem and is not used, and so is a newer dated folder with no `REPORT.md`. Only the first table whose columns
 start with `Case` and `Result` is read; a second one is a problem. `QUALITY.md` and
@@ -265,7 +269,10 @@ capabilities aside: they leave "not in any feature", the percentages count the c
 scope, and the quality pages list them with the reason. A requirement with no control in the
 inventory writes `Caps: none`; `Fails:` is either failure items (`- R<n>.f<m> · text`, each starting with its own
 requirement's id) below it or `none in source`; any other list item under `Fails:` is a problem. A
-`Gap:` or `Non-goal:` line starts at the beginning of the line, with `-` or `*`. A heading of any
+`Gap:` or `Non-goal:` line starts at the beginning of the line, with `-` or `*`. In `INVENTORY.md` a
+`Source` written `path:line` or `path:from-to` is checked against the repo holding the folder (its
+parent) when the path's first folder is there: a file that is not there, or a line past its end, is a
+problem. A heading of any
 level ends a block, and a feature, journey, case or screen heading at the wrong level is a problem.
 
 In `TESTCASES.md`, `- Gap: <ref> · reason` acknowledges something no case covers. `<ref>` is a
@@ -275,7 +282,12 @@ brackets counts every control in that requirement's `Caps:`, also when the entry
 (`R1.f2`); write the controls in brackets (`R1.f2 (C4)`) to count fewer. A gap is never counted as
 covered; the quality pages list it under "Acknowledged gaps". A case with `Type: setup` needs only
 its `Run mode:` line and is counted apart. Every case has a `Feature:` line (`Feature: all` for a
-setup case). A line `Retired: <date> - <why>` in a case or journey retires it: it keeps its id, may
+setup case), and every case but a setup case an `Expected:` line. A numbered case (`TC-12a`) is for
+the journey of that number, which must be in `CUJs.md`, and its `Feature:` is that journey's feature;
+a bug case `TC-B<n>` is for none. A manual case or journey has a `Why manual:` line with a reason. A
+line right under `Covers:` that is indented or starts with `R<n>` is a wrapped `Covers:` line: a
+problem, since only the first line is read. Tier counts on the quality pages count runnable cases
+only; a journey's row says how many of its cases are manual. A line `Retired: <date> - <why>` in a case or journey retires it: it keeps its id, may
 point at what no longer exists, and counts for nothing (it appears on its page under "Retired", and
 quality gains `cases.retired` and `cujs.retired`). Only a runnable case (phone or task) counts as covering
 something or as a deep case.
@@ -287,6 +299,14 @@ feature. When there are any, the command prints `N left open: see
 (and in `QUALITY.html`), and so is the full problem list that the line `and M more: see
 <dir>/QUALITY.md` points to. Open items are not problems and do not change the exit code.
 
+After the headline the command prints `N of M cases not approved by the verifier (K not judged yet): see
+<dir>/QUALITY.md` when any judged case is not approved (N counts every case that is not approved, K those the
+verifier has not judged; the bracket is left out when K is 0), or `No case has been judged by the verifier yet.`
+when no case has any verdict. These lines do not change the exit code. `QUALITY.md`'s Verifier
+section ends with `Approved on the first attempt: A. After a repair: B. Not approved: C.`, where "first
+attempt" is counted per cycle (an approval after a `reopen` on the first new attempt counts), followed by
+`Unreadable rows superseded by a later verdict: N.` when there are any.
+
 Exit codes: 0 when all is well, 1 when the documents have problems, 2 for a usage error (an
 unknown flag too), a folder that does not exist or holds none of the four documents, a source it
 cannot read, or a file it cannot write. With `--check`: 0 when every page is current, 1 when a page
@@ -294,6 +314,77 @@ is stale or missing, 2 as above. It refuses to write through a link, into a fold
 outside, or over anything that is not a regular file (a folder, a named pipe), with exit 2, and
 writes nothing then. Outputs are written to temporary names first and then renamed one after
 another, so a failure during the renames can leave some outputs new: the message names the file. With more than 20 problems it prints a count per kind and the first 20; the pages list all.
+
+### Record the verifier's verdicts
+
+```bash
+npx -y @codedroid/mcp e2e verdicts --due [dir]
+npx -y @codedroid/mcp e2e verdicts <file> [dir]
+```
+
+The `app-e2e-verify` skill has a fresh agent judge each case and runs these commands around it.
+
+`--due` writes nothing. It prints one line per feature that has cases due for judging, the feature id
+and then each due case as `<id>@<code>` in document order (`F2: TC-02a@184125525faa839e
+TC-02b@8629b9ce8edaa8a4`), or `No case is due for judging.`, and exits 0. A case is due when it is
+`unverified`, `stale`, `invalid` or `repair` and its current cycle has attempts left, or when its
+latest row is a `reopen`; never when it is `approved`, a `question` or `unresolved`, and never a
+setup or retired case. A case whose cycle used three attempts waits for the user whatever its status.
+A `question` is answered by writing the user's answer into the PRD requirement it concerns, which
+makes the case stale and `--due` lists it; if the question was the case's third attempt, the answer
+is also the user's word to give it another go: record a `reopen` for it with the answer as the
+reason, and then `--due` lists it.
+The code is the first 16 hex characters of the sha256 of the judged text: the case's block, the PRD
+blocks of the requirements it covers, and the INVENTORY row of each control it covers (the bracketed
+controls, or the requirement's `Caps:` for a `Covers:` entry without brackets). Line ends and
+trailing spaces do not count.
+
+`<file>` is the verifier's output: UTF-8 JSON Lines (a byte order mark is skipped), one object per
+judged case, each with exactly the string fields `id`, `verdict` (`approved`, `repair`, `question`
+or `reopen`), `by`, `reason` and `text`, the code `--due` gave for that case. The code ties the
+verdict to the text that was judged. For a verdict, `by` is `independent` (a fresh agent) or `same`
+(the agent that wrote the cases). `reopen` is the user's: written only when the user says to give a
+case more attempts, as `{"id": "TC-3a", "verdict": "reopen", "by": "user", "reason": "<what the user
+said>"}`; it judges nothing, so it needs no `text` and one given is ignored. Blank lines are
+skipped; the file may live anywhere and is only read. The command checks every line against one
+read of `dir` (default `./e2e`) and, only if all are valid, appends one row per line to `VERIFY.md`,
+creating it with its header if needed. It stamps the attempt (the next in the case's current cycle;
+a `reopen` row is `0`), the case's code and today's local date. A reason's line breaks become one
+space and `|` is written `\|`. Existing lines are never rewritten, and nothing is written through a
+link, outside `dir`, or over a `VERIFY.md` that is not a regular file (a folder, a named pipe).
+
+Recording holds a per-folder `.VERIFY.lock` directory from the initial read through readback or
+rollback. Another writer exits 2 without recording anything; retry after the active writer finishes.
+A crashed writer may leave the lock: remove it only after confirming no writer is running.
+
+A row the reader cannot trust marks its case `invalid` and is a problem in `e2e report`: one it
+cannot parse, one whose attempt does not follow its cycle, or one whose date is not a calendar date.
+Such a row still takes one attempt of the case's cycle. A new verdict recorded for the case
+supersedes the row: it is then no longer a problem, the case's verdict history shows it as `row at
+VERIFY.md line N could not be read (superseded)`, and `QUALITY.md` counts it. A case id defined
+twice in `TESTCASES.md` makes every case with that id `invalid`. A row that names no current judged
+case stays a problem.
+
+On success it prints one line per verdict (`TC-12a: repair (attempt 1 of 3)`, `TC-12a: reopened`)
+and a reminder to run `e2e report`, and exits 0. Exit 2 means nothing was recorded; there are two
+kinds of refusal. Faults in the verdicts, one `<file>:<line>: <message>` each: invalid JSON, a
+missing, extra or non-string field, an id that is not a current judged case, a verdict outside the
+list, `by` other than `user` on a `reopen` or other than `independent` or `same` on a verdict, an
+empty reason or one that is not well-formed Unicode, a `text` that is not 16 hex characters, a
+`text` that is not the case's current code (`TC-1a changed since it was judged (or the text code is
+wrong): judge it again`: the case goes to a verifier again), a verdict that repeats the case's
+latest row (`TC-1a: this verdict is already recorded`), an id twice, a fourth verdict in a cycle
+(only `reopen`, on the user's word, allows more), or `reopen` for a case whose current cycle does
+not yet hold three attempts (`reopen` is allowed once it does, even if the case text has changed
+since). One line otherwise: `the documents have problems: run "e2e report" and fix them first` for
+problems in `TESTCASES.md` or `PRD.md` (fix them, then record again; `--due` refuses the same way),
+a usage error (an unknown flag too), a missing file or folder, a file or folder in it that cannot be read (`Cannot read reports/2026-01-01: EACCES`; `--due` too), a file with no verdicts, a `VERIFY.md` with no table or one that ends
+inside an unclosed code fence, or a write failure. If the rows it appended do not read back, it
+restores `VERIFY.md` to its previous bytes (or removes it if this run created it) and says `nothing
+was recorded`. It needs no phone, daemon or network.
+
+`VERIFY.md` is bookkeeping for honest agents, not an access-control boundary: anyone who edits it by hand can forge a
+row, so review it like any other file in a pull request.
 
 ### Standalone Claude Code server
 

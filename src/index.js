@@ -20,6 +20,8 @@
  *   codedroid-mcp call <tool> [json]  call one tool and print the result (scripts, CI)
  *   codedroid-mcp skill install|path  the agent skills, for clients without the plugin
  *   codedroid-mcp e2e report [dir] [--check]  quality report and HTML pages for an app's e2e folder
+ *   codedroid-mcp e2e verdicts <file> [dir]   record the verifier's verdicts (JSON Lines) in e2e/VERIFY.md
+ *   codedroid-mcp e2e verdicts --due [dir]    list the cases due for judging, with their text codes
  *   codedroid-mcp flow run <file>  replay a Maestro flow on the phone, with no model in the loop
  *   codedroid-mcp doctor           check Node, adb, pairing, the daemon, the phones and the clients
  *   codedroid-mcp viewer [phone]   a page showing the phone's screen, where you can take over
@@ -98,6 +100,12 @@ Usage:
   codedroid-mcp skill path          Print where the skill files are
   codedroid-mcp e2e report [dir]    Write QUALITY.md, quality.json and HTML pages for an app's e2e
                                     folder (default ./e2e); --check lists the stale pages instead
+  codedroid-mcp e2e verdicts <file> [dir]
+                                    Check the verifier's JSON Lines <file> and append its verdicts
+                                    to VERIFY.md in the e2e folder (default ./e2e)
+  codedroid-mcp e2e verdicts --due [dir]
+                                    List the cases due for judging, per feature, each
+                                    with the code of its current text; writes nothing
   codedroid-mcp flow run <file>     Replay a Maestro flow on the phone with no model in the loop
                                     (--device=<phone>, --env=KEY=VALUE, --screenshots=<dir>);
                                     exit 1 when a step fails. Run it from the project.
@@ -211,15 +219,20 @@ async function main() {
   }
 
   if (command === "e2e") {
-    const usage = "Usage: codedroid-mcp e2e report [dir] [--check]";
-    const unknown = process.argv.slice(2).some((a) => a.startsWith("-") && a !== "--check" && a !== "--help");
-    if (args._[1] !== "report" || args._.length > 3 || unknown) {
+    const sub = args._[1];
+    const usage = sub === "verdicts" ? "Usage: codedroid-mcp e2e verdicts <file> [dir] | codedroid-mcp e2e verdicts --due [dir]" : "Usage: codedroid-mcp e2e report [dir] [--check]";
+    const flags = sub === "verdicts" ? ["--due"] : ["--check"];
+    const unknown = process.argv.slice(2).some((a) => a.startsWith("-") && !flags.includes(a) && a !== "--help");
+    const due = sub === "verdicts" && !!args.due;
+    if ((sub !== "report" && sub !== "verdicts") || unknown || (sub === "report" || due ? args._.length > 3 : args._.length < 3 || args._.length > 4)) {
       process.stderr.write(`${usage}\n`);
       process.exitCode = 2;
       return;
     }
-    const { runE2eReport } = await import("./e2e-report.js");
-    const { code, lines } = runE2eReport({ dir: args._[2] ?? "e2e", check: !!args.check });
+    const { code, lines } = sub === "report"
+      ? (await import("./e2e-report.js")).runE2eReport({ dir: args._[2] ?? "e2e", check: !!args.check })
+      : due ? (await import("./e2e-verdicts.js")).listDue({ dir: args._[2] ?? "e2e" })
+      : (await import("./e2e-verdicts.js")).recordVerdicts({ file: args._[2], dir: args._[3] ?? "e2e" });
     process.stdout.write(lines.join("\n") + "\n");
     process.exitCode = code;
     return;

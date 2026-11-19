@@ -9,6 +9,7 @@ User action: tap "New note" -> type -> "Save".
 
 ### CUJ-2 · Delete a note · P1 · manual
 Proves: R3
+Why manual: needs a second phone to delete the note elsewhere.
 User action: open a note -> "Delete note" -> confirm.
 
 ## F2 · Search

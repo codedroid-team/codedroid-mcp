@@ -11,6 +11,7 @@ import { readE2e } from "../src/e2e-model.js";
 import { quality } from "../src/e2e-quality.js";
 import { renderPages, stalePages } from "../src/e2e-html.js";
 import { md } from "../src/e2e-markdown.js";
+import { recordVerdicts } from "../src/e2e-verdicts.js";
 
 const fixture = new URL("./fixtures/e2e-sample", import.meta.url).pathname;
 const tmps = [];
@@ -50,7 +51,7 @@ try {
   assert.ok(prd.includes("Keep short notes on the phone."), "PRD prose");
   assert.ok(prd.includes("Sync between phones."), "PRD non-goals");
   assert.ok(prd.includes("Edit note"), "capability shows its screen's title");
-  assert.ok(prd.includes("not verified"));
+  assert.ok(!prd.includes("not verified"), "no fixed not-verified chip: items the verifier does not judge show none");
   assert.ok(prd.indexOf("Keep short notes") < prd.indexOf('id="F1"'), "prose above the features");
   assert.ok(prd.includes('<meta name="e2e-sources"'));
 
@@ -158,7 +159,7 @@ try {
   assert.ok(!render(fixture)["PRD.html"].includes("not written yet"));
   // A bug case TC-B1: its screenshots are embedded, it counts, and it belongs to no CUJ.
   const bugDir = copy((d) => {
-    fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n### TC-B1 · P1 · Saving twice keeps one note\nFeature: F1 · Type: negative\nCovers: R1 (C4)\nTier: edge · Depth: kept\nRun mode: phone\n");
+    fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n### TC-B1 · P1 · Saving twice keeps one note\nFeature: F1 · Type: negative\nCovers: R1 (C4)\nTier: edge · Depth: kept\nRun mode: phone\nExpected: one note in the list.\n");
     fs.appendFileSync(path.join(d, "reports/2026-01-02/REPORT.md"), "| TC-B1 | fail | P1 | Saving twice keeps one note | |\n");
     for (const n of ["TC-B1.png", "TC-B1-before.png"]) fs.copyFileSync(path.join(d, "reports/2026-01-02/TC-1a.png"), path.join(d, "reports/2026-01-02", n));
   });
@@ -182,6 +183,11 @@ try {
   assert.ok(aq.includes("4 of 5") && aq.includes("1 set aside as non-goals"), "in-scope denominator and the set-aside count");
   assert.ok(!aq.includes("not in any feature"), "C6 is no longer listed as in no feature");
   assert.ok(!render(fixture)["QUALITY.html"].includes("Set aside as non-goals"), "no section when nothing is set aside");
+  // Requirements passing, tier tallies of runnable cases only, and a journey's manual cases marked.
+  assert.ok(qual.includes("<b>2 of 4</b><small>requirements passing in the last report (50%)"), "requirements passing tile");
+  assert.ok(qual.includes("Runnable cases smoke / core / deep / edge"));
+  assert.ok(qual.split("<tr").some((row) => row.includes("CUJ-2") && row.includes("<td>1 (1 manual)</td>")), "CUJ-2's one case is manual");
+  assert.ok(qual.includes("counts of the documents, with the results of the last report."));
   // Left open and acknowledged gaps on QUALITY.html.
   assert.ok(qual.includes("Left open") && qual.includes("R3") && qual.includes("no runnable case"), "open list");
   assert.ok(!qual.includes("Acknowledged gaps"), "no acknowledged section without gaps");
@@ -199,16 +205,127 @@ try {
   const dp = render(copy((d) => fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n## Gaps\n- Gap: R4 depth · <b>one</b> screen\n")))["QUALITY.html"];
   assert.ok(!dp.includes("must be checked at"), "acknowledged, so not open");
   assert.ok(dp.includes("</a> depth") && dp.includes("&lt;b&gt;one&lt;/b&gt; screen"), "listed under acknowledged gaps, escaped");
+
+  // Verifier verdicts on the pages. Fixture: TC-1a approved (1 try), TC-1b approved after a repair (same agent),
+  // TC-1c repair, TC-2a question (manual), TC-3a unresolved, TC-3b no row.
+  const cardOf = (html, id) => html.split('<article class="card"').find((a) => a.startsWith(` id="${id}">`)).split("</article>")[0];
+  const chipOf = (html, id, kind, word) => assert.ok(cardOf(html, id).includes(`<span class="chip ${kind}">${word}</span>`), `${id} chip ${word}: ${cardOf(html, id).slice(0, 600)}`);
+  chipOf(tcs, "TC-1a", "pass", "approved");
+  chipOf(tcs, "TC-1b", "pass", "approved");
+  chipOf(tcs, "TC-1c", "warn", "repair");
+  chipOf(tcs, "TC-2a", "ask", "question");
+  chipOf(tcs, "TC-3a", "warn", "unresolved");
+  chipOf(tcs, "TC-3b", "", "unverified");
+  assert.ok(cardOf(tcs, "TC-1c").includes("independent agent, attempt 1") && cardOf(tcs, "TC-1b").includes("same agent, attempt 2") && cardOf(tcs, "TC-3a").includes("independent agent, attempt 3"));
+  // A case that is not approved shows its latest reason without opening anything; an approved one does not.
+  assert.ok(/class="verdict[^"]*">[^]*Verifier:[^]*an app that opens an empty note passes; Expected only checks the screen title\./.test(cardOf(tcs, "TC-1c")));
+  assert.ok(cardOf(tcs, "TC-3a").includes("Expected names no title that must be absent") && cardOf(tcs, "TC-2a").includes("Only the user can say"));
+  assert.ok(cardOf(tcs, "TC-3b").includes("Not judged yet"));
+  assert.ok(!cardOf(tcs, "TC-1a").includes('class="verdict'), "approved: the reason sits in the history only");
+  // History: closed, oldest first, titled with the row count; omitted with no rows.
+  assert.ok(/<details class="history"><summary>Verdict history \(1\)<\/summary>/.test(cardOf(tcs, "TC-1a")) && !cardOf(tcs, "TC-1a").includes("<details open"));
+  const h1b = cardOf(tcs, "TC-1b");
+  assert.ok(h1b.includes("Verdict history (2)"));
+  assert.ok(h1b.indexOf("an app that shows no error and discards") < h1b.indexOf("the new Expected checks the error"), "oldest first");
+  assert.ok(h1b.includes("2026-11-14") && h1b.includes("2026-11-15"));
+  assert.ok(!cardOf(tcs, "TC-3b").includes("<details"), "no history block without rows");
+  assert.ok(!tcs.includes("not verified") && !qual.includes("not verified") && !rep.includes("not verified") && !cujs.includes("not verified"));
+  for (const p of Object.values(pages)) assert.ok(!p.includes("nothing here has been verified"), "footer sentence replaced");
+  // Items the verifier does not judge show no verifier chip; the PRD and CUJs show each linked case's status word.
+  assert.ok(!cardOf(prd, "R1").includes("verified"));
+  assert.ok(/TC-1c<\/a>[^]*?<span class="chip warn">repair<\/span>/.test(cardOf(prd, "R2")), "PRD: case status beside its link");
+  assert.ok(cardOf(prd, "R1").includes('<span class="chip pass">approved</span>'));
+  assert.ok(cardOf(cujs, "CUJ-1").includes('<span class="chip pass">approved</span>'));
+  assert.ok(!/<h3>R1<\/h3>[^]*?<\/div>/.exec(cardOf(prd, "R1"))[0].includes("approved"), "the requirement itself has no verifier chip");
+  // A reopen row reads "reopened", by the user.
+  const reopened = render(copy((d) => fs.appendFileSync(path.join(d, "VERIFY.md"), "| TC-3a | 0 | reopen | user | fa01e4a128b39967 | 2026-11-17 | The user allowed three more tries. |\n")));
+  assert.ok(cardOf(reopened["TESTCASES.html"], "TC-3a").includes("reopened") && cardOf(reopened["TESTCASES.html"], "TC-3a").includes("The user allowed three more tries."));
+  assert.match(cardOf(reopened["TESTCASES.html"], "TC-3a"), /<b>reopened<\/b> <span class="muted">the user, 2026-11-17<\/span>/);
+  // QUALITY.html: approved tiles lead, with-a-case numbers are secondary text; Verifier section.
+  assert.ok(/1 of 6<\/b><small>controls have an approved case[^]*?4 of 6 have a case/.test(qual), "capabilities tile");
+  assert.ok(/1 of 4<\/b><small>requirements have an approved case[^]*?3 of 4 have a case/.test(qual));
+  assert.ok(qual.includes("requirements with an approved case deep enough") && qual.includes("failures have an approved case") && qual.includes("2 of 3 have a case"));
+  assert.ok(!qual.includes("<small>capabilities have a case") && !qual.includes("<small>failures have a case"), "no separate with-a-case tiles");
+  const ver = qual.slice(qual.indexOf('id="verifier"'));
+  assert.ok(ver.includes("approved") && ver.includes("independent agent") && ver.includes("same agent"));
+  assert.ok(ver.includes('href="TESTCASES.html#TC-1c"') && ver.includes("Expected only checks the screen title") && ver.includes("Not judged yet"));
+  assert.ok(qual.includes("not a run"), "approval is of a design, not a run");
+  // Not-judged cases share one line of linked ids; judged ones keep their own.
+  assert.match(ver, /<li>Not judged yet \(1\): <a class="nw" href="TESTCASES\.html#TC-3b">TC-3b<\/a><\/li>/);
+  const nvq = render(copy((d) => fs.rmSync(path.join(d, "VERIFY.md"))))["QUALITY.html"];
+  const nvVer = nvq.slice(nvq.indexOf('id="verifier"'));
+  assert.equal(nvVer.split("Not judged yet").length - 1, 1, "one line for all six");
+  assert.match(nvVer, /<li>Not judged yet \(6\): <a class="nw" href="TESTCASES\.html#TC-1a">TC-1a<\/a>, <a class="nw" href="TESTCASES\.html#TC-1b">TC-1b<\/a>,[^<]*<a/);
+  // A long latest reason: the card's verdict block is clamped by CSS, and the history holds the full text.
+  const long = "R2: " + "an app that opens the wrong note still shows a title, ".repeat(14) + "END-OF-REASON.";
+  const lp = render(copy((d) => fs.appendFileSync(path.join(d, "VERIFY.md"), `| TC-1c | 2 | repair | independent | a278d51cee207692 | 2026-11-17 | ${long} |\n`)))["TESTCASES.html"];
+  assert.ok(long.length > 600);
+  assert.match(cardOf(lp, "TC-1c"), /<p class="verdict clamp warn">/);
+  assert.ok(/<details class="history">[^]*END-OF-REASON\./.test(cardOf(lp, "TC-1c")), "the history holds the full reason");
+  assert.ok(cardOf(lp, "TC-1c").includes(long), "the full text, not a cut one");
+  assert.match(lp, /\.verdict\.clamp\{[^}]*-webkit-line-clamp:4/);
+  assert.ok(qual.includes("approved / with a case") && /<td>\d+% \/ \d+%<\/td>/.test(qual), "by-feature table carries approved beside with-a-case percentages");
+  // Escaping: a reason is shown as plain text, Markdown not formatted.
+  const ev = render(copy((d) => sub(d, "VERIFY.md", "R2: an app that opens an empty note passes; Expected only checks the screen title.", '<script>alert(1)</script> \\| "x" **bold**')));
+  for (const html of [ev["TESTCASES.html"], ev["QUALITY.html"]]) {
+    assert.ok(html.includes("&lt;script&gt;alert(1)&lt;/script&gt; | &quot;x&quot; **bold**") && !html.includes("<script") && !html.includes("<strong>bold"), html.slice(html.indexOf("&lt;script") - 80, html.indexOf("&lt;script") + 200));
+  }
+  // Stale: the case changed after it was judged: the card says so with the previous verdict and reason.
+  const st = render(copy((d) => sub(d, "TESTCASES.md", "Opening a note shows its text", "Opening a note shows its title")));
+  chipOf(st["TESTCASES.html"], "TC-1c", "", "stale");
+  assert.ok(/Changed since it was judged[^]*repair[^]*an app that opens an empty note passes/.test(cardOf(st["TESTCASES.html"], "TC-1c")));
+  const stVer = st["QUALITY.html"].slice(st["QUALITY.html"].indexOf('id="verifier"'));
+  assert.match(stVer, /<li>Not judged yet \(1\): <a class="nw" href="TESTCASES\.html#TC-3b">TC-3b<\/a><\/li>/, "a stale case is not in the not-judged line");
+  assert.match(stVer, /TC-1c<\/a> <span class="chip [^"]*">stale<\/span> changed since it was judged/);
+  // Invalid: an unreadable ledger row for the case.
+  const inv = render(copy((d) => fs.appendFileSync(path.join(d, "VERIFY.md"), "| TC-3b | 1 | maybe | same | x | y | z |\n")));
+  chipOf(inv["TESTCASES.html"], "TC-3b", "fail", "invalid");
+  assert.ok(cardOf(inv["TESTCASES.html"], "TC-3b").includes("VERIFY.md line"));
+  // A damaged row superseded by a later verdict shows in the history where it stood.
+  const supDir = copy((d) => fs.appendFileSync(path.join(d, "VERIFY.md"), "| TC-3b | 1 | maybe | same | x | y | z |\n"));
+  const supLine = fs.readFileSync(path.join(supDir, "VERIFY.md"), "utf8").trimEnd().split("\n").length;
+  fs.writeFileSync(path.join(supDir, "s.jsonl"), JSON.stringify({ id: "TC-3b", verdict: "repair", by: "independent", reason: "R4: weak." , text: readE2e(supDir).cases.find((c) => c.id === "TC-3b").verify.hash }) + "\n");
+  assert.equal(recordVerdicts({ dir: supDir, file: path.join(supDir, "s.jsonl") }).code, 0);
+  const supCard = cardOf(render(supDir)["TESTCASES.html"], "TC-3b");
+  assert.ok(supCard.includes("Verdict history (2)"), supCard);
+  const supHist = supCard.slice(supCard.indexOf('<details class="history">'));
+  assert.ok(supHist.indexOf(`<li class="muted">row at VERIFY.md line ${supLine} could not be read (superseded)</li>`) > 0 && supHist.indexOf("could not be read") < supHist.indexOf("R4: weak."), supHist);
+  // Setup cases get no verifier chip.
+  assert.ok(!card.includes("unverified") && !card.includes("approved"), "setup: no verifier chip");
+  // New verdicts mark every page stale: VERIFY.md is one of the hashed sources.
+  const vdir = copy();
+  write(vdir, render(vdir));
+  assert.deepEqual(stalePages(vdir), []);
+  fs.writeFileSync(path.join(vdir, "v.jsonl"), JSON.stringify({ id: "TC-3b", verdict: "approved", by: "independent", reason: "R4: a no-match search that shows the list is rejected." , text: readE2e(vdir).cases.find((c) => c.id === "TC-3b").verify.hash }) + "\n");
+  assert.equal(recordVerdicts({ dir: vdir, file: path.join(vdir, "v.jsonl"), now: new Date(2026, 10, 20) }).code, 0);
+  assert.deepEqual(stalePages(vdir).sort(), ["CUJs.html", "PRD.html", "QUALITY.html", "TESTCASES.html", "reports/2026-01-02/REPORT.html"]);
+
+  // The visible verdict block (outside the history) shows the LATEST row, never an earlier one.
+  const block = (html, id) => (/<p class="verdict[^"]*">[^]*?<\/p>/.exec(cardOf(html, id)) ?? [""])[0];
+  assert.ok(block(tcs, "TC-3a").includes("Expected names no title that must be absent"), block(tcs, "TC-3a"));
+  assert.ok(!block(tcs, "TC-3a").includes("Steps never type a query") && !block(tcs, "TC-3a").includes("the query is typed now"), "not an earlier attempt's reason");
+  assert.ok(cardOf(tcs, "TC-3a").includes("Steps never type a query"), "earlier reasons stay in the history");
+  // Stale on a case with two verdict rows (repair, then approved): "Before that" names the LAST verdict and reason.
+  const stb = render(copy((d) => sub(d, "TESTCASES.md", "Saving with no connection keeps the text", "Saving with no connection keeps the text safe")));
+  const sb = block(stb["TESTCASES.html"], "TC-1b");
+  assert.ok(sb.includes("Changed since it was judged") && sb.includes("approved") && sb.includes("the new Expected checks the error and the kept text"), sb);
+  assert.ok(!sb.includes("repair") && !sb.includes("an app that shows no error and discards"), "not the first row: " + sb);
+  // No verdict at all: the opening text says so and claims no approval.
+  const noVerdictQ = render(copy((d) => fs.rmSync(path.join(d, "VERIFY.md"))))["QUALITY.html"];
+  assert.ok(noVerdictQ.includes("No test case has been judged by the verifier yet.") && !noVerdictQ.includes("The verifier approved"), "no-verdict opening");
+  assert.ok(qual.includes("The verifier approved 2 of 6 test cases;"), "opening with verdicts");
+  assert.ok(qual.includes("2 of 4 with a case deep enough") && qual.includes("<th>Controls: approved / with a case</th>"), "tile secondary text and table headers");
+  assert.ok(!/capabilit/i.test(qual.replace(/<style>[^]*?<\/style>/, "").replace(/<[^>]*>/g, " ")), "people-facing text says controls");
   // Labels and percentages match QUALITY.md: rounded down, "with a case deep enough", no report yet without one.
   for (const p of Object.values(pages)) assert.ok(!p.includes("tested deep enough") && !p.includes("Tested deep enough"), "no 'tested deep enough'");
-  assert.ok(qual.includes("<b>2 of 4</b><small>requirements with a case deep enough (50%)</small>"), "tile label");
-  assert.ok(qual.includes("<b>4 of 6</b><small>capabilities exercised in the last report (66%)</small>"), "rounded down");
-  assert.ok(qual.includes("<th>Deep enough</th>"), "per-feature column");
-  assert.ok(/F1<\/a> · Notes [^\n]*?<td>75%<\/td><td>75%<\/td><td>75%<\/td><td>66%<\/td>/.test(qual), "F1 row rounded down like QUALITY.md");
+  assert.ok(qual.includes("<small>requirements with an approved case deep enough (25%)</small>") && qual.includes('<small class="sub">2 of 4 with a case deep enough</small>'), "tile label");
+  assert.ok(qual.includes("<b>4 of 6</b><small>controls exercised in the last report (66%)</small>"), "rounded down");
+  assert.ok(qual.includes("<th>Deep enough: approved / any case</th>"), "per-feature column");
+  assert.ok(/F1<\/a> · Notes [^\n]*?<td>25% \/ 75%<\/td><td>33% \/ 66%<\/td>/.test(qual) && /F1<\/a> · Notes<\/td><td>75%<\/td><td>75%<\/td>/.test(qual), "F1 rows rounded down like QUALITY.md");
   assert.ok(qual.includes("A control used by requirements of two features is counted in both rows"), "per-feature note");
   assert.ok(prd.includes("2 of 3 requirements have a case, 2 with a case deep enough."), "feature card wording");
   const noRepQ = none["QUALITY.html"];
-  assert.ok(noRepQ.includes("<b>no report yet</b><small>capabilities exercised in the last report</small>") && noRepQ.includes("<b>no report yet</b><small>capabilities passing in the last report</small>"), "no report yet");
+  assert.ok(noRepQ.includes("<b>no report yet</b><small>controls exercised in the last report</small>") && noRepQ.includes("<b>no report yet</b><small>controls passing in the last report</small>"), "no report yet");
   assert.ok(!noRepQ.includes("0 of 6"), "no 0 of 6 without a report");
   const noMode = render(copy((d) => sub(d, "TESTCASES.md", "Tier: core · Depth: screen\nRun mode: task\n", "Tier: core · Depth: screen\n")))["TESTCASES.html"];
   assert.ok(noMode.includes("6 cases: 4 phone, 0 task, 1 manual, 1 with no run mode."), "cases with no run mode counted on TESTCASES.html");
@@ -324,6 +441,10 @@ try {
     const odd = path.join(d, `reports/zz${mk(false)}`);
     fs.mkdirSync(odd);
     fs.writeFileSync(path.join(odd, "REPORT.md"), "| Case | Result |\n| --- | --- |\n");
+    // The verifier's ledger: a verdict reason (TC-3b is stale here, so its card and history show it) and a row's
+    // item cell, which an unreadable row's problem message names. By, verdict, attempt and date are read only
+    // from fixed words, numbers and calendar dates: a row with anything else there is rejected and never shown.
+    fs.appendFileSync(path.join(d, "VERIFY.md"), `| TC-3b | 1 | repair | independent | 0123456789abcdef | 2026-11-17 | R4: ${mk()} |\n| ${mk()} | 2 | repair | independent | 0123456789abcdef | 2026-11-17 | r |\n`);
   });
   const hp = render(planted);
   for (const [p, h] of Object.entries(hp)) assert.ok(!h.includes("<u>"), `raw <u> on ${p}`);
@@ -343,7 +464,7 @@ try {
   assert.equal((lr.match(/data:image\/png;base64,/g) ?? []).length, 1, "only TC-1a.png");
   // Screenshot ids: TC-10's shot is not TC-1's, and a retired case's shot is not embedded.
   const ids = render(copy((d) => {
-    fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n### TC-1 · P1 · One\nFeature: F1 · Type: happy\nCovers: R1\nTier: core · Depth: screen\nRun mode: phone\n");
+    fs.appendFileSync(path.join(d, "TESTCASES.md"), "\n### TC-1 · P1 · One\nFeature: F1 · Type: happy\nCovers: R1\nTier: core · Depth: screen\nRun mode: phone\nExpected: x\n");
     sub(d, "TESTCASES.md", "Run mode: task", "Run mode: task\nRetired: 2026-01-01 - merged");
     for (const f of ["TC-1.png", "TC-10.png", "TC-10-a.png", "TC-1c.png"]) fs.copyFileSync(path.join(d, "reports/2026-01-02/TC-1a.png"), path.join(d, "reports/2026-01-02", f));
   }))["reports/2026-01-02/REPORT.html"];

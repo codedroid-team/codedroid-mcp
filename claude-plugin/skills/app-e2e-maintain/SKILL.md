@@ -11,6 +11,8 @@ first: a label you did not see on screen or in the source is a guess. After any 
 `npx -y @codedroid/mcp e2e report e2e` (documents in another folder: pass that folder in place of
 `e2e`; `Unknown command: e2e` means the release is older than these skills: tell the user and go on
 without it) and fix every problem it prints as `file:line: message`; never edit the pages it writes.
+Send every case you add or edit through the app-e2e-verify skill. An edit to an approved case, or to
+a requirement or control it covers, makes it stale: the pages show it.
 
 ## A case failed because the UI changed
 

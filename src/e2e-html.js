@@ -14,6 +14,8 @@ const chip = (t, kind = "") => `<span class="chip ${kind}">${esc(t)}</span>`;
 const bar = (n, d) => `<div class="bar"><span style="width:${d ? Math.floor((100 * n) / d) : 0}%"></span></div>`;
 const table = (head, rows) => `<div class="scroll"><table><thead><tr>${head.map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table></div>`;
 const tr = (cells, attr = "") => `<tr${attr}>${cells.map((c) => `<td>${c}</td>`).join("")}</tr>`;
+const TONE = { approved: "pass", repair: "warn", unresolved: "warn", question: "ask", invalid: "fail" };
+const who = (by) => (by === "independent" ? "independent agent" : by === "same" ? "same agent" : by === "user" ? "the user" : "");
 const MIME = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg" };
 
 // `extra` is more [name, sha256] pairs for a page, such as the screenshots a report page embeds.
@@ -161,7 +163,27 @@ export function renderPages(model, q) {
     const r = byCase[id] ?? (hasReport ? "not run" : null);
     return r ? chip(r, r === "pass" ? "pass" : r === "fail" ? "fail" : "warn") : "";
   };
-  const notVerified = chip("not verified");
+  // The verifier's word for a case: a chip, and who judged on which attempt. Setup and retired cases have none.
+  const verdictChip = (c) => (c.verify ? chip(c.verify.status, TONE[c.verify.status] ?? "") : "");
+  const verdictBy = (c) => (c.verify?.by ? `<small class="by">${esc(who(c.verify.by))}${c.verify.attempt ? `, attempt ${c.verify.attempt}` : ""}</small>` : "");
+  const verdictBlock = (c) => {
+    const v = c.verify;
+    if (!v || v.status === "approved") return "";
+    const last = v.history.filter((h) => h.verdict !== "reopen").at(-1);
+    const text = v.status === "unverified" ? "Not judged yet"
+      : v.status === "stale" ? `Changed since it was judged. Before that: ${last.verdict}, ${last.reason}`
+      : v.reason;
+    // Clamped to a few lines: a long reason would push the steps down; the history below holds it in full.
+    return `<p class="verdict clamp ${TONE[v.status] ?? ""}"><b>Verifier:</b> ${esc(text)}</p>`;
+  };
+  const verdictHistory = (c) => {
+    // The readable rows and, where they stood, the damaged rows a later verdict superseded.
+    const h = [...(c.verify?.history ?? []), ...(c.verify?.rejected ?? []).filter((r) => r.superseded)].sort((a, b) => a.line - b.line);
+    if (!h.length) return "";
+    const row = (r) => (!r.verdict ? `<li class="muted">row at VERIFY.md line ${r.line} could not be read (superseded)</li>`
+      : `<li>${r.verdict === "reopen" ? "<b>reopened</b>" : `attempt ${r.attempt}, <b>${esc(r.verdict)}</b>`} <span class="muted">${esc(who(r.by))}, ${esc(r.date)}</span><br>${esc(r.reason)}</li>`);
+    return `<details class="history"><summary>Verdict history (${h.length})</summary><ol>${h.map(row).join("")}</ol></details>`;
+  };
   const pending = (name) => (model.pending.includes(name) ? `<p class="muted">${name} is not written yet.</p>` : "");
 
   // One page's chrome. `cur` is its file name, `root` the path back to the e2e folder.
@@ -185,7 +207,7 @@ export function renderPages(model, q) {
 <style>${CSS}</style></head>
 <body><header class="top"><nav aria-label="Pages">${nav.join("")}</nav></header>
 <main>${banner}${body(link)}</main>
-<footer>Built from the e2e folder. The counts describe the documents; nothing here has been verified yet.</footer>
+<footer>Built from the e2e folder. The counts describe the documents, not test runs; the verifier approves a test's design, not a run.</footer>
 </body></html>
 `,
     };
@@ -196,7 +218,7 @@ export function renderPages(model, q) {
     const s = screens.get(c.screen);
     return `${link(c.id)} ${inline(c.control)}${s ? ` <span class="muted">on &ldquo;${esc(s.title)}&rdquo;</span>` : ""}`;
   };
-  const caseLine = (link, c) => `<li>${link(c.id)} ${esc(c.title)} ${c.mode === "manual" ? chip("manual") : ""} ${result(c.id)}</li>`;
+  const caseLine = (link, c) => `<li>${link(c.id)} ${esc(c.title)} ${c.mode === "manual" ? chip("manual") : ""} ${result(c.id)} ${verdictChip(c)}</li>`;
   const caseList = (link, cs) => (cs.length ? `<ul class="plain">${cs.map((c) => caseLine(link, c)).join("")}</ul>` : chip("no case", "warn"));
   const featureOf = (id) => model.features.find((f) => f.id === id);
   const noCuj = (link) => (q.requirements.no_cuj.length
@@ -210,7 +232,7 @@ export function renderPages(model, q) {
       const k = q.by_feature.find((x) => x.id === f?.id)?.requirements;
       const idAttr = f ? ` id="${esc(f.id)}"` : "";
       const block = f ? featureBlock(model, f) : { prose: "", extra: outsideExtra };
-      return `<section class="card"${idAttr}><div class="head"><h2>${f ? `${esc(f.id)} · ${esc(f.name)}` : "Requirements outside a feature"}</h2><span class="chips">${f ? chip(f.priority) : ""}${notVerified}</span></div>
+      return `<section class="card"${idAttr}><div class="head"><h2>${f ? `${esc(f.id)} · ${esc(f.name)}` : "Requirements outside a feature"}</h2><span class="chips">${f ? chip(f.priority) : ""}</span></div>
 ${k ? `<p class="muted">${k.with_case} of ${k.total} requirements have a case, ${k.at_depth} with a case deep enough.</p>` : ""}
 ${block.prose}
 ${rs.map((r) => reqCard(r, block.extra.get(r.id) ?? "")).join("\n")}</section>`;
@@ -224,8 +246,8 @@ ${rs.map((r) => reqCard(r, block.extra.get(r.id) ?? "")).join("\n")}</section>`;
         seen.add(id);
         return `<li${first ? ` id="${esc(id)}"` : ""}>${capLine(link, c)} <span class="muted">&mdash; ${inline(c.does)}</span></li>`;
       });
-      const fails = r.fails.map((f) => `<li id="${esc(f.id)}">${link(f.id)} ${inline(f.text)} ${casesFor(f.id).length ? casesFor(f.id).map((c) => link(c.id)).join(" ") : chip("no case", "warn")}</li>`);
-      return `<article class="card" id="${esc(r.id)}"><div class="head"><h3>${esc(r.id)}</h3><span class="chips">${chip(`proof: ${r.proof ?? "?"}`)}${cs.length ? "" : chip("no case", "warn")}${notVerified}</span></div>
+      const fails = r.fails.map((f) => `<li id="${esc(f.id)}">${link(f.id)} ${inline(f.text)} ${casesFor(f.id).length ? casesFor(f.id).map((c) => `${link(c.id)} ${verdictChip(c)}`).join(" ") : chip("no case", "warn")}</li>`);
+      return `<article class="card" id="${esc(r.id)}"><div class="head"><h3>${esc(r.id)}</h3><span class="chips">${chip(`proof: ${r.proof ?? "?"}`)}${cs.length ? "" : chip("no case", "warn")}</span></div>
 <p>${inline(r.text)}</p>
 ${extra}
 <dl class="meta"><dt>Controls</dt><dd>${capsHtml.length ? `<ul class="plain">${capsHtml.join("")}</ul>` : '<span class="muted">none listed</span>'}</dd>
@@ -244,7 +266,7 @@ ${loose.length ? featureCard(null, loose) : ""}`;
     const card = (j) => {
       const qj = q.by_cuj.find((x) => x.id === j.id);
       const cs = qj.cases.map((id) => model.cases.find((c) => c.id === id));
-      return `<article class="card" id="${esc(j.id)}"><div class="head"><h3>${esc(j.id)} · ${esc(j.title)}</h3><span class="chips">${chip(j.priority)}${chip(`mode: ${j.mode}`)}${notVerified}</span></div>
+      return `<article class="card" id="${esc(j.id)}"><div class="head"><h3>${esc(j.id)} · ${esc(j.title)}</h3><span class="chips">${chip(j.priority)}${chip(`mode: ${j.mode}`)}</span></div>
 <dl class="meta"><dt>Proves</dt><dd>${j.proves.length ? `<ul class="plain">${j.proves.map((id) => `<li>${link(id)} ${reqs.has(id) ? inline(reqs.get(id).text) : ""}</li>`).join("")}</ul>` : '<span class="muted">nothing listed</span>'}</dd>
 <dt>Cases</dt><dd>${caseList(link, cs)}</dd></dl>
 ${section(model, "CUJs.md", j.line, /^Proves:/)}</article>`;
@@ -267,9 +289,10 @@ ${gone.length ? `<h2>Retired</h2>\n${gone.map((j) => (text.before.get(j.line) ??
     const card = (c) => {
       const j = q.by_cuj.find((x) => x.cases.includes(c.id));
       const covers = c.covers.map((e) => `${link(e.ref)}${e.caps.length ? ` (${e.caps.map(link).join(", ")})` : ""}`);
-      return `<article class="card" id="${esc(c.id)}"><div class="head"><h3>${esc(c.id)} · ${esc(c.title)}</h3><span class="chips">${chip(c.priority)}${chip(c.type ?? "no type")}${c.type === "setup" ? "" : chip(`tier: ${c.tier}`) + chip(`depth: ${c.depth}`)}${chip(`mode: ${c.mode}`)}${result(c.id)}${notVerified}</span></div>
+      return `<article class="card" id="${esc(c.id)}"><div class="head"><h3>${esc(c.id)} · ${esc(c.title)}</h3><span class="chips">${chip(c.priority)}${chip(c.type ?? "no type")}${c.type === "setup" ? "" : chip(`tier: ${c.tier}`) + chip(`depth: ${c.depth}`)}${chip(`mode: ${c.mode}`)}${result(c.id)}${verdictChip(c)}${verdictBy(c)}</span></div>
 <dl class="meta">${c.type === "setup" ? "" : `<dt>Covers</dt><dd>${covers.join(", ") || '<span class="muted">nothing</span>'}</dd>`}${j ? `<dt>Journey</dt><dd>${link(j.id)}</dd>` : ""}</dl>
-${section(model, "TESTCASES.md", c.line, /^(Feature|Covers|Tier|Run mode):/)}</article>`;
+${verdictBlock(c)}
+${section(model, "TESTCASES.md", c.line, /^(Feature|Covers|Tier|Run mode):/)}${verdictHistory(c)}</article>`;
     };
     const live = model.cases.filter((c) => c.retired === null);
     const gone = model.cases.filter((c) => c.retired !== null);
@@ -287,7 +310,17 @@ ${gone.length ? `<h2>Retired</h2>\n${gone.map((c) => (text.before.get(c.line) ??
   const qual = page(QUAL, "", "Test quality", (link) => {
     const c = q.capabilities;
     const scope = c.total - c.set_aside;
-    const tile = (label, n, d, text) => `<div class="tile"><b>${text ?? `${n} of ${d}`}</b><small>${esc(label)}${text ? "" : ` (${pct(n, d)})`}</small>${text ? "" : bar(n, d)}</div>`;
+    const tile = (label, n, d, text, sub) => `<div class="tile"><b>${text ?? `${n} of ${d}`}</b><small>${esc(label)}${text ? "" : ` (${pct(n, d)})`}</small>${text ? "" : bar(n, d)}${sub ? `<small class="sub">${esc(sub)}</small>` : ""}</div>`;
+    // An approved tile leads; the number with any case (approved or not) is its secondary text.
+    const atile = (label, a, w, d, what = "have a case") => tile(label, a, d, undefined, `${w} of ${d} ${what}`);
+    const v = q.verify;
+    const status = (k) => v[k] ? `<li>${chip(k, TONE[k] ?? "")} ${v[k]}</li>` : "";
+    const notJudged = q.not_approved.filter((n) => n.status === "unverified").map((n) => n.id);
+    const verifier = `<h2 id="verifier">Verifier</h2>
+<p class="muted">The verifier judges whether a test case's design would catch a broken app. Approval is of a design, not of a run.</p>
+${v.judged ? `<ul class="plain inline">${["approved", "repair", "question", "unresolved", "stale", "unverified", "invalid"].map(status).join("")}</ul>
+<p class="muted">Latest verdicts by an independent agent: ${v.by.independent}. By the same agent: ${v.by.same}.${v.approved ? ` Approved on the first attempt: ${v.approved_first}, after a repair: ${v.approved_after_repair}.` : ""}</p>
+${q.not_approved.length ? `<ul class="plain">${q.not_approved.filter((n) => n.status !== "unverified").map((n) => `<li>${link(n.id)} ${chip(n.status, TONE[n.status] ?? "")} ${esc(n.reason)}</li>`).join("")}${notJudged.length ? `<li>Not judged yet (${notJudged.length}): ${notJudged.map(link).join(", ")}</li>` : ""}</ul>` : "<p>Every test case is approved.</p>"}` : "<p>There are no test cases to judge.</p>"}`;
     const problems = q.problems.length
       ? `<section class="card problems" id="problems"><h2>${q.problems.length} problem${q.problems.length === 1 ? "" : "s"} in the documents</h2><p class="muted">Fix these first; the counts below may be wrong until they are fixed.</p><ul>${q.problems.map((p) => `<li><code>${esc(p.file)}${p.line ? `:${p.line}` : ""}</code> ${esc(p.message)}</li>`).join("")}</ul></section>`
       : `<p id="problems" class="muted">No problems found in the documents.</p>`;
@@ -295,7 +328,7 @@ ${gone.length ? `<h2>Retired</h2>\n${gone.map((c) => (text.before.get(c.line) ??
     for (const u of q.untested) rows.set(caps.get(u.id).screen, [...(rows.get(caps.get(u.id).screen) ?? []), u]);
     const gaps = q.untested.length
       ? [...rows].map(([sid, us]) => { const s = screens.get(sid); return `<h3><a href="#${esc(sid)}">${esc(sid)}</a> · ${s ? `${esc(s.title)} <span class="muted">${esc(s.source)}</span>` : ""}</h3>${table(["Id", "Control", "Why"], us.map((u) => tr([link(u.id), inline(u.control), esc(u.why)])))}`; }).join("\n")
-      : "<p>Every capability has a case.</p>";
+      : "<p>Every control has a case.</p>";
     const rest = (o) => inline(o.what.slice(o.what.startsWith(`${o.ref} · `) ? o.ref.length + 3 : o.ref.length));
     const open = `<h2 id="open">Left open</h2>\n${q.open.length
       ? `<p class="muted">Nothing below has a runnable case that settles it, or a Gap line. Write the case or the Gap line.</p><ul class="plain">${q.open.map((o) => `<li>${link(o.ref)} ${chip(o.kind, "warn")} ${rest(o)}</li>`).join("")}</ul>`
@@ -316,24 +349,26 @@ ${gone.length ? `<h2>Retired</h2>\n${gone.map((c) => (text.before.get(c.line) ??
         return tr([idCell + mark, inline(x.control), inline(x.does), inline(x.source), inline(x.states), inline(x.seen)], inFeature.has(x.id) ? "" : ` id="${esc(x.id)}"`);
       }))}</section>`).join("\n");
     return `<h1>Test quality</h1>
-<p class="lede">${chip("not verified")} These are counts of the documents, not test results. ${q.report ? `Results come from ${esc(q.report)}.` : "There is no report yet, so no results."}</p>
+<p class="lede">These are counts of the documents${q.report ? ", with the results of the last report" : ", not test results"}. ${v.judged - v.unverified ? `The verifier approved ${v.approved} of ${v.judged} test cases; approval is of a test's design, not a run.` : "No test case has been judged by the verifier yet."} ${q.report ? `Results come from ${esc(q.report)}.` : "There is no report yet, so no results."}</p>
 ${model.pending.length ? `<p class="muted">Not written yet: ${model.pending.join(", ")}.</p>` : ""}
 ${problems}
-${c.set_aside ? `<p class="muted">Percentages count the ${scope} capabilities in scope; ${c.set_aside} set aside as non-goals.</p>` : ""}
+${c.set_aside ? `<p class="muted">Percentages count the ${scope} controls in scope; ${c.set_aside} set aside as non-goals.</p>` : ""}
 <div class="tiles">
-${tile("capabilities have a case", c.with_case, scope)}
-${tile("capabilities are in a feature", c.in_feature, scope)}
-${tile("requirements have a case", q.requirements.with_case, q.requirements.total)}
-${tile("requirements with a case deep enough", q.requirements.at_depth, q.requirements.total)}
-${tile("failures have a case", q.failures.with_case, q.failures.total)}
+${atile("controls have an approved case", c.approved, c.with_case, scope)}
+${atile("requirements have an approved case", q.requirements.approved, q.requirements.with_case, q.requirements.total)}
+${atile("requirements with an approved case deep enough", q.requirements.at_depth_approved, q.requirements.at_depth, q.requirements.total, "with a case deep enough")}
+${atile("failures have an approved case", q.failures.approved, q.failures.with_case, q.failures.total)}
+${tile("controls are in a feature", c.in_feature, scope)}
 ${tile("requirements and failures acknowledged as gaps", 0, 0, `${q.requirements.acknowledged + q.failures.acknowledged}`)}
 ${tile("left open", 0, 0, `${q.open.length}`)}
-${tile("capabilities exercised in the last report", c.exercised, scope, q.report ? undefined : "no report yet")}
-${tile("capabilities passing in the last report", c.passing, scope, q.report ? undefined : "no report yet")}
-${tile("capabilities not seen on the phone", 0, 0, `${c.not_seen} of ${scope}`)}
+${tile("controls exercised in the last report", c.exercised, scope, q.report ? undefined : "no report yet")}
+${tile("controls passing in the last report", c.passing, scope, q.report ? undefined : "no report yet")}
+${tile("requirements passing in the last report", q.requirements.passing, q.requirements.total, q.report ? undefined : "no report yet")}
+${tile("controls not seen on the phone", 0, 0, `${c.not_seen} of ${scope}`)}
 ${tile("cases", 0, 0, `${q.cases.total}`)}
 ${q.cases.retired || q.cujs.retired ? tile("retired, not counted", 0, 0, `${q.cases.retired} cases, ${q.cujs.retired} journeys`) : ""}
 </div>
+${verifier}
 ${noCuj(link)}
 ${open}
 ${acknowledged}
@@ -341,12 +376,16 @@ ${acknowledged}
 ${gaps}
 ${aside}
 <h2>By feature</h2>
-${table(["Feature", "Controls with a case", "Exercised in report", "Passing in report", "Requirements with a case", "Deep enough", "Failures with a case", "Cases smoke / core / deep / edge"],
-      q.by_feature.map((f) => { const k = f.capabilities, r = f.requirements, t = f.tiers; return tr([`${link(f.id)} · ${esc(f.name)} ${chip(f.priority)}`, pct(k.with_case, k.total), pct(k.exercised, k.total), pct(k.passing, k.total), pct(r.with_case, r.total), pct(r.at_depth, r.total), pct(f.failures.with_case, f.failures.total), `${t.smoke}/${t.core}/${t.deep}/${t.edge}`]); }))}
+${table(["Feature", "Controls: approved / with a case", "Requirements: approved / with a case"],
+      q.by_feature.map((f) => { const k = f.capabilities, r = f.requirements; return tr([`${link(f.id)} · ${esc(f.name)} ${chip(f.priority)}`, `${pct(k.approved, k.total)} / ${pct(k.with_case, k.total)}`, `${pct(r.approved, r.total)} / ${pct(r.with_case, r.total)}`]); }))}
+${table(["Feature", "Deep enough: approved / any case", "Failures: approved / with a case"],
+      q.by_feature.map((f) => { const r = f.requirements, x = f.failures; return tr([`${link(f.id)} · ${esc(f.name)}`, `${pct(r.at_depth_approved, r.total)} / ${pct(r.at_depth, r.total)}`, `${pct(x.approved, x.total)} / ${pct(x.with_case, x.total)}`]); }))}
+${table(["Feature", "Exercised in report", "Passing in report", "Runnable cases smoke / core / deep / edge"],
+      q.by_feature.map((f) => { const k = f.capabilities, t = f.tiers; return tr([`${link(f.id)} · ${esc(f.name)}`, pct(k.exercised, k.total), pct(k.passing, k.total), `${t.smoke}/${t.core}/${t.deep}/${t.edge}`]); }))}
 <p class="muted">A control used by requirements of two features is counted in both rows, so the rows can add up to more than the headline.</p>
 <h2>By journey</h2>
 ${table(["Journey", "Requirements", "Cases", "Controls with a case", "Exercised in report", "Passing in report"],
-      q.by_cuj.map((j) => { const k = j.capabilities; return tr([`${link(j.id)} · ${esc(j.title)}`, j.requirements.map(link).join(", "), String(j.cases.length), pct(k.with_case, k.total), pct(k.exercised, k.total), pct(k.passing, k.total)]); }))}
+      q.by_cuj.map((j) => { const k = j.capabilities; return tr([`${link(j.id)} · ${esc(j.title)}`, j.requirements.map(link).join(", "), `${j.cases.length}${j.manual ? ` (${j.manual} manual)` : ""}`, pct(k.with_case, k.total), pct(k.exercised, k.total), pct(k.passing, k.total)]); }))}
 <h2>All controls by screen</h2>
 ${inventory}`;
   });
@@ -365,7 +404,7 @@ ${inventory}`;
       const figs = [...shots].map(([id, list]) => list.map(({ name, uri }) => { k++; return `<figure><figcaption>${link(id)} ${result(id)} <span class="muted">${esc(name)}</span></figcaption>
 <input type="checkbox" class="zoom" id="zoom${k}" aria-label="Show ${esc(name)} full size"><label for="zoom${k}"><img src="${uri}" alt="Screenshot ${esc(name)}"></label></figure>`; }).join("")).join("\n");
       return `<h1>Test report ${esc(date)}</h1>
-<p class="lede"><span class="chips">${chip(`${n("pass")} pass`, "pass")}${chip(`${n("fail")} fail`, n("fail") ? "fail" : "")}${chip(`${n("not run")} not run`, n("not run") ? "warn" : "")}${notVerified}</span></p>
+<p class="lede"><span class="chips">${chip(`${n("pass")} pass`, "pass")}${chip(`${n("fail")} fail`, n("fail") ? "fail" : "")}${chip(`${n("not run")} not run`, n("not run") ? "warn" : "")}</span></p>
 ${failed.length ? `<section class="card problems"><h2>Failed cases</h2><ul class="plain">${failed.map((c) => `<li>${link(c.id)} ${esc(c.title)} ${result(c.id)}</li>`).join("")}</ul></section>` : ""}
 <section class="prose">${md(f.text, { base: 1 })}</section>
 <h2>Screenshots</h2>

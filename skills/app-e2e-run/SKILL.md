@@ -6,7 +6,7 @@ description: Run an app's approved e2e test cases on the real phone through Code
 # Run the cases and report
 
 Input: approved `e2e/TESTCASES.md`. Output: `e2e/reports/<date>/REPORT.md` with a screenshot per
-case beside it.
+case beside it. A case the verifier has not approved may still be run; passing does not approve it.
 
 ## Before the run
 
@@ -19,7 +19,9 @@ report which checks adb would have made.
 1. `codedroid_status` (local bridge) or `codedroid_devices` (remote connector), then
    `device_info`: connected, unlocked, CodeDroid ready, signed in, no task
    running. Not ready: tell the user; pairing and sign-in are theirs. Locked behind a PIN, pattern or
-   password: ask the user to unlock it, and never type it yourself.
+   password: ask the user to unlock it, and never type it yourself. With more than one device on
+   adb (`adb devices`), pass `-s <serial>` on every `adb` command: without it adb answers from any
+   of them, and an app "missing" on the wrong device is not missing.
 2. Read the installed build (`adb` `shell dumpsys package <package>`). Different from the one the
    user approved: ask first. Read it again after every pause.
 3. `adb` `logcat -c -b crash`, so crashes read later are from this run.
@@ -31,7 +33,8 @@ report which checks adb would have made.
 ## Each case
 
 A `manual` case is never run: give it a `not run` row with its `Why manual:` reason, and never
-follow its steps.
+follow its steps. Run the setup cases and each case's `Needs:` before the cases that need them,
+wherever they sit in the file.
 1. Put the app in the case's start state: `open_app`, then Back to its first screen. If Back does
    not get there, `adb` `shell am force-stop <package>` (the app under test, never
    com.codedroid.agent) and `open_app` again.
@@ -52,15 +55,18 @@ follow its steps.
    in another app does something real there.
 4. Hide the keyboard (`press_key` back) only when `after` says it is up: Back with no keyboard
    leaves the screen. It covers the tab bar, so hide it before tapping a tab.
-5. Check each Expected line on `get_screen`, or `take_screenshot` for anything visual.
+5. Check each Expected line on `get_screen`, or `take_screenshot` for anything visual. A message
+   that shows for a moment (a snackbar, a toast) is read with `get_screen` right after the step
+   that shows it: `wait_for` can miss it.
 6. When the case passed by hand, `record_stop` with `save_to` `e2e/flows/<case>.yaml` (the
    remote connector has no recording: skip this). A flow with a `codedroidTask` step runs only in
    CodeDroid; the others run in Maestro too. Commit the flows with the report.
 7. Save the end state, pass or fail: `adb` `shell screencap -p /sdcard/e2e-shot.png`, then `adb`
    `pull /sdcard/e2e-shot.png <absolute path of the report folder>/<case>.png`. Use the absolute path
    of the folder you write REPORT.md in: `adb` resolves a relative one from the folder its server was
-   started in, which can be another checkout (a git worktree's main repo). If `adb` refuses the path
-   as outside the project, pull into the temp directory and move the file with your file tools.
+   started in, which can be another checkout (a git worktree's main repo). The bridge pulls only into
+   the session's folder or the temp directory: when the report folder is elsewhere, or `adb` refuses
+   the path, pull into the temp directory and move the file with your file tools.
    Without adb, describe the screen.
    A case with two states to show (before and after) saves one each: `<case>-<state>.png`.
 8. Run the cleanup even after a failure, then `adb` `logcat -d -b crash`: a new line for the app
@@ -77,9 +83,17 @@ follow its steps.
 | Data you did not make, another build, a dropped link, a server error | Environment | Restore, rerun, note it |
 | The app shows the wrong thing, again on a rerun | App finding | Root cause in the source; ask before fixing |
 
+In an approved `TESTCASES.md` a test bug is not fixed mid-run: report the case `fail` with its
+class, test bug, and fix it afterwards through the app-e2e-maintain skill's "Changing an approved
+file" (the user approves the change), then rerun it.
+
 A case that fails once and passes on a rerun is flaky: find which of the first three it is before
 calling the run green. Evidence must come from the moment of the failure, not from after a
 cleanup changed the screen.
+
+A run that pauses (the session stops, the phone locks): read the build again, look at the app's
+state, put back what a half-done case changed, and rerun that case from its start. It stays one run
+with one report; say in Notes which cases ran after the pause.
 
 ## The report
 
@@ -103,7 +117,7 @@ cases it did not reach: a dated report folder with no `REPORT.md` is a problem.
 | Case | Result | Priority | Title | Notes |
 | --- | --- | --- | --- | --- |
 | TC-00 | pass | P1 | Remove every e2e-... skill an earlier run left | |
-| TC-10 | pass | P1 | Save a skill: it appears under "My skills" | |
+| TC-12 | pass | P1 | Save a skill: it appears under "My skills" | |
 | TC-12a | pass | P0 | Use a skill with a blank: the prompt lands in the composer, not sent | passed after 2 tries |
 ```
 
