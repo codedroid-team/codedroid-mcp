@@ -105,6 +105,34 @@ const pairing = (server) => () => ({
   await relay.close();
 }
 
+// ── An account's phone: an access token, the phone named, the platform said ──
+{
+  const relay = await fakeRelay({ type: "approved", proto: 1 });
+  const onAccount = (url) => () => ({ server: url, account: true, host_id: null, token: null, device: { id: "device-1", model: "Pixel 5" } });
+  const asked = [];
+  const transport = new RelayPhoneTransport({ host: onAccount(relay.url), env: {}, token: async (host) => (asked.push(host.device.id), "access-token-1") });
+  const client = new Client({ name: "test", version: "0" });
+  await client.connect(transport);
+  const { url, headers } = relay.upgrades[0];
+  assert.equal(url, "/v1/mcp/connect?device=device-1");
+  assert.equal(headers.authorization, "Bearer access-token-1");
+  assert.equal(headers["x-codedroid-platform"], process.platform);
+  assert.deepEqual(asked, ["device-1"]);
+  assert.deepEqual(transport.device, { id: "device-1", model: "Pixel 5", server: relay.url, account: true });
+  await client.close();
+  await relay.close();
+
+  // Refused: the login lapsed, and the message says to sign in again, not to pair.
+  const refusing = await fakeRelay(401);
+  const lapsed = new RelayPhoneTransport({ host: onAccount(refusing.url), env: {}, token: async () => "stale" });
+  await assert.rejects(lapsed.start(), (e) => e instanceof PhoneUnavailableError && /npx -y @codedroid\/mcp login/.test(e.message) && !/Pair it again/.test(e.message));
+  await refusing.close();
+
+  // No token to be had (the login was revoked): said before any connection.
+  const none = new RelayPhoneTransport({ host: onAccount(relay.url), env: {}, token: async () => { throw new (await import("../src/account.js")).LoginLapsedError("Sign in again: login"); } });
+  await assert.rejects(none.start(), (e) => e instanceof PhoneUnavailableError && /login/.test(e.message));
+}
+
 // ── Closing from this side closes the relay's socket ──────────────────
 {
   const relay = await fakeRelay({ type: "approved", proto: 1 });

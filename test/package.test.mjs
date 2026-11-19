@@ -57,4 +57,12 @@ for (const icon of [plugin.icon, codex.interface.composerIcon, codex.interface.l
 }
 assert.ok(pkg.files.includes("assets"), "npm ships the plugin icon");
 
+
+// The GitHub Action runs this release unless told otherwise.
+{
+  const action = fs.readFileSync(new URL("../action/action.yml", import.meta.url), "utf8");
+  assert.match(action, new RegExp(`default: "${VERSION.replace(/\./g, "\\.")}"`), "action/action.yml pins this version");
+  assert.match(action, /CODEDROID_TOKEN: \$\{\{ inputs\.token \}\}/);
+}
+
 console.log("package.test.mjs: ALL PASS");

@@ -25,7 +25,8 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { createAdbTool } from "./adb-tool.js";
 import { CLIENT_ADB_HEADER, CLIENT_CWD_HEADER } from "./daemon-transport.js";
-import { describeHost, ensureDaemonToken, readHosts } from "./host.js";
+import { fetchDevices } from "./account.js";
+import { describeHost, ensureDaemonToken, readAccount, readHosts } from "./host.js";
 import { createInstallTool } from "./install-tool.js";
 import { createSetupPhoneTool } from "./phone-setup.js";
 import { Phones } from "./phones.js";
@@ -37,6 +38,8 @@ import { VERSION } from "./version.js";
 
 export const DEFAULT_PORT = 4826;
 export const DAEMON_AUTHENTICATION = "bearer-v1";
+// How often the account's phone list is read again from the server: a phone signed in since shows up.
+export const ACCOUNT_REFRESH_MS = 5 * 60_000;
 const MAX_BODY_BYTES = 8 * 1024 * 1024;
 
 /** How long a link stays trusted after its last proven round-trip. Past
@@ -295,22 +298,49 @@ function jsonRpcError(res, status, id, code, message) {
  *   can still decline it for its own session (daemon-transport.js). Off only when the
  *   daemon itself is started with --no-adb or CODEDROID_MCP_ADB=0 (index.js).
  * @param {string} [options.home]  Where ~/.codedroid lives; overridable for tests.
+ * @param {() => Promise<object[]>} [options.accountDevices]  The account's phones from the server
+ *   (account.js fetchDevices); read at start and every ACCOUNT_REFRESH_MS, and on demand by the
+ *   status tools. Null when this computer is not signed in.
  * @returns {Promise<{port: number, authToken: string, close: () => Promise<void>, phones: Phones}>}
  *   authToken is this user's daemon token (host.js ensureDaemonToken), which /mcp and /shutdown require.
  */
 export async function startDaemon({
   port = DEFAULT_PORT,
   host = "127.0.0.1",
-  pairings = () => readHosts({ home }),
+  pairings,
   phoneTransportFactory,
   log = () => {},
   enableAdbTool = true,
   home = os.homedir(),
+  accountDevices = async () => {
+    const account = readAccount({ home });
+    return account ? fetchDevices(account, { home }) : null;
+  },
+  accountRefreshMs = ACCOUNT_REFRESH_MS,
 } = {}) {
   /** Set once the port is ours (below); no request is handled before that. */
   let authToken = null;
+  /** The account's phones as last read from the server; null until read, or with no account. */
+  let knownAccountDevices = null;
+  const refreshAccount = async () => {
+    try {
+      const devices = await accountDevices();
+      if (devices) knownAccountDevices = devices;
+      return devices;
+    } catch (e) {
+      log(`The account's phones could not be listed: ${e.message}`);
+      return null;
+    }
+  };
+  // Before the first request, so a CI run's first call finds the account's phones (CODEDROID_TOKEN).
+  if (readAccount({ home })) await refreshAccount();
+  const refreshTimer = setInterval(() => {
+    if (readAccount({ home })) refreshAccount();
+    else knownAccountDevices = null;
+  }, accountRefreshMs);
+  refreshTimer.unref?.();
   const phones = new Phones({
-    pairings,
+    pairings: pairings ?? (() => readHosts({ home, accountDevices: knownAccountDevices ?? undefined })),
     createManager: (pairing) => {
       const phoneLog = (msg) => log(`[${describeHost(pairing)}] ${msg}`);
       return new PhoneManager({
@@ -329,6 +359,7 @@ export async function startDaemon({
   const setupJobs = new Map();
   const flowJobs = new Map();
 
+  phones.refreshAccount = refreshAccount;
   phones.onNotification = (notification) =>
     broadcastNotification(
       [...sessions.values()].map((s) => s.server),

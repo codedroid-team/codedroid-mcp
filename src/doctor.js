@@ -8,7 +8,7 @@
  */
 import os from "os";
 import { adbLocations } from "./adb-tool.js";
-import { PAIRING_STEPS, describeHost, readDaemonToken, readHosts } from "./host.js";
+import { LOGIN_STEP, NO_ACCOUNT_PHONE, PAIRING_STEPS, describeHost, readAccount, readDaemonToken, readHosts } from "./host.js";
 import { clients } from "./setup.js";
 import { VERSION } from "./version.js";
 
@@ -22,7 +22,8 @@ const fix = (name, detail, how) => ({ name, ok: false, detail, fix: how });
  * @param {string} probes.nodeVersion  process.version
  * @param {() => Promise<{ok: boolean, output: string, where?: string}>} probes.adbDevices  `adb devices -l`
  * @param {() => string|null} probes.daemonToken  host.js readDaemonToken; throws when the file is bad
- * @param {() => object[]} probes.pairings  host.js readHosts
+ * @param {() => object|null} [probes.account]  host.js readAccount: the account this computer is signed in with
+ * @param {() => object[]} probes.pairings  host.js readHosts: the account's phones and the pairings
  * @param {() => Promise<object|null>} probes.daemonHealth  the running daemon's /health
  * @param {() => Promise<object|null>} probes.phoneStatus  codedroid_status's result, connecting; null when it cannot run
  * @param {() => Array<{name: string, installed: () => boolean, check?: () => {status: string, detail: string}}>} probes.clients
@@ -63,15 +64,29 @@ export async function collectDoctorReport(probes) {
   } catch (e) {
     push(fix("Daemon token", e.message.split("\n")[0], "End every CodeDroid daemon process, delete ~/.codedroid/daemon-token, and reconnect."));
   }
+  const account = probes.account?.() ?? null;
+  push(
+    account
+      ? ok("Account", `signed in as ${account.email ?? "an account"}${account.fromEnv ? " (CODEDROID_TOKEN)" : ""} at ${account.server}`)
+      : fix("Account", "not signed in", LOGIN_STEP),
+  );
   try {
     pairings = probes.pairings();
+    const own = pairings.filter((h) => h.account);
+    const paired = pairings.filter((h) => !h.account);
+    const detail = [
+      own.length ? `${own.length} on the account: ${own.map(describeHost).join(", ")}` : "",
+      paired.length ? `paired: ${paired.map(describeHost).join(", ")}` : "",
+    ]
+      .filter(Boolean)
+      .join("; ");
     push(
       pairings.length
-        ? ok("Pairings", pairings.map(describeHost).join(", "))
-        : fix("Pairings", "this computer is not paired with a phone", PAIRING_STEPS),
+        ? ok("Known phones", detail)
+        : fix("Known phones", account ? "no phone is on the account, and none is paired" : "this computer is not paired with a phone", account ? NO_ACCOUNT_PHONE : PAIRING_STEPS),
     );
   } catch (e) {
-    push(fix("Pairings", e.message.split("\n")[0], "Fix or delete ~/.codedroid/host.json, then pair again."));
+    push(fix("Known phones", e.message.split("\n")[0], "Fix or delete ~/.codedroid/host.json, then sign in or pair again."));
   }
 
   // Asking the phones starts the daemon when it is not running, so the daemon is checked after.
@@ -166,6 +181,7 @@ export function realProbes({ daemonHealth, phoneStatus, env = process.env, run }
       return { ok: false, output: "" };
     },
     daemonToken: () => readDaemonToken({ home: os.homedir() }),
+    account: () => readAccount(),
     pairings: () => readHosts(),
     daemonHealth,
     phoneStatus,

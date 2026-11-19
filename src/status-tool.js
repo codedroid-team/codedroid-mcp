@@ -5,9 +5,29 @@
  *   codedroid_status  — connects to each paired phone, then says which are connected and, if not,
  *                       what to do about it (not paired, offline, waiting on Allow).
  */
-import { PAIRING_STEPS, describeHost, pairedDevice } from "./host.js";
+import { NO_ACCOUNT_PHONE, PAIRING_STEPS, describeHost, pairedDevice, readAccount } from "./host.js";
 import { DEVICE_SCHEMA } from "./phones.js";
 import { VERSION } from "./version.js";
+
+// How long a status tool waits on the server for the account's phone list before going with the last.
+const ACCOUNT_REFRESH_WAIT_MS = 5_000;
+
+/** The account this computer is signed in with, as the tools show it; null when none. */
+function accountSummary() {
+  const account = readAccount();
+  return account ? { email: account.email ?? null, server: account.server } : null;
+}
+
+/** Reads the account's phones again, within a bound, so a phone signed in since shows up. */
+async function refreshAccount(phones) {
+  if (!phones.refreshAccount || !readAccount()) return;
+  await Promise.race([phones.refreshAccount(), new Promise((resolve) => setTimeout(resolve, ACCOUNT_REFRESH_WAIT_MS).unref?.())]);
+}
+
+/** Why there is no phone: not signed in and not paired, or signed in with no phone on the account. */
+function noPhoneProblem(account) {
+  return account ? NO_ACCOUNT_PHONE : `This computer is not signed in or paired with a phone. ${PAIRING_STEPS}`;
+}
 
 const DESCRIPTION =
   "Which Android phones are paired with this computer (each one's device id, model and CodeDroid server), " +
@@ -35,14 +55,17 @@ export function createDevicesTool(phones) {
       _meta: { "anthropic/alwaysLoad": true },
     },
     async handler() {
+      await refreshAccount(phones);
+      const account = accountSummary();
       const devices = phones.select().map(({ pairing, manager }) => ({
         ...pairedDevice(pairing),
         state: manager.state,
         ...(manager.state !== "connected" && manager.lastError ? { problem: manager.lastError } : {}),
       }));
       return statusResult({
+        ...(account ? { account } : {}),
         devices,
-        ...(devices.length ? {} : { problem: `This computer is not paired with a phone. ${PAIRING_STEPS}` }),
+        ...(devices.length ? {} : { problem: noPhoneProblem(account) }),
       });
     },
   };
@@ -60,11 +83,13 @@ export function createStatusTool(phones) {
       _meta: { "anthropic/alwaysLoad": true },
     },
     async handler({ device } = {}) {
+      await refreshAccount(phones);
+      const account = accountSummary();
       let entries;
       try {
         entries = phones.select(device);
       } catch (e) {
-        return statusResult({ connected: false, bridge: VERSION, devices: [], problem: e.message });
+        return statusResult({ connected: false, bridge: VERSION, ...(account ? { account } : {}), devices: [], problem: e.message });
       }
       const devices = await Promise.all(
         entries.map(async ({ pairing, manager }) => {
@@ -82,12 +107,13 @@ export function createStatusTool(phones) {
         ? [...devices.map((d, i) => d.problem && (devices.length > 1 ? `${describeHost(entries[i].pairing)}: ${d.problem}` : d.problem)), forget]
             .filter(Boolean)
             .join(" ")
-        : `This computer is not paired with a phone. ${PAIRING_STEPS}`;
+        : noPhoneProblem(account);
       // A session that opened before a phone connected never got these at its handshake.
       const instructions = phones.getInstructions();
       return statusResult({
         connected: devices.length > 0 && devices.every((d) => d.connected),
         bridge: VERSION,
+        ...(account ? { account } : {}),
         ...(devices.length === 1 ? { device: pairedDevice(entries[0].pairing) } : {}),
         devices,
         ...(problem ? { problem } : {}),

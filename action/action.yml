@@ -1,0 +1,59 @@
+name: CodeDroid flow
+description: Replay a CodeDroid flow on your own Android phone, through CodeDroid's relay, from any runner
+author: CodeDroid
+branding:
+  icon: smartphone
+  color: green
+inputs:
+  token:
+    description: The account token from `npx -y @codedroid/mcp login --ci`, kept as a repository secret
+    required: true
+  flow:
+    description: The flow file to replay (a Maestro YAML, as record_stop writes it)
+    required: true
+  device:
+    description: Which phone, by id or model, when the account has several
+    required: false
+    default: ""
+  env:
+    description: KEY=VALUE pairs for the flow, comma-separated
+    required: false
+    default: ""
+  screenshots:
+    description: A directory the flow's takeScreenshot steps write to
+    required: false
+    default: ""
+  server:
+    description: The CodeDroid server the token is for
+    required: false
+    default: https://orchestrator.codedroid.com
+  version:
+    description: The @codedroid/mcp version to run
+    required: false
+    default: "0.1.18"
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: "22"
+    - name: Replay the flow on the phone
+      shell: bash
+      env:
+        CODEDROID_TOKEN: ${{ inputs.token }}
+        CODEDROID_SERVER: ${{ inputs.server }}
+        CODEDROID_MCP_ADB: "0"
+        CODEDROID_MCP_CLIENT: github-actions
+        FLOW: ${{ inputs.flow }}
+        DEVICE: ${{ inputs.device }}
+        FLOW_ENV: ${{ inputs.env }}
+        SCREENSHOTS: ${{ inputs.screenshots }}
+        VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        args=("$FLOW")
+        [ -n "$DEVICE" ] && args+=("--device=$DEVICE")
+        [ -n "$FLOW_ENV" ] && args+=("--env=$FLOW_ENV")
+        [ -n "$SCREENSHOTS" ] && mkdir -p "$SCREENSHOTS" && args+=("--screenshots=$SCREENSHOTS")
+        npx -y "@codedroid/mcp@$VERSION" flow run "${args[@]}"
+        npx -y "@codedroid/mcp@$VERSION" stop >/dev/null 2>&1 || true

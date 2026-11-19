@@ -8,12 +8,15 @@ import { collectDoctorReport, formatDoctorReport } from "../src/doctor.js";
 import { VERSION } from "../src/version.js";
 
 const PAIRING = { server: "https://orchestrator.codedroid.com", host_id: "h", token: "t", device: { id: "abc-123", model: "Pixel 9" } };
+const ON_ACCOUNT = { server: "https://orchestrator.codedroid.com", account: true, host_id: null, token: null, device: { id: "def-456", model: "Pixel 8" } };
+const ACCOUNT = { server: "https://orchestrator.codedroid.com", email: "alice@example.com", refresh_token: "r", devices: [ON_ACCOUNT.device] };
 
 const healthy = {
   nodeVersion: "v22.1.0",
   adbDevices: async () => ({ ok: true, output: "List of devices attached\nR58M1234 device product:x model:Pixel_9\n", where: "/usr/bin/adb" }),
   daemonToken: () => "a".repeat(64),
-  pairings: () => [PAIRING],
+  account: () => ACCOUNT,
+  pairings: () => [ON_ACCOUNT, PAIRING],
   daemonHealth: async () => ({ version: VERSION, sessions: 2, adbToolEnabled: true }),
   phoneStatus: async () => ({ connected: true, devices: [{ id: "abc-123", model: "Pixel 9", connected: true }] }),
   clients: () => [
@@ -29,13 +32,14 @@ const healthy = {
   const report = await collectDoctorReport(healthy);
   assert.deepEqual(
     report.checks.map((c) => [c.name, c.ok]),
-    [["Node.js", true], ["adb", true], ["Daemon token", true], ["Pairings", true], ["Daemon", true], ["Phone Pixel 9", true], ["Claude Code", true], ["Cursor", false], ["Codex", true]],
+    [["Node.js", true], ["adb", true], ["Daemon token", true], ["Account", true], ["Known phones", true], ["Daemon", true], ["Phone Pixel 9", true], ["Claude Code", true], ["Cursor", false], ["Codex", true]],
   );
   assert.equal(report.ok, false);
   assert.equal(report.checks[1].detail, "/usr/bin/adb: 1 device");
-  assert.equal(report.checks[3].detail, "Pixel 9 (abc-123)");
-  assert.equal(report.checks[7].fix, "Run npx -y @codedroid/mcp setup --client=cursor.");
-  assert.match(report.checks[8].detail, /setup leaves it alone/);
+  assert.equal(report.checks[3].detail, "signed in as alice@example.com at https://orchestrator.codedroid.com");
+  assert.equal(report.checks[4].detail, "1 on the account: Pixel 8 (def-456); paired: Pixel 9 (abc-123)");
+  assert.equal(report.checks[8].fix, "Run npx -y @codedroid/mcp setup --client=cursor.");
+  assert.match(report.checks[9].detail, /setup leaves it alone/);
   const lines = formatDoctorReport(report);
   assert.equal(lines[0], "ok   Node.js: v22.1.0");
   assert.match(lines.find((l) => l.startsWith("fix  Cursor")), /^fix  Cursor: no codedroid server in ~\/.cursor\/mcp\.json\n       Run npx -y @codedroid\/mcp setup --client=cursor\.$/);
@@ -49,6 +53,7 @@ const healthy = {
     nodeVersion: "v18.20.0",
     adbDevices: async () => ({ ok: false, output: "" }),
     daemonToken: () => null,
+    account: () => null,
     pairings: () => [],
     daemonHealth: async () => null,
     phoneStatus: async () => assert.fail("no pairing: never asked"),
@@ -56,13 +61,24 @@ const healthy = {
   });
   assert.deepEqual(
     report.checks.map((c) => [c.name, c.ok]),
-    [["Node.js", false], ["adb", false], ["Daemon token", true], ["Pairings", false], ["Daemon", true], ["Coding clients", true]],
+    [["Node.js", false], ["adb", false], ["Daemon token", true], ["Account", false], ["Known phones", false], ["Daemon", true], ["Coding clients", true]],
   );
   assert.equal(report.checks[0].fix, "Install Node.js 20 or later.");
   assert.match(report.checks[1].fix, /Android platform-tools on PATH, or ADB=/);
-  assert.match(report.checks[3].fix, /npx -y @codedroid\/mcp setup/);
-  assert.equal(report.checks[4].detail, "not running (a client starts it when it connects)");
-  assert.equal(formatDoctorReport(report).at(-1), "3 things to fix.");
+  assert.match(report.checks[3].fix, /npx -y @codedroid\/mcp login/);
+  assert.match(report.checks[4].fix, /npx -y @codedroid\/mcp login/);
+  assert.match(report.checks[4].fix, /npx -y @codedroid\/mcp setup/);
+  assert.equal(report.checks[5].detail, "not running (a client starts it when it connects)");
+  assert.equal(formatDoctorReport(report).at(-1), "4 things to fix.");
+}
+
+// ── Signed in, but no phone is on the account yet ───────────────────────────
+{
+  const report = await collectDoctorReport({ ...healthy, pairings: () => [], phoneStatus: async () => assert.fail("no phone: never asked") });
+  const phones = report.checks.find((c) => c.name === "Known phones");
+  assert.equal(phones.ok, false);
+  assert.match(phones.detail, /no phone is on the account/);
+  assert.match(phones.fix, /sign in with the same Google account/);
 }
 
 // ── A phone that is paired but off, an unauthorized adb device, a bad token file, an old daemon ──
@@ -108,7 +124,7 @@ const healthy = {
     daemonHealth: async () => (running ? { version: VERSION, sessions: 1, adbToolEnabled: true } : null),
   });
   assert.match(report.checks.find((c) => c.name === "Daemon").detail, /^v.*, 1 session,/);
-  assert.deepEqual(report.checks.map((c) => c.name).slice(4, 6), ["Daemon", "Phone Pixel 9"], "the lines keep their order");
+  assert.deepEqual(report.checks.map((c) => c.name).slice(5, 7), ["Daemon", "Phone Pixel 9"], "the lines keep their order");
 }
 
 console.log("doctor.test.mjs: ALL PASS");

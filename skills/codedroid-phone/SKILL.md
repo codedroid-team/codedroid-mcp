@@ -20,15 +20,18 @@ signed in with the user's Google account, which reaches every phone on that acco
 
 If the phone's tools are missing, or a call says CodeDroid is not connected: with the local
 bridge, call `codedroid_status`. Its `problem` says exactly what to fix (this computer is not
-paired yet, the phone is offline or CodeDroid is not open on it, the user has not tapped Allow on
-the phone yet). Tell the user that in their words, and call `codedroid_status` again once they have
-fixed it. If this computer is not paired, call `codedroid_setup_phone`: with the phone plugged in
-(USB debugging on), it turns CodeDroid on and pairs, and says what the user has left to do (sign in
-on the phone, tap Allow). If CodeDroid is not on the phone yet, it says so: ask the user before
-calling it again with `install` true. If it answers "still working", call it again. Without adb,
-pairing is theirs to do: on the phone, CodeDroid > Settings > Computers > Pair a computer shows a
-command to run on this computer. Once connected it also returns the phone's `instructions`: read
-them if your session started before the phone connected.
+signed in or paired yet, no phone is on the account, the phone is offline or CodeDroid is not open
+on it, the user has not tapped Allow on the phone yet). Tell the user that in their words, and call
+`codedroid_status` again once they have fixed it. If this computer is not signed in, the user runs
+`npx -y @codedroid/mcp login` in a terminal and signs in with the Google account they use in
+CodeDroid: every phone on the account is then reached, with nothing to pair. If a phone is plugged
+in (USB debugging on), call `codedroid_setup_phone`: it turns CodeDroid on, signs the phone in with
+the computer's account when it can, and says what the user has left to do (sign in, tap Allow). If
+CodeDroid is not on the phone yet, it says so: ask the user before calling it again with `install`
+true. If it answers "still working", call it again. Without an account or adb, pairing is theirs to
+do: on the phone, CodeDroid > Settings > Computers > Pair a computer shows a command to run on this
+computer. Once connected it also returns the phone's `instructions`: read them if your session
+started before the phone connected.
 
 With the remote connector there is no pairing: call `codedroid_devices`. A phone that is
 `disconnected` needs the user to open CodeDroid on it, signed in with the same Google account and
@@ -37,7 +40,7 @@ online, and to tap Allow the first time this client connects. Tell them so and c
 The first time a computer or client connects, the phone asks the user to allow it. While you
 drive the phone, it shows "<this computer> is using this phone" with a Stop button.
 
-Several phones can be paired with one computer, or be on one account. `codedroid_devices` lists
+Several phones can be on the account or paired with one computer. `codedroid_devices` lists
 them right away with each one's id, model and link state, without connecting. With more than one, pass `device`
 on every phone tool call. It can be the id, or the model or part of it ("Pixel") when that names
 only one phone. If the user hasn't said which phone, ask them. Each phone has its own screen,
