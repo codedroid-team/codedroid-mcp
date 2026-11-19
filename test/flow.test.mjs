@@ -102,6 +102,13 @@ assert.deepEqual(stepsForCall("type_text", { text: "x", clear: false }), [{ inpu
 assert.deepEqual(stepsForCall("open_app", { package: "com.x", activity: ".Main" }), [{ launchApp: { appId: "com.x", arguments: { activity: ".Main" } } }]);
 assert.deepEqual(stepsForCall("run_task", { goal: "add Ada" }), [{ codedroidTask: "add Ada" }]);
 assert.deepEqual(stepsForCall("take_screenshot", {}, { screenshotIndex: 3 }), [{ takeScreenshot: "step-3" }]);
+assert.deepEqual(stepsForCall("open_url", { url: "https://x/y" }), [{ openLink: "https://x/y" }]);
+assert.deepEqual(stepsForCall("dismiss_keyboard", {}), ["hideKeyboard"]);
+assert.deepEqual(stepsForCall("scroll_until", { text: "About", direction: "up" }), [{ scrollUntilVisible: { element: { text: "About" }, direction: "UP" } }]);
+assert.deepEqual(stepsForCall("scroll_until", { text: "About" }), [{ scrollUntilVisible: { element: { text: "About" }, direction: "DOWN" } }]);
+assert.match(stepsForCall("alert", { action: "accept" })[0].comment, /^alert accept/);
+assert.deepEqual(stepsForCall("notifications", {}), [], "a read is not a step");
+assert.deepEqual(stepsForCall("logs", { level: "E" }), []);
 
 // ── Parsing Maestro's own files ─────────────────────────────────────────────
 {
@@ -215,7 +222,8 @@ assert.deepEqual(stepsForCall("take_screenshot", {}, { screenshotIndex: 3 }), [{
 // ── Commands outside the subset fail where they are, naming the subset ──────
 {
   for (const [yaml, message] of [
-    ["- openLink: https://x\n", /openLink is not supported on CodeDroid\. Supported: launchApp, tapOn/],
+    ["- copyTextFrom: {text: x}\n", /copyTextFrom is not supported on CodeDroid\. Supported: launchApp, tapOn/],
+    ["- openLink:\n    link: https://x\n    autoVerify: true\n", /autoVerify and browser are not supported/],
     ["- launchApp:\n    appId: com.x\n    clearState: true\n", /clearState is not supported/],
     ["- tapOn:\n    index: 2\n", /index is not supported on CodeDroid; select by text or id/],
     ["- tapOn:\n    point: 50%,50%\n", /percentages are not supported/],

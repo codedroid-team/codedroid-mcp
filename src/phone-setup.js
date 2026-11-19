@@ -33,14 +33,18 @@ const INSTALL_TIMEOUT_MS = 300_000;
 // How long a signed-in phone has to register with the server, so the account lists it.
 const REGISTER_WAIT_MS = 60_000;
 
-// web_client's phone-setup.sh, which get.codedroid.com runs after a USB install. Each step is
-// best-effort: whatever a phone refuses, the app asks for itself.
+// web_client's phone-setup.sh, which get.codedroid.com runs after a USB install, plus the log
+// permission. Each step is best-effort: whatever a phone refuses, the app asks for itself.
 const TURN_ON = `
 P=${APP}
 A=$P/$P.device.CodeDroidAccessibilityService
 for p in POST_NOTIFICATIONS RECORD_AUDIO READ_MEDIA_IMAGES READ_MEDIA_VIDEO READ_EXTERNAL_STORAGE; do
   pm grant --user current $P android.permission.$p >/dev/null 2>&1
 done
+# READ_LOGS is a development permission: only adb grants it, and with it the logs tool reads other
+# apps' logcat lines through the relay, with no cable later. Android 13+ also asks the app op.
+pm grant --user current $P android.permission.READ_LOGS >/dev/null 2>&1
+appops set --user current $P READ_LOGS allow >/dev/null 2>&1
 i=0
 until ime enable --user current $P/.device.CodeDroidKeyboard >/dev/null 2>&1 || [ $i -ge 10 ]; do
   sleep 0.5
