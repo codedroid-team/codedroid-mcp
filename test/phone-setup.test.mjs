@@ -23,7 +23,7 @@ const DEVICES = "List of devices attached\nSERIAL1\tdevice\n\n";
  * `pairing` answers mcp/pairing in turn, the last one for good.
  */
 function fakePhone({ installed = false, accessibility = false, signedIn = true, pairing = [{ code: "ABCD-EFGH" }], devices = DEVICES, computers, email = "alice@example.com", signin = true } = {}) {
-  const phone = { installed, accessibility, signedIn, calls: [], email, signedInWith: [] };
+  const phone = { installed, accessibility, signedIn, calls: [], email, signedInWith: [], logsGranted: false };
   const answers = [...pairing];
   phone.adb = async (args, { serial } = {}) => {
     const line = args.join(" ");
@@ -47,6 +47,12 @@ function fakePhone({ installed = false, accessibility = false, signedIn = true, 
       return "";
     }
     if (command.startsWith("am start")) return "";
+    if (command.includes("android.permission.READ_LOGS")) {
+      assert.ok(phone.installed, "READ_LOGS is granted to an installed app");
+      assert.match(command, /appops set --user current com\.codedroid\.agent READ_LOGS allow/, "and the app op Android 13+ asks");
+      phone.logsGranted = true;
+      return "";
+    }
     if (command.includes("content://com.codedroid.agent/device/status")) {
       assert.match(command, /--user 10 /);
       return `Row: 0 result=${JSON.stringify({ deviceId: "dev-1", server: SERVER, signedIn: phone.signedIn, accessibility: phone.accessibility, computers })}\n`;
@@ -127,6 +133,7 @@ try {
     assert.deepEqual(readHosts({ home }).map((h) => [h.server, h.device.id]), [[SERVER, "dev-1"]], "pairs with the server the phone uses");
     assert.ok(log.some((line) => /sign in with Google/.test(line)), "says to sign in on the phone");
     assert.deepEqual(fs.readdirSync(root).filter((name) => name.startsWith("codedroid-")), [], "the download is deleted");
+    assert.ok(phone.logsGranted, "a new install gets READ_LOGS");
   }
 
   // ── Signed in on this computer: the phone is signed in with a code, and reached with no pairing ──
@@ -238,6 +245,8 @@ try {
     const result = await run(phone, fakeWeb(), { home });
     assert.equal(result.status, "already-paired");
     assert.ok(!phone.calls.some((line) => line.includes("mcp/pairing")), "makes no new code");
+    assert.ok(phone.logsGranted, "a phone set up before the logs tool gets READ_LOGS on the next setup");
+    assert.ok(!phone.calls.some((line) => line.includes("enabled_accessibility_services")), "without turning on again what is on");
   }
 
   // ── Still signed out when the wait ends ─────────────────────────────
