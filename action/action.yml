@@ -30,7 +30,7 @@ inputs:
   version:
     description: The @codedroid/mcp version to run
     required: false
-    default: "0.1.18"
+    default: "0.1.19"
 runs:
   using: composite
   steps:

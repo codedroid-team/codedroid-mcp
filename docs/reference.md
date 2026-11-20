@@ -225,8 +225,11 @@ npx -y @codedroid/mcp setup ABCD-EFGH
 | Windsurf | `windsurf` | Adds the server to `~/.codeium/windsurf/mcp_config.json` |
 | Zed | `zed` | Adds the server under `context_servers` in Zed's `settings.json` |
 
-Config files get `npx -y @codedroid/mcp@<version>`, pinned like the plugins. Running a newer
-`setup` updates that pin and keeps the entry's other settings, such as `env`. `setup` leaves a
+Config files get `npx -y @codedroid/mcp@latest`, like the plugins, so a new release arrives with
+the client's next start (see [updates](#updates)). Running `setup` again keeps the entry's other
+settings, such as `env`; in Claude Code it also turns on auto-update for the `codedroid`
+marketplace, which Claude Code leaves off for a marketplace that is not Anthropic's, unless you
+have set it yourself under **Marketplaces** in `/plugin`. `setup` leaves a
 client alone when it already has a `codedroid` server from somewhere else. It keeps a config's
 comments and formatting, and never rewrites a config file it can't parse. `--client` sets up only the listed clients,
 even ones it didn't detect. `--yes` skips the confirmation. With a pairing code, `setup` also pairs,
@@ -507,6 +510,29 @@ an HTTP client.
 | `CODEDROID_SERVER` | The CodeDroid server `CODEDROID_TOKEN` is for. Default: `https://orchestrator.codedroid.com`. |
 | `ADB` | Set the path to the adb executable. Otherwise it is looked for on `PATH`, in `ANDROID_HOME`, `ANDROID_SDK_ROOT`, and the usual install locations. |
 | `CODEDROID_DEBUG=1` | Include stack traces in diagnostic output. |
+| `CODEDROID_MCP_UPDATE_CHECK=0` | Stop the daemon's daily look at npm for a newer release. |
+
+## Updates
+
+After `setup`, nothing is left for you to do: a release on npm reaches this computer on its own.
+
+- **The server.** Every plugin and config launches `npx -y @codedroid/mcp@latest`. npm checks the
+  registry each time a client starts (and keeps the last download when it is offline), so a new
+  release runs the next time the client starts. The daemon from a newer release replaces an older
+  one, so every client on the computer shares the new one.
+- **What the server brings along.** When the daemon starts, it brings up to its own release what an
+  earlier one left behind: the Antigravity plugin folder `setup` copied, `skill install` copies in
+  `~/.claude/skills` and `~/.codex/skills` (only ours, found by the CodeDroid app id in each), and a
+  config an earlier `setup` pinned to `@codedroid/mcp@<version>`, which moves to `@latest`. It
+  installs nothing that was not there, and logs each change to `~/.codedroid/daemon.log`.
+- **The plugins' skills.** The Claude Code plugin updates itself when auto-update is on for the
+  `codedroid` marketplace, which `setup` and the daemon turn on unless you have set it yourself. Codex
+  refreshes a marketplace only when asked: `codex plugin marketplace upgrade codedroid`, then
+  `codex plugin add codedroid@codedroid`. `doctor` says when either is behind.
+- **Knowing.** Once a day the daemon asks npm for the newest version, sending only the package
+  name. When one is out, the daemon log says so and `codedroid_status` carries an `update` field,
+  so an agent can tell you to restart the client. `CODEDROID_MCP_UPDATE_CHECK=0` turns the
+  check off; `doctor` always asks.
 
 ## CLI reference
 
@@ -666,21 +692,32 @@ the app's MCP server through a test relay.
 
 ### Release
 
-`npm test` fails until every manifest names the same version.
+A merge to `main` is a release. `main` is what the Claude Code and Codex marketplaces install, and
+the version is what tells a client that there is something new, so every pull request that changes
+what ships carries a new version, and CI holds it to that.
 
-1. Set the new version in `package.json` (`npm version <x.y.z> --no-git-tag-version`),
-   `src/version.js`, `.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`,
-   `.antigravity-plugin/plugin.json`, `.mcp.json`, `mcp_config.json`, and both versions in `server.json`.
-   Then `node scripts/sync-claude-plugin.mjs`, which sets it in `claude-plugin/` and copies the
-   skills there (do this after any change to `skills/` too).
+1. `node scripts/set-version.mjs <x.y.z>`: sets it in `package.json` and its lock, `src/version.js`,
+   the Claude, Codex and Antigravity plugin manifests, `server.json` and the GitHub Action's default
+   version, and runs
+   `scripts/sync-claude-plugin.mjs`, which sets it in `claude-plugin/` and copies the skills there
+   (run that one after any change to `skills/` too). `npm test` fails while any of them disagrees.
 2. Run `npm test`, `claude plugin validate .claude-plugin/plugin.json` and
-   `claude plugin validate claude-plugin --profile directory --strict`.
-3. Run `npm publish --access public` **before** merging to `main`: the plugins launch
-   `@codedroid/mcp@<version>`, so installs fail until that version is on npm.
-4. Merge to `main`, then create the GitHub release. The Claude plugin directory follows `main`
-   for `claude-plugin/` and checks each new commit itself:
-   `gh release create v<x.y.z> --target main --title "CodeDroid MCP <x.y.z>" --latest`.
-5. Run the **Publish to MCP Registry** workflow (`gh workflow run publish-mcp-registry.yml`) to
-   update the [MCP Registry](https://registry.modelcontextprotocol.io). Publishing from a laptop
-   with `mcp-publisher login github` works only for an Owner of the `codedroid-team` org.
+   `claude plugin validate claude-plugin --profile directory --strict`, and open the pull request.
+   CI (`ci.yml`) runs the tests on Node 20, 22 and 24, and checks that the version is not on npm
+   yet and is newer than npm's `latest`; a pull request that changes `src/`, `skills/` or a manifest
+   without a new version fails, unless it has the `no-release` label (part of a change a later
+   pull request releases).
+3. Merge. `release.yml` publishes to npm with provenance, tags `v<x.y.z>`, writes the GitHub release
+   with generated notes, and runs **Publish to MCP Registry** for the
+   [MCP Registry](https://registry.modelcontextprotocol.io). A merge whose version is on npm already
+   does nothing. Clients launch `@codedroid/mcp@latest`, so the release is with them on their next
+   start; the Claude plugin directory follows `main` for `claude-plugin/` and checks each commit itself.
+
+Publishing needs npm to trust the workflow, once: on npmjs.com, under the package's **Settings** >
+**Trusted publishing**, add GitHub Actions with repository `codedroid-team/codedroid-mcp` and
+workflow `release.yml`. Or put a granular automation token in the repository's secrets as
+`NPM_TOKEN`, which the workflow uses when it is there. By hand, `npm publish --access public` from a
+checkout of `main` still works; `release.yml` then adds the tag and the GitHub release the next time it
+runs (`gh workflow run release.yml`), and **Publish to MCP Registry** is run by hand
+(`gh workflow run publish-mcp-registry.yml`).
 

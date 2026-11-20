@@ -25,9 +25,9 @@ assert.match(fs.readFileSync(new URL(`../${pkg.bin["codedroid-mcp"]}`, import.me
 for (const path of ["src", "skills", ".claude-plugin", ".mcp.json", "README.md"]) assert.ok(pkg.files.includes(path), `npm ships ${path}`);
 for (const name of SKILLS) assert.ok(fs.existsSync(new URL(`../skills/${name}/SKILL.md`, import.meta.url)), name);
 assert.deepEqual(
-  mcp.mcpServers.codedroid.args.slice(-1),
-  [`${pkg.name}@${pkg.version}`],
-  "the plugin pins this package to the released version — bump .mcp.json and mcp_config.json on release",
+  mcp.mcpServers.codedroid.args,
+  ["-y", `${pkg.name}@latest`],
+  "the plugins launch @latest: a release on npm reaches every client with its next start, with no plugin update",
 );
 
 assert.equal(antigravity.version, VERSION, "the Antigravity plugin and package.json");

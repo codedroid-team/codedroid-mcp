@@ -34,6 +34,7 @@ import { buildProxyServer, broadcastNotification } from "./proxy-core.js";
 import { RelayPhoneTransport } from "./relay-transport.js";
 import { createSessionTools } from "./session-tools.js";
 import { createDevicesTool, createStatusTool } from "./status-tool.js";
+import { cachedUpdate } from "./update-check.js";
 import { VERSION } from "./version.js";
 
 export const DEFAULT_PORT = 4826;
@@ -305,6 +306,7 @@ function jsonRpcError(res, status, id, code, message) {
  *   status tools. Null when this computer is not signed in.
  * @param {number} [options.accountStartupWaitMs]  How long a start waits for the first read when the
  *   account has no phones saved (CODEDROID_TOKEN); past it the daemon serves and the read goes on.
+ * @param {() => object | null} [options.update]  A newer release on npm, for codedroid_status; the cache by default.
  * @returns {Promise<{port: number, authToken: string, close: () => Promise<void>, phones: Phones}>}
  *   authToken is this user's daemon token (host.js ensureDaemonToken), which /mcp and /shutdown require.
  */
@@ -322,6 +324,7 @@ export async function startDaemon({
   },
   accountRefreshMs = ACCOUNT_REFRESH_MS,
   accountStartupWaitMs = ACCOUNT_STARTUP_WAIT_MS,
+  update = () => cachedUpdate({ home }),
 } = {}) {
   /** Set once the port is ours (below); no request is handled before that. */
   let authToken = null;
@@ -474,7 +477,7 @@ export async function startDaemon({
               // calls to here rather than double-registering them.
               localTools: [
                 createDevicesTool(phones),
-                createStatusTool(phones),
+                createStatusTool(phones, { update }),
                 createInstallTool({ phones, cwd: clientCwd(req), jobs: installJobs }),
                 ...session.localTools,
                 ...(enableAdbTool && req.headers[CLIENT_ADB_HEADER] !== "off"

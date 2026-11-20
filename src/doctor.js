@@ -10,6 +10,7 @@ import os from "os";
 import { adbLocations } from "./adb-tool.js";
 import { LOGIN_STEP, NO_ACCOUNT_PHONE, PAIRING_STEPS, describeHost, readAccount, readDaemonToken, readHosts } from "./host.js";
 import { clients } from "./setup.js";
+import { checkForUpdate, compareVersions } from "./update-check.js";
 import { VERSION } from "./version.js";
 
 const MIN_NODE = 20;
@@ -24,6 +25,7 @@ const fix = (name, detail, how) => ({ name, ok: false, detail, fix: how });
  * @param {() => string|null} probes.daemonToken  host.js readDaemonToken; throws when the file is bad
  * @param {() => object|null} [probes.account]  host.js readAccount: the account this computer is signed in with
  * @param {() => object[]} probes.pairings  host.js readHosts: the account's phones and the pairings
+ * @param {() => Promise<string|null>} [probes.latestVersion]  the newest version on npm, asked now
  * @param {() => Promise<object|null>} probes.daemonHealth  the running daemon's /health
  * @param {() => Promise<object|null>} probes.phoneStatus  codedroid_status's result, connecting; null when it cannot run
  * @param {() => Array<{name: string, installed: () => boolean, check?: () => {status: string, detail: string}}>} probes.clients
@@ -36,6 +38,20 @@ export async function collectDoctorReport(probes) {
   // Node
   const major = Number(/^v?(\d+)/.exec(probes.nodeVersion ?? "")?.[1] ?? 0);
   push(major >= MIN_NODE ? ok("Node.js", probes.nodeVersion) : fix("Node.js", `${probes.nodeVersion} is too old`, `Install Node.js ${MIN_NODE} or later.`));
+
+  // This release against npm
+  if (probes.latestVersion) {
+    let latest = null;
+    try {
+      latest = await probes.latestVersion();
+    } catch (e) {
+      latest = null;
+    }
+    if (!latest) push(ok("Version", `${VERSION} (could not ask npm for the newest)`));
+    else if (compareVersions(latest, VERSION) > 0) {
+      push(fix("Version", `${VERSION}, and ${latest} is on npm`, "Coding clients launch @latest: restart the client. The daemon moves a config pinned to an older release when it next starts."));
+    } else push(ok("Version", `${VERSION}, the newest on npm`));
+  }
 
   // adb
   try {
@@ -182,6 +198,7 @@ export function realProbes({ daemonHealth, phoneStatus, env = process.env, run }
     },
     daemonToken: () => readDaemonToken({ home: os.homedir() }),
     account: () => readAccount(),
+    latestVersion: async () => (await checkForUpdate({ env, ttlMs: 0 }))?.latest ?? null,
     pairings: () => readHosts(),
     daemonHealth,
     phoneStatus,

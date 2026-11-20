@@ -140,6 +140,7 @@ Options:
 
 Env: CODEDROID_SERIAL picks the adb tool's device when several are attached; ADB is the adb binary.
      CODEDROID_TOKEN is the account token from login --ci (CI); CODEDROID_SERVER its server.
+     CODEDROID_MCP_UPDATE_CHECK=0 stops the daemon's daily look at npm for a newer release.
 
 Clients:
   claude mcp add codedroid -- npx -y @codedroid/mcp
@@ -475,6 +476,16 @@ async function main() {
       }
       throw e;
     }
+    // This release, now running, brings the computer's other CodeDroid installs along with it, and
+    // watches npm for the next one.
+    const { refreshInstalls } = await import("./setup.js");
+    const { startUpdateChecks } = await import("./update-check.js");
+    try {
+      for (const line of refreshInstalls()) daemonLog(line);
+    } catch (e) {
+      daemonLog(`Could not update the other installs on this computer: ${e.message}`);
+    }
+    startUpdateChecks({ log: daemonLog });
     const shutdown = async () => {
       await daemon.close();
       process.exit(0);
