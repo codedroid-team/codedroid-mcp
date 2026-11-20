@@ -108,7 +108,6 @@ assert.deepEqual(stepsForCall("scroll_until", { text: "About", direction: "up" }
 assert.deepEqual(stepsForCall("scroll_until", { text: "About" }), [{ scrollUntilVisible: { element: { text: "About" }, direction: "DOWN" } }]);
 assert.match(stepsForCall("alert", { action: "accept" })[0].comment, /^alert accept/);
 assert.deepEqual(stepsForCall("notifications", {}), [], "a read is not a step");
-assert.deepEqual(stepsForCall("logs", { level: "E" }), []);
 
 // ── Parsing Maestro's own files ─────────────────────────────────────────────
 {

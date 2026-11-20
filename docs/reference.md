@@ -24,7 +24,6 @@ read progress, or `cancel_task` to stop the task.
 | `alert` | Tap a dialog's button: `action` accept or dismiss, or its `text`. |
 | `scroll_until` | Swipe in a direction until `text` is on the screen. |
 | `notifications` | Read the notification shade (opened, read, closed). |
-| `logs` | Read the device log (logcat) through CodeDroid's connection, with no cable: the newest lines, one `package`, a `level`, a `filter`, the `crash` buffer. Needs READ_LOGS, which `setup` grants over adb. |
 | `device_info` | Inspect the device model, Android version, user, screen, lock state, and CodeDroid readiness. |
 | `run_task`, `get_task`, `cancel_task` | Start, monitor, or cancel a task run by CodeDroid's agent. |
 | `install_apk` | Install an APK from this computer through CodeDroid's connection, with no cable or shared network. |

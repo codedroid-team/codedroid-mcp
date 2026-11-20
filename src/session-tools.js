@@ -36,7 +36,6 @@ export const BATCH_TOOLS = new Set([
   "alert",
   "scroll_until",
   "notifications",
-  "logs",
 ]);
 export const BATCH_MAX_STEPS = 20;
 /** Tools Claude Code keeps loaded (code.claude.com/docs/en/mcp.md): the loop, and how to get going. */

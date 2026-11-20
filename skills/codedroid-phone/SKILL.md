@@ -101,7 +101,6 @@ depend on each other fail with `not_found`.
 | `dismiss_keyboard` | Hide the keyboard when it covers what you need |
 | `open_url` | A web page or a deep link (`myapp://...`), in the app that handles it |
 | `notifications` | What the notification shade holds (it opens and closes it) |
-| `logs` | The device log with no cable: `package` for one app, `level` E for errors, `filter` for a word, `buffer` crash for crash dumps, `clear` to empty it first. If it says READ_LOGS is not granted, `codedroid_setup_phone` or `setup` grants it over adb; otherwise use `adb logcat` |
 | `device_info` | Model, Android version, Android user, screen, locked, CodeDroid ready and signed in |
 | `run_task`, `get_task`, `answer_task`, `cancel_task` | Hand CodeDroid's own phone agent a whole goal (below) |
 | `codedroid_devices` | The phones: id, model, and whether each is connected |

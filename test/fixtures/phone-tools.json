@@ -370,52 +370,6 @@
   {
     "inputSchema": {
       "type": "object",
-      "properties": {
-        "filter": {"type": "string"},
-        "package": {"type": "string"},
-        "level": {
-          "type": "string",
-          "enum": [
-            "V",
-            "D",
-            "I",
-            "W",
-            "E",
-            "F"
-          ]
-        },
-        "clear": {"type": "boolean"},
-        "buffer": {
-          "type": "string",
-          "enum": [
-            "main",
-            "system",
-            "crash",
-            "events",
-            "all"
-          ]
-        },
-        "lines": {
-          "default": 200,
-          "maximum": 2000,
-          "type": "integer"
-        }
-      }
-    },
-    "name": "logs",
-    "description": "The device log (logcat) with no cable: the newest lines, for one package, from one level (E for errors), matching filter, or buffer crash for crash dumps. clear empties it first.",
-    "annotations": {
-      "idempotentHint": true,
-      "openWorldHint": false,
-      "title": "Read the device log",
-      "destructiveHint": false,
-      "readOnlyHint": true
-    },
-    "title": "Read the device log"
-  },
-  {
-    "inputSchema": {
-      "type": "object",
       "properties": {}
     },
     "name": "device_info",
