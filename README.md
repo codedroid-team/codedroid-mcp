@@ -8,23 +8,25 @@ through [CodeDroid](https://get.codedroid.com). Your phone and computer can be o
 
 You'll need **Node.js 20+** and an Android phone. Both devices need internet access.
 
-### Fastest: plug in your phone
-
-Turn on **USB debugging** on the phone, plug it into your computer, and run:
+### Fastest: one command
 
 ```bash
 npx -y @codedroid/mcp setup
 ```
 
 It adds CodeDroid to every coding client it finds (Claude Code, Codex, Antigravity, Cursor, VS Code,
-Claude Desktop, Windsurf, Zed), installs the CodeDroid app on the phone, turns on its accessibility
-service, and pairs the phone with this computer. On the phone, you allow USB debugging for this
-computer, sign in to CodeDroid with Google, and tap **Allow** when your computer first connects.
+Claude Desktop, Windsurf, Zed) and signs this computer in with the Google account you use in
+CodeDroid, in your browser. Every phone signed in to CodeDroid with that account is reached, with
+nothing to pair: open CodeDroid on the phone and tap **Allow** when your computer first connects.
 Then restart your coding client.
+
+With a phone plugged in (**USB debugging** on), `setup` also installs the CodeDroid app on it if
+needed, turns on its accessibility service, and signs it in with your account, so an emulator or a
+phone with no Google account on it needs no sign-in of its own. Setting up over USB needs
+[adb](https://developer.android.com/tools/releases/platform-tools).
 
 Already have the plugin? Ask your agent to "set up my phone" instead: it does the same, and asks
 you before installing anything.
-Setting up over USB needs [adb](https://developer.android.com/tools/releases/platform-tools).
 
 ### Or step by step
 
@@ -86,20 +88,24 @@ Restart your coding client after installing.
 
 Using another client? See [manual MCP setup](docs/reference.md#mcp-configuration).
 
-#### 2. Pair your phone
+#### 2. Sign in, or pair your phone
 
 1. Install CodeDroid from [get.codedroid.com](https://get.codedroid.com), sign in, and turn on its
    accessibility service when it asks.
-2. Open **CodeDroid → Settings → Computers → Pair a computer**.
-3. Run the command shown there in your computer's terminal. For example:
+2. On your computer, run:
 
    ```bash
-   npx -y @codedroid/mcp pair ABCD-EFGH
+   npx -y @codedroid/mcp login
    ```
 
-4. Tap **Allow** on your phone when prompted.
+   and sign in with the same Google account in the browser that opens. Every phone on the account
+   is reached. Check that the page shows the code the terminal printed.
+3. Tap **Allow** on your phone when prompted.
 
-Use the command exactly as shown. Pairing codes expire after 10 minutes and work once.
+Without a browser, or for one phone that is not on your account, pair instead: open **CodeDroid →
+Settings → Computers → Pair a computer** on the phone and run the command shown there, for example
+`npx -y @codedroid/mcp pair ABCD-EFGH`, exactly as shown. Pairing codes expire after 10 minutes and
+work once.
 
 ### Ask your agent
 
@@ -190,7 +196,8 @@ Check everything at once (Node, adb, pairing, the daemon, each phone, your codin
 npx -y @codedroid/mcp doctor
 ```
 
-Manage or revoke computer access in **CodeDroid → Settings → Computers**.
+Manage or revoke computer access in **CodeDroid → Settings → Computers**. Run flows from CI with
+the [GitHub Action](docs/reference.md#ci-replay-flows-from-github-actions).
 
 See the [reference guide](docs/reference.md) for tools, manual setup, configuration,
 [troubleshooting](docs/reference.md#troubleshooting), and development.

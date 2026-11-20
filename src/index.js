@@ -10,8 +10,10 @@
  * Modes:
  *   codedroid-mcp                  stdio shim → daemon (auto-starts it)  [default]
  *   codedroid-mcp daemon           run the daemon in the foreground
- *   codedroid-mcp setup [code]     add CodeDroid to this computer's coding clients, then pair (with
- *                                  no code: set up and pair the phone on adb)
+ *   codedroid-mcp setup [code]     add CodeDroid to this computer's coding clients, sign in, and
+ *                                  set up the phone on adb if there is one (with a code: pair)
+ *   codedroid-mcp login            sign in with Google: every phone on the account is reached
+ *   codedroid-mcp logout           sign out
  *   codedroid-mcp pair <code>      pair with the phone showing <code> too, then connect to it
  *   codedroid-mcp connect [phone]  connect to the phones now (and get it allowed there), then exit
  *   codedroid-mcp unpair <phone>   forget one paired phone
@@ -82,10 +84,17 @@ screen, tap and type, hand CodeDroid a task, and run adb on this computer.
 
 Usage:
   codedroid-mcp                     MCP stdio server (auto-starts the shared daemon)
-  codedroid-mcp setup [code]        Add CodeDroid to the coding clients installed here, then
-                                    pair with the phone showing <code>; with no code, set up
-                                    the phone on adb (install CodeDroid, turn it on) and pair
-                                    (--client=<ids> to choose, --yes to skip the questions)
+  codedroid-mcp setup [code]        Add CodeDroid to the coding clients installed here, sign in
+                                    with Google, and set up the phone on adb if one is plugged in
+                                    (install CodeDroid, turn it on, sign it in); with a code,
+                                    pair with the phone showing it instead
+                                    (--client=<ids> to choose, --yes to skip the questions,
+                                    --no-login to skip signing in)
+  codedroid-mcp login               Sign in with the Google account you use in CodeDroid: every
+                                    phone signed in with it is reached, with nothing to pair
+                                    (--ci prints a token for CODEDROID_TOKEN instead of saving,
+                                    --no-browser, --server=<url>)
+  codedroid-mcp logout              Sign out; pairings stay
   codedroid-mcp pair <code>         Pair with the phone showing <code>, then connect
                                     (--server=<url> when the phone's command has it).
                                     Pair each phone: earlier pairings stay.
@@ -115,11 +124,12 @@ Usage:
                                     it, where you can tap, type and press Back or Home
                                     (--interval=<seconds>, default 3)
 
-Pair first: plug the phone in with USB debugging on and run setup, or on the phone, open CodeDroid >
-Settings > Computers > Pair a computer, and run the command it shows here; do the same on every
-phone to use. A phone needs CodeDroid signed in, online, with its accessibility service on. The
-adb tool, alone, needs the phone on this computer's adb. With several phones paired, tools take a
-device argument naming one.
+Sign in first: run setup (or login) and sign in with the Google account you use in CodeDroid, and
+every phone signed in with it is reached. Or pair one phone at a time: plug it in with USB
+debugging on and run setup, or on the phone, open CodeDroid > Settings > Computers > Pair a
+computer, and run the command it shows here. A phone needs CodeDroid signed in, online, with its
+accessibility service on. The adb tool, alone, needs the phone on this computer's adb. With several
+phones, tools take a device argument naming one.
 
 Options:
   --port=<n>   Daemon port (default 4826; env CODEDROID_MCP_PORT)
@@ -129,6 +139,7 @@ Options:
   --help       This text
 
 Env: CODEDROID_SERIAL picks the adb tool's device when several are attached; ADB is the adb binary.
+     CODEDROID_TOKEN is the account token from login --ci (CI); CODEDROID_SERVER its server.
 
 Clients:
   claude mcp add codedroid -- npx -y @codedroid/mcp
@@ -189,6 +200,29 @@ async function confirm(question) {
   return !/^n/i.test(answer.trim());
 }
 
+/** Stops with the next step when this computer has no phone to reach: not signed in and not paired. */
+async function requirePhones() {
+  const { PAIRING_STEPS, readAccount, readHosts } = await import("./host.js");
+  if (!readHosts().length && !readAccount()) fatal(`This computer is not signed in or paired with a phone. ${PAIRING_STEPS}`);
+}
+
+/** Signs this computer in, saying what to do, and lists the phones; what `login` and `setup` share. */
+async function runLogin({ server, ci = false, browser = true } = {}) {
+  const { login } = await import("./account.js");
+  const { DEFAULT_SERVER, describeHost, accountHost } = await import("./host.js");
+  const say = (line) => process.stdout.write(`${line}\n`);
+  const account = await login({ server: server ?? DEFAULT_SERVER, log: say, open: browser, save: !ci });
+  const who = account.email ?? "your account";
+  if (ci) {
+    say(`Signed in as ${who}. Nothing was saved here. Keep this token as the CODEDROID_TOKEN secret of your CI:\n\n${account.refresh_token}\n`);
+    say("It stays valid while used at least every 30 days, and until this computer is removed in CodeDroid > Settings > Computers on a phone.");
+    return account;
+  }
+  const phones = account.devices.map((d) => describeHost(accountHost(account, d)));
+  say(`Signed in as ${who}. ${phones.length ? `Phones on the account: ${phones.join(", ")}.` : "No phone is signed in to CodeDroid with this account yet: sign in on the phone with the same account, or plug it in and run setup."}`);
+  return account;
+}
+
 function printResult(result) {
   for (const item of result.content ?? []) {
     if (item.type === "text") process.stdout.write(item.text + "\n");
@@ -218,6 +252,27 @@ async function main() {
     return;
   }
 
+  if (command === "login") {
+    if (args._.length > 1) fatal("Usage: codedroid-mcp login [--ci] [--no-browser] [--server=<url>]", 2);
+    await runLogin({ server: args.server, ci: !!args.ci, browser: !args["no-browser"] });
+    if (args.ci) return;
+    // The running daemon reads the account on its next request; its phone list refreshes with it.
+    const health = await daemonHealth(port);
+    if (health) process.stdout.write("The running daemon picks the account up on its next call.\n");
+    return;
+  }
+
+  if (command === "logout") {
+    const { logout } = await import("./account.js");
+    const { readPairings } = await import("./host.js");
+    const account = await logout();
+    if (!account) return void process.stdout.write("This computer was not signed in.\n");
+    if (account.fromEnv) return void process.stdout.write("Signed out on the server. Remove CODEDROID_TOKEN from the environment too.\n");
+    const left = readPairings().length;
+    process.stdout.write(`Signed out ${account.email ?? "the account"}.${left ? ` ${left} pairing${left === 1 ? "" : "s"} stay.` : ""}\n`);
+    return;
+  }
+
   if (command === "e2e") {
     const sub = args._[1];
     const usage = sub === "verdicts" ? "Usage: codedroid-mcp e2e verdicts <file> [dir] | codedroid-mcp e2e verdicts --due [dir]" : "Usage: codedroid-mcp e2e report [dir] [--check]";
@@ -241,7 +296,6 @@ async function main() {
   if (command === "flow") {
     const usage = "Usage: codedroid-mcp flow run <file.yaml> [--device=<phone>] [--env=KEY=VALUE,...] [--screenshots=<dir>]";
     if (args._[1] !== "run" || !args._[2]) fatal(usage, 2);
-    const { readHosts, PAIRING_STEPS } = await import("./host.js");
     const { default: path } = await import("path");
     const file = path.resolve(args._[2]);
     const env = {};
@@ -256,7 +310,7 @@ async function main() {
       ...(args.screenshots ? { screenshot_dir: path.resolve(args.screenshots) } : {}),
       ...(args.device ? { device: args.device } : {}),
     };
-    if (!readHosts().length) fatal(`This computer is not paired with a phone. ${PAIRING_STEPS}`);
+    await requirePhones();
     const client = await daemonClient(port, enableAdbTool);
     let result;
     for (;;) {
@@ -272,12 +326,12 @@ async function main() {
 
   if (command === "doctor") {
     const { collectDoctorReport, formatDoctorReport, realProbes } = await import("./doctor.js");
-    const { readHosts } = await import("./host.js");
+    const { readAccount, readHosts } = await import("./host.js");
     const report = await collectDoctorReport(
       realProbes({
         daemonHealth: () => daemonHealth(port),
         phoneStatus: async () => {
-          if (!readHosts().length) return null;
+          if (!readHosts().length && !readAccount()) return null;
           const client = await daemonClient(port, enableAdbTool);
           try {
             const result = await client.callTool({ name: "codedroid_status", arguments: {} }, undefined, { timeout: 150_000 });
@@ -293,8 +347,7 @@ async function main() {
   }
 
   if (command === "viewer") {
-    const { readHosts, PAIRING_STEPS } = await import("./host.js");
-    if (!readHosts().length) fatal(`This computer is not paired with a phone. ${PAIRING_STEPS}`);
+    await requirePhones();
     const { startViewer } = await import("./viewer.js");
     const seconds = Number(args.interval ?? 3);
     if (!(seconds >= 1 && seconds <= 60)) fatal("--interval takes 1 to 60 seconds.", 2);
@@ -345,9 +398,20 @@ async function main() {
     }
     command = "pair";
     if (args._.length === 1) {
-      const { describeHost, deviceKey, PAIR_BY_HAND, readHosts } = await import("./host.js");
+      const { describeHost, deviceKey, PAIR_BY_HAND, LOGIN_STEP, readAccount, readHosts } = await import("./host.js");
       const { setUpPhone } = await import("./phone-setup.js");
       const say = (line) => process.stdout.write(`${line}\n`);
+      // Signing in reaches every phone on the account: first, unless asked not to, or there is
+      // no terminal to sign in from (a script runs login once, or sets CODEDROID_TOKEN).
+      if (!readAccount() && !args["no-login"] && process.stdin.isTTY) {
+        if (args.yes || (await confirm("Sign in with the Google account you use in CodeDroid, to reach your phones? [Y/n] "))) {
+          try {
+            await runLogin({ server: args.server });
+          } catch (e) {
+            say(`Not signed in: ${e.message}`);
+          }
+        }
+      }
       const phone = await setUpPhone({
         log: say,
         // Never unasked: without a terminal to ask in, only --yes installs (agents have codedroid_setup_phone).
@@ -364,11 +428,17 @@ async function main() {
         const hosts = readHosts();
         say(phone.detail);
         if (phone.status === "no-phone") {
-          say(
-            hosts.length
-              ? `Paired with ${hosts.map(describeHost).join(", ")}.`
-              : `To pair, plug the phone in with USB debugging on and run this again, or pair by hand. ${PAIR_BY_HAND}`,
-          );
+          if (hosts.length) {
+            say(`Phones: ${hosts.map(describeHost).join(", ")}. Checking the connection.`);
+            command = "connect";
+            args._ = ["connect"];
+          } else {
+            say(
+              readAccount()
+                ? "No phone is on the account yet: open CodeDroid on the phone and sign in with the same Google account, or plug it in with USB debugging on and run this again."
+                : `To reach a phone: ${LOGIN_STEP} Or plug the phone in with USB debugging on and run this again, or pair by hand. ${PAIR_BY_HAND}`,
+            );
+          }
         } else if (phone.status === "not-installed") {
           if (process.stdin.isTTY) say("Left it as it was.");
           else {
@@ -379,7 +449,7 @@ async function main() {
           process.exitCode = 1;
           if (phone.status === "failed" && !hosts.length && !phone.detail.includes(PAIR_BY_HAND)) say(`To pair by hand: ${PAIR_BY_HAND}`);
         }
-        return;
+        if (command !== "connect") return;
       }
     }
   }
@@ -427,7 +497,7 @@ async function main() {
     if (!code && !paired) fatal("Usage: codedroid-mcp pair <code> [--server=<url>]. The phone shows the command: CodeDroid > Settings > Computers > Pair a computer.");
     const { DEFAULT_SERVER, deviceKey, pair } = await import("./host.js");
     const host = paired ?? (await pair(code, { server: args.server ?? DEFAULT_SERVER }));
-    log(`Paired with ${host.device.model ?? "the phone"} through ${host.server}.`);
+    if (!host.account) log(`Paired with ${host.device.model ?? "the phone"} through ${host.server}.`);
     args._ = ["pair", deviceKey(host)];
     // A daemon that serves several phones reads new pairings itself. An older one connected, or
     // connecting, holds the old pairing's link; a disconnected one reads the new one.
@@ -466,8 +536,7 @@ async function main() {
   }
 
   if (command === "status" || command === "connect" || command === "pair") {
-    const { PAIRING_STEPS, readHosts } = await import("./host.js");
-    if (!readHosts().length) fatal(`This computer is not paired with a phone. ${PAIRING_STEPS}`);
+    await requirePhones();
     if (command !== "status") log("Connecting. The first time, the phone asks whether to allow this computer: tap Allow.");
     const device = args._.slice(1).join(" ") || undefined;
     const client = await daemonClient(port, enableAdbTool);

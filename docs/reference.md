@@ -94,9 +94,33 @@ daemon like the agent, so its screenshots queue with the agent's calls and never
 them. The URL holds a random path, the server listens on loopback only, and a page from another
 origin cannot reach it.
 
+## Sign in: the account
+
+```bash
+npx -y @codedroid/mcp login
+npx -y @codedroid/mcp logout
+```
+
+`login` signs this computer in with the Google account you use in CodeDroid: it prints a link and a
+code, opens the link in your browser (`--no-browser` to only print it), and waits while you check
+the code and sign in. From then on every phone signed in to CodeDroid with that account is reached,
+with nothing to pair, including phones signed in later: the daemon reads the account's phones when
+it starts and every five minutes, and `codedroid_devices` and `codedroid_status` read them again
+when called. `setup` runs `login` first unless `--no-login` is passed or there is no terminal to
+sign in from.
+
+The server keeps one login per computer, named after it, and the phone shows it in **Settings →
+Computers** like a paired computer: tap **Allow** once when the computer first connects, and
+**Remove** to end the login. `logout` ends it from the computer. Pairings made with a code stay
+either way. A login unused for 30 days lapses; run `login` again.
+
+The account is kept in `~/.codedroid/host.json` beside the pairings, readable only by your user. In
+CI, set `CODEDROID_TOKEN` instead (see [CI](#ci-replay-flows-from-github-actions)).
+
 ## Manage access
 
-Paired computers appear in **Settings → Computers** on the phone.
+Computers appear in **Settings → Computers** on the phone: those paired with a code and those
+signed in with the account.
 
 - **Remove** revokes a computer's access. Pair again to reconnect it.
 - **Stop** disconnects the active computer and blocks it for one minute.
@@ -203,19 +227,29 @@ comments and formatting, and never rewrites a config file it can't parse. `--cli
 even ones it didn't detect. `--yes` skips the confirmation. With a pairing code, `setup` also pairs,
 like `pair`.
 
-Without a code, and with a phone on adb (USB or Wireless debugging), `setup` then sets the phone up:
+Without a code, `setup` first signs this computer in ([the account](#sign-in-the-account)), unless
+it already is, `--no-login` is passed, or there is no terminal. Then, with a phone on adb (USB or
+Wireless debugging), it sets the phone up:
 
 1. Installs CodeDroid from get.codedroid.com if it is missing, and checks the download against the
    published SHA-256. It asks first. Outside a terminal it installs only with `--yes`.
 2. Turns on CodeDroid's accessibility service, keyboard and permissions over adb, as the USB
    install on get.codedroid.com does. Android's restricted settings don't apply to this.
-3. Waits up to five minutes for you to sign in on the phone.
-4. Pairs: CodeDroid hands adb a pairing code, readable only by adb and the app itself, so you
-   don't type one. Then it connects, and you tap **Allow** on the phone.
+3. Signs the phone in. Signed in on the computer, it asks the server for a one-time code and hands
+   it to CodeDroid over adb, readable only by adb and the app itself, so the phone is signed in as
+   your account with no Google sign-in on it: an emulator or a CI phone needs no account of its
+   own. A phone signed in by this computer allows the account's computers without asking (a switch
+   in **Settings → Computers**, off again at sign-out). Otherwise it waits up to five minutes for you
+   to sign in on the phone.
+4. Reaches the phone. On your account, there is nothing to pair: `setup` waits for the phone to
+   register and connects. A phone signed in as another account, or an older CodeDroid, is paired
+   instead: CodeDroid hands adb a pairing code, so you don't type one. Then it connects, and you
+   tap **Allow** on the phone.
 
 With several devices on adb, set `CODEDROID_SERIAL` to the one to set up. With no phone on adb, or
-no adb, `setup` says how to pair by hand. If the phone removed this computer, `setup` pairs it
-again. Pairing over USB needs a CodeDroid version that has it; older ones are told to update.
+no adb, `setup` connects to the account's phones, or says how to pair by hand. If the phone removed
+this computer, `setup` pairs it again. Signing in and pairing over USB need a CodeDroid version that
+has them; older ones are told to update or pair.
 `setup` exits with 1 when the phone isn't set up (signed out, declined outside a terminal, failed).
 
 ### Quality report for an app's e2e folder
@@ -464,6 +498,8 @@ an HTTP client.
 | `CODEDROID_MCP_PORT` | Set the local daemon port. Default: `4826`. |
 | `CODEDROID_MCP_ADB=0` | Leave out the host-side `adb` tool for this client (`--no-adb` does the same); with the `daemon` command, for every client. |
 | `CODEDROID_MCP_CLIENT` | Set the client name shown on the phone. Usage records also use it for a call that names no client. |
+| `CODEDROID_TOKEN` | The account token `login --ci` printed: the daemon and CLI are signed in with it, and `~/.codedroid/host.json` is not read for an account or written. For CI. |
+| `CODEDROID_SERVER` | The CodeDroid server `CODEDROID_TOKEN` is for. Default: `https://orchestrator.codedroid.com`. |
 | `ADB` | Set the path to the adb executable. Otherwise it is looked for on `PATH`, in `ANDROID_HOME`, `ANDROID_SDK_ROOT`, and the usual install locations. |
 | `CODEDROID_DEBUG=1` | Include stack traces in diagnostic output. |
 
@@ -471,6 +507,8 @@ an HTTP client.
 
 ```bash
 npx -y @codedroid/mcp setup
+npx -y @codedroid/mcp login
+npx -y @codedroid/mcp logout
 npx -y @codedroid/mcp pair ABCD-EFGH
 npx -y @codedroid/mcp connect
 npx -y @codedroid/mcp status
@@ -483,7 +521,8 @@ npx -y @codedroid/mcp unpair "Pixel 9"
 npx -y @codedroid/mcp stop
 ```
 
-`setup` adds CodeDroid to your coding clients ([details](#setup-command)). `connect` reconnects a paired computer. `stop` shuts down the local daemon.
+`setup` adds CodeDroid to your coding clients and signs in ([details](#setup-command)). `login` and
+`logout` are [the account](#sign-in-the-account). `connect` connects to the phones. `stop` shuts down the local daemon.
 `doctor` checks Node, adb, this computer's pairing and token, the daemon, each phone's link and
 which coding clients have CodeDroid, one line each with what to fix, and exits 1 when something
 needs fixing. `flow run` replays a [flow](#flows-record-and-replay); `viewer` opens the
@@ -491,10 +530,12 @@ needs fixing. `flow run` replays a [flow](#flows-record-and-replay); `viewer` op
 
 ### Several phones
 
-Run `pair` on each phone to add it. Pairing another phone keeps the earlier ones. Pairing the same
-phone again replaces its old pairing. Reinstalling CodeDroid or clearing its data gives the phone a
-new id, so its old pairing stays until you `unpair` it. The running daemon picks up `pair` and
-`unpair` on its next request, so clients stay connected.
+Every phone signed in to CodeDroid with your account is there once you `login`. For a phone that is
+not, run `pair` on it. Pairing another phone keeps the earlier ones. Pairing the same phone again
+replaces its old pairing. Reinstalling CodeDroid or clearing its data gives the phone a new id, so
+its old pairing stays until you `unpair` it; a phone on the account is reached by its new id by
+itself. The running daemon picks up `login`, `pair` and `unpair` on its next request, so clients
+stay connected.
 
 Every phone tool takes a `device` argument. It can be a phone's id, the start of its id, or its
 model or part of the model ("Pixel" for "Google Pixel 5"), as long as it names only one paired
@@ -508,6 +549,37 @@ others. With several phones, resource URIs end in `?device=<id>`.
 you name (`npx -y @codedroid/mcp status "Pixel 9"`, or `{"device": "Pixel 9"}`). The CLI's `call`
 takes `device` the same way: `npx -y @codedroid/mcp call get_screen '{"device": "Pixel 9"}'`.
 
+## CI: replay flows from GitHub Actions
+
+A [flow](#flows-record-and-replay) replays on your own phone from any runner, with no emulator and
+no cable: the phone stays wherever it is, online, with CodeDroid open. Once, on your computer:
+
+```bash
+npx -y @codedroid/mcp login --ci
+```
+
+It prints a token and saves nothing. Keep it as the repository secret `CODEDROID_TOKEN`. It is a
+login like any other: the phone shows it in **Settings → Computers**, and it stays valid while used
+at least every 30 days. Then, in a workflow:
+
+```yaml
+- uses: codedroid-team/codedroid-mcp/action@main
+  with:
+    token: ${{ secrets.CODEDROID_TOKEN }}
+    flow: e2e/flows/TC-01.yaml
+    device: Pixel 9          # optional with one phone on the account
+```
+
+The action runs `npx -y @codedroid/mcp flow run` with `CODEDROID_TOKEN` set; its `version` input
+pins the package (this release by default), `env` passes `KEY=VALUE,...` to the flow, and
+`screenshots` names a directory for `takeScreenshot` to upload afterwards. The step fails when a
+step of the flow fails, with the screen at that point in the log. Anything else runs the same way:
+`CODEDROID_TOKEN=... npx -y @codedroid/mcp call get_screen`.
+
+The phone must be signed in to CodeDroid with the account, online, and must have allowed the login
+once (tap **Allow** the first time, or set the phone up with `setup` from a signed-in computer, which
+allows the account's computers without asking).
+
 ## Troubleshooting
 
 Run `npx -y @codedroid/mcp doctor` for every check at once, `npx -y @codedroid/mcp status` for the
@@ -515,7 +587,8 @@ phones, or call `codedroid_status` from your agent to diagnose a connection prob
 
 | Problem | Action |
 | --- | --- |
-| Computer is not paired, or pairing was removed | Plug the phone in with USB debugging on and run `npx -y @codedroid/mcp setup`, or create a new code in **Settings → Computers → Pair a computer** and run the displayed command. |
+| Computer is not signed in or paired, or the login or pairing was removed | Run `npx -y @codedroid/mcp login`, or plug the phone in with USB debugging on and run `npx -y @codedroid/mcp setup`, or create a new code in **Settings → Computers → Pair a computer** and run the displayed command. |
+| Signed in, but no phone is listed | On the phone, open CodeDroid signed in with the same Google account, online. The daemon lists the account's phones again within five minutes; `codedroid_devices` and `status` list them at once. |
 | `setup` waits for sign-in | On the phone, tap send in CodeDroid and sign in with Google. |
 | `setup` says the phone blocked installing over USB | Turn on **Install via USB** in Developer options (some Xiaomi and Oppo phones), then run it again. |
 | Phone is not connected | Open CodeDroid, check its internet connection and sign-in, and enable **Allow computers to connect**. |
@@ -550,7 +623,9 @@ so an upgrade reaches every client on the computer. A call in flight at that mom
 Calls interrupted by a connection loss are not automatically replayed: an action may have
 completed before its response was lost. Read the screen before deciding whether to retry.
 
-Pairing credentials, one per phone, are stored in `~/.codedroid/host.json`, readable only by your user account. The
+The account's login and the pairing credentials, one per paired phone, are stored in
+`~/.codedroid/host.json`, readable only by your user account. The account connects to each of its
+phones with a short-lived access token renewed from the login as needed. The
 daemon serves MCP on loopback only and requires your daemon token, kept in
 `~/.codedroid/daemon-token` (0600): the daemon creates it the first time it starts, and clients on
 this computer read it. A process that cannot read your home directory cannot drive the phone or the

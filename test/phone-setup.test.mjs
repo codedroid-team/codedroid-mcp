@@ -22,8 +22,8 @@ const DEVICES = "List of devices attached\nSERIAL1\tdevice\n\n";
  * A phone as adb sees it. `installed`, `accessibility` and `signedIn` change as setup acts;
  * `pairing` answers mcp/pairing in turn, the last one for good.
  */
-function fakePhone({ installed = false, accessibility = false, signedIn = true, pairing = [{ code: "ABCD-EFGH" }], devices = DEVICES, computers } = {}) {
-  const phone = { installed, accessibility, signedIn, calls: [] };
+function fakePhone({ installed = false, accessibility = false, signedIn = true, pairing = [{ code: "ABCD-EFGH" }], devices = DEVICES, computers, email = "alice@example.com", signin = true } = {}) {
+  const phone = { installed, accessibility, signedIn, calls: [], email, signedInWith: [] };
   const answers = [...pairing];
   phone.adb = async (args, { serial } = {}) => {
     const line = args.join(" ");
@@ -50,6 +50,15 @@ function fakePhone({ installed = false, accessibility = false, signedIn = true, 
     if (command.includes("content://com.codedroid.agent/device/status")) {
       assert.match(command, /--user 10 /);
       return `Row: 0 result=${JSON.stringify({ deviceId: "dev-1", server: SERVER, signedIn: phone.signedIn, accessibility: phone.accessibility, computers })}\n`;
+    }
+    if (command.includes("content://com.codedroid.agent/mcp/signin")) {
+      if (!signin) return `Row: 0 result=${JSON.stringify({ error: "Unknown endpoint: /mcp/signin" })}\n`;
+      const code = /code=([^\s&]+)/.exec(command)?.[1];
+      if (phone.signedIn) return `Row: 0 result=${JSON.stringify({ error: "already_signed_in", email: phone.email })}\n`;
+      if (!code) return `Row: 0 result=${JSON.stringify({ error: "no_code" })}\n`;
+      phone.signedInWith.push(decodeURIComponent(code));
+      phone.signedIn = true;
+      return `Row: 0 result=${JSON.stringify({ ok: true, email: phone.email })}\n`;
     }
     if (command.includes("content://com.codedroid.agent/mcp/pairing")) {
       const answer = answers.length > 1 ? answers.shift() : answers[0];
@@ -118,6 +127,89 @@ try {
     assert.deepEqual(readHosts({ home }).map((h) => [h.server, h.device.id]), [[SERVER, "dev-1"]], "pairs with the server the phone uses");
     assert.ok(log.some((line) => /sign in with Google/.test(line)), "says to sign in on the phone");
     assert.deepEqual(fs.readdirSync(root).filter((name) => name.startsWith("codedroid-")), [], "the download is deleted");
+  }
+
+  // ── Signed in on this computer: the phone is signed in with a code, and reached with no pairing ──
+  {
+    const home = newHome();
+    const phone = fakePhone({ installed: true, accessibility: true, signedIn: false, pairing: [{ error: "signed_out" }] });
+    const account = { server: SERVER, email: "alice@example.com", refresh_token: "r", devices: [] };
+    const listed = [];
+    let minted = 0;
+    const result = await run(phone, fakeWeb(), {
+      home,
+      account,
+      mintCode: async (a) => (assert.equal(a, account), minted++, "cdsi_abc"),
+      listDevices: async () => (listed.push(1), listed.length < 2 ? [] : [{ id: "dev-1", model: "Pixel 9", linked: true }]),
+    });
+    assert.equal(result.status, "paired", result.detail);
+    assert.equal(minted, 1);
+    assert.deepEqual(phone.signedInWith, ["cdsi_abc"], "the code reaches the app over adb");
+    assert.ok(phone.signedIn);
+    assert.equal(result.host.account, true);
+    assert.equal(result.host.device.id, "dev-1");
+    assert.match(result.detail, /on your account/);
+    assert.ok(!phone.calls.some((line) => line.includes("mcp/pairing")), "nothing to pair");
+    assert.ok(!phone.calls.some((line) => line.includes("am start")), "no sign-in screen to open");
+    assert.deepEqual(readHosts({ home }), [], "no pairing was written: the account reaches the phone");
+
+    // Already on the account: nothing to do.
+    const again = await run(fakePhone({ installed: true, accessibility: true }), fakeWeb(), { home, account: { ...account, devices: [{ id: "dev-1", model: "Pixel 9" }] } });
+    assert.equal(again.status, "already-paired");
+    assert.equal(again.host.account, true);
+  }
+
+  // ── Signed in on this computer, but the phone is someone else's, or too old, or on another server: pair ──
+  {
+    const account = { server: SERVER, email: "alice@example.com", refresh_token: "r", devices: [] };
+    const other = fakePhone({ installed: true, accessibility: true, email: "bob@example.com" });
+    const log = [];
+    let result = await run(other, fakeWeb(), { home: newHome(), account, log: (l) => log.push(l), mintCode: async () => assert.fail("no code for another account's phone") });
+    assert.equal(result.status, "paired");
+    assert.ok(!result.host.account, "paired the old way");
+    assert.ok(log.some((l) => /signed in as bob@example.com, not alice@example.com/.test(l)));
+
+    result = await run(fakePhone({ installed: true, accessibility: true, signin: false }), fakeWeb(), { home: newHome(), account, mintCode: async () => assert.fail("an app without mcp/signin") });
+    assert.equal(result.status, "paired");
+    assert.ok(!result.host.account, "an older app pairs");
+
+    result = await run(fakePhone({ installed: true, accessibility: true }), fakeWeb(), { home: newHome(), account: { ...account, server: "https://orchestrator.dev2.codedroid.com" }, mintCode: async () => assert.fail("another server") });
+    assert.equal(result.status, "paired");
+    assert.ok(!result.host.account, "a phone on another server pairs");
+
+    // Already paired, and the account cannot reach the phone: the pairing is kept, not made again.
+    for (const [why, phone] of [
+      ["an app without mcp/signin", fakePhone({ installed: true, accessibility: true, signin: false, computers: ["h"] })],
+      ["another account's phone", fakePhone({ installed: true, accessibility: true, email: "bob@example.com", computers: ["h"] })],
+    ]) {
+      const home = newHome();
+      saveHosts([{ server: SERVER, host_id: "h", token: "t", device: { id: "dev-1", model: "Pixel 9" } }], { home });
+      result = await run(phone, fakeWeb(), { home, account, mintCode: async () => assert.fail(why) });
+      assert.equal(result.status, "already-paired", why);
+      assert.equal(result.host.token, "t", why);
+      assert.ok(!phone.calls.some((line) => line.includes("mcp/pairing")), `${why}: no new pairing`);
+    }
+
+    // The code could not be minted: the user signs in on the phone instead, and it is reached as the account once registered.
+    const phone = fakePhone({ installed: true, accessibility: true, signedIn: false, pairing: [{ error: "signed_out" }] });
+    const quiet = [];
+    result = await run(phone, fakeWeb(), {
+      home: newHome(),
+      account,
+      log: (l) => quiet.push(l),
+      signInWaitMs: 50,
+      pollMs: 5,
+      mintCode: async () => { throw new Error("offline"); },
+      listDevices: async () => (phone.signedIn ? [{ id: "dev-1", model: "Pixel 9" }] : (phone.signedIn = true, [])),
+    });
+    assert.equal(result.status, "paired", result.detail);
+    assert.ok(quiet.some((l) => /could not be signed in from here \(offline\)/.test(l)));
+    assert.ok(phone.calls.some((line) => line.includes("am start")), "opens CodeDroid to sign in");
+
+    // Signed in, but the phone never registers: say so.
+    result = await run(fakePhone({ installed: true, accessibility: true }), fakeWeb(), { home: newHome(), account, registerWaitMs: 20, signInWaitMs: 20, pollMs: 5, listDevices: async () => [] });
+    assert.equal(result.status, "failed");
+    assert.match(result.detail, /not registered with CodeDroid's server yet/);
   }
 
   // ── Declined, or never asked: the phone is left alone ───────────────

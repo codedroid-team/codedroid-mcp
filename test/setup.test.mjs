@@ -277,7 +277,7 @@ try {
     assert.equal(result.code, 0, result.stderr);
     assert.match(result.stdout, /^Cursor: added the server to .*mcp\.json$/m);
     assert.match(result.stdout, /Restart Cursor to load CodeDroid\./);
-    assert.match(result.stdout, /adb is not installed, so the phone can't be set up over USB\. Get it: https:\/\/developer\.android\.com\S+\nTo pair, plug the phone in with USB debugging on/);
+    assert.match(result.stdout, /adb is not installed, so the phone can't be set up over USB\. Get it: https:\/\/developer\.android\.com\S+\nTo reach a phone: Run npx -y @codedroid\/mcp login/);
     assert.deepEqual(readJson(path.join(home, ".cursor", "mcp.json")), { mcpServers: { codedroid: SERVER } });
 
     result = await cli(["setup", "--client=cursor", "--yes"]);
@@ -300,7 +300,7 @@ try {
     assert.equal(result.code, 1, "a client it could not set up fails the run");
     assert.match(result.stdout, /^Cursor: failed: .*EISDIR/m);
     assert.match(result.stdout, /^Windsurf: added the server to /m);
-    assert.match(result.stdout, /adb is not installed, so the phone can't be set up over USB\. Get it: https:\/\/developer\.android\.com\S+\nTo pair, plug the phone in with USB debugging on/);
+    assert.match(result.stdout, /adb is not installed, so the phone can't be set up over USB\. Get it: https:\/\/developer\.android\.com\S+\nTo reach a phone: Run npx -y @codedroid\/mcp login/);
   }
 
   console.log("setup.test.mjs: ALL PASS");

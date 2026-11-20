@@ -5,9 +5,14 @@
  *   1. Install CodeDroid from get.codedroid.com if it is missing (checked against the feed's sha256).
  *   2. Turn on what its onboarding asks for (Accessibility, the keyboard, permissions), as
  *      get.codedroid.com's USB install does: over adb, Android 13+'s restricted settings never apply.
- *   3. Wait for the user to sign in on the phone, the one step adb cannot do.
- *   4. Pair with a code the app hands the adb shell (its content provider answers only the shell
- *      and itself), so no code is carried by hand. The phone still asks Allow on the first connect.
+ *   3. Sign the phone in. A computer signed in to CodeDroid (`login`, account.js) hands the app a
+ *      one-time code it minted as its account (`mcp/signin`), so an emulator or a CI phone needs no
+ *      Google sign-in; otherwise, wait for the user to sign in on the phone, the one step adb
+ *      cannot do.
+ *   4. Reach it. A phone on the computer's account needs no pairing: once the app has registered
+ *      it, the computer connects as the account. Otherwise pair with a code the app hands the adb
+ *      shell (its content provider answers only the shell and itself), so no code is carried by
+ *      hand. The phone asks Allow on the first connect, unless it was signed in by this computer.
  */
 import { execFile } from "child_process";
 import { createHash } from "crypto";
@@ -15,8 +20,9 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { promisify } from "util";
+import { fetchDevices, mintSignInCode } from "./account.js";
 import { adbLocations } from "./adb-tool.js";
-import { DEFAULT_SERVER, PAIR_BY_HAND, pair, readHosts } from "./host.js";
+import { DEFAULT_SERVER, PAIR_BY_HAND, accountHost, normalizeServer, pair, readAccount, readPairings } from "./host.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -24,6 +30,8 @@ const APP = "com.codedroid.agent";
 export const APK_FEED = "https://get.codedroid.com/api/apk";
 const POLL_MS = 2_000;
 const INSTALL_TIMEOUT_MS = 300_000;
+// How long a signed-in phone has to register with the server, so the account lists it.
+const REGISTER_WAIT_MS = 60_000;
 
 // web_client's phone-setup.sh, which get.codedroid.com runs after a USB install. Each step is
 // best-effort: whatever a phone refuses, the app asks for itself.
@@ -117,9 +125,12 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  * @param {(model: string) => Promise<boolean>} [options.confirmInstall] asked before installing the app; no by default
  * @param {number} [options.signInWaitMs] how long to wait for the user to sign in on the phone
  * @param {string} [options.serial] the adb serial of the phone, when several are on adb
+ * @param {object|null} [options.account] the account this computer is signed in with (host.js readAccount)
  * @returns {Promise<{status: "no-phone" | "not-installed" | "paired" | "already-paired" | "signed-out" | "failed", detail: string, host?: object, model?: string}>}
  *   no-phone: adb is missing or has no single phone ready, so pair by hand instead.
  *   not-installed: CodeDroid is not on the phone, and confirmInstall said no.
+ *   paired: this computer reaches the phone: `host` is its entry (host.js), `host.account` when
+ *   through the account rather than a pairing.
  */
 export async function setUpPhone({
   adb = adbRunner(),
@@ -132,6 +143,10 @@ export async function setUpPhone({
   home = os.homedir(),
   tmpdir = os.tmpdir(),
   pollMs = POLL_MS,
+  account = readAccount({ home, env }),
+  mintCode = mintSignInCode,
+  listDevices = fetchDevices,
+  registerWaitMs = REGISTER_WAIT_MS,
 } = {}) {
   let serial;
   try {
@@ -178,13 +193,51 @@ export async function setUpPhone({
       }
     }
 
-    // Paired, unless the phone says it no longer has this computer (Remove, or a sign-out): an
-    // app from before `computers` is taken at its word, and the connection will say.
-    const existing = readHosts({ home }).find((h) => h.device?.id && h.device.id === status.deviceId);
-    if (existing && (!Array.isArray(status.computers) || status.computers.includes(existing.host_id))) {
-      return { status: "already-paired", detail: "This computer is already paired with the phone.", host: existing };
+    // The account reaches the phone with no pairing, when the phone uses the account's server and
+    // is (or can be) signed in as the account. Any other case pairs, as before.
+    const phoneServer = normalizeServer(status.server ?? DEFAULT_SERVER);
+    let viaAccount = !!account && account.server === phoneServer;
+    const onAccount = (devices) => devices.some((d) => String(d.id) === String(status.deviceId));
+    if (viaAccount && onAccount(account.devices ?? [])) {
+      return { status: "already-paired", detail: "The phone is on your account.", host: accountHost(account, { id: status.deviceId, model: status.metadata?.model_name ?? null }) };
     }
-    if (existing) log("The phone no longer allows this computer. Pairing again.");
+
+    // Who the phone is signed in as, from the app: signed out, this account, or another. An app
+    // from before mcp/signin cannot say, and cannot be signed in from here.
+    if (viaAccount) {
+      const who = await query("mcp/signin");
+      if (!who || /^Unknown endpoint/.test(who.error ?? "")) viaAccount = false;
+      else if (who.error === "already_signed_in" && who.email && account.email && who.email !== account.email) {
+        log(`The phone is signed in as ${who.email}, not ${account.email}: pairing instead.`);
+        viaAccount = false;
+      } else if (who.error === "no_code" || status.signedIn === false) {
+        try {
+          const code = await mintCode(account, { fetch, home });
+          const signedIn = await query(`mcp/signin?code=${encodeURIComponent(code)}`);
+          if (signedIn?.ok) {
+            log(`Signed the phone in to CodeDroid as ${signedIn.email ?? account.email ?? "your account"}.`);
+            status = { ...status, signedIn: true };
+          } else if (signedIn?.error === "already_signed_in") {
+            status = { ...status, signedIn: true };
+          } else {
+            log(`The phone could not be signed in from here (${signedIn?.error ?? "no answer"}); sign in on the phone instead.`);
+          }
+        } catch (e) {
+          log(`The phone could not be signed in from here (${e.message}); sign in on the phone instead.`);
+        }
+      }
+    }
+
+    // Off the account (another server, an app from before mcp/signin, another Google account), a
+    // pairing reaches the phone: the one kept, unless the phone says it no longer has this computer
+    // (Remove, or a sign-out). An app from before `computers` is taken at its word.
+    if (!viaAccount) {
+      const existing = readPairings({ home }).find((h) => h.device?.id && h.device.id === status.deviceId);
+      if (existing && (!Array.isArray(status.computers) || status.computers.includes(existing.host_id))) {
+        return { status: "already-paired", detail: "This computer is already paired with the phone.", host: existing };
+      }
+      if (existing) log("The phone no longer allows this computer. Pairing again.");
+    }
 
     // An app from before mcp/pairing says nothing of signing in: the pairing itself will.
     if (status.signedIn === false) {
@@ -193,6 +246,36 @@ export async function setUpPhone({
       log("On the phone, tap send in CodeDroid, then sign in with Google. Waiting...");
     }
     const deadline = Date.now() + signInWaitMs;
+
+    if (viaAccount) {
+      // Signed in as the account: the app registers the phone with the server on its next
+      // connect, and from then on this computer reaches it as the account. Nothing to pair. A
+      // phone still to be signed in on gets the sign-in wait too.
+      const until = status.signedIn === false ? Math.max(deadline, Date.now() + registerWaitMs) : Date.now() + registerWaitMs;
+      let devices = account.devices ?? [];
+      for (;;) {
+        try {
+          devices = await listDevices(account, { fetch, home });
+        } catch (e) {
+          return { status: "failed", detail: e.message };
+        }
+        if (onAccount(devices)) {
+          const device = devices.find((d) => String(d.id) === String(status.deviceId));
+          return {
+            status: "paired",
+            detail: `${device.model ?? "The phone"} is on your account: this computer reaches it with nothing to pair.`,
+            host: accountHost(account, device),
+          };
+        }
+        if (Date.now() >= until) {
+          const now = await query("device/status");
+          return now?.signedIn === false
+            ? { status: "signed-out", detail: "Sign in to CodeDroid on the phone, then try again." }
+            : { status: "failed", detail: "The phone is signed in but has not registered with CodeDroid's server yet. Check that it is online and open CodeDroid on it, then run this again." };
+        }
+        await sleep(pollMs);
+      }
+    }
     for (;;) {
       const answer = await query("mcp/pairing");
       if (answer?.code) {

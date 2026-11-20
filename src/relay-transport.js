@@ -2,18 +2,22 @@
  * RelayPhoneTransport — an MCP SDK `Transport` to CodeDroid on the phone, through the CodeDroid
  * server's relay.
  *
- *   1. Read the pairing it is for (host.js): the server, the host token, the phone.
- *   2. Open ws(s)://<server>/v1/mcp/connect with the token, plus X-CodeDroid-Client and
- *      X-CodeDroid-Bridge, from which the server builds the phone's hello. The phone keeps its own
- *      socket to the server, so neither side needs the other's address.
+ *   1. Read the pairing it is for (host.js): the server, the host token, the phone. An account's
+ *      phone has no host token: an access token for the account is fetched instead (account.js),
+ *      and the phone is named with ?device=<id>.
+ *   2. Open ws(s)://<server>/v1/mcp/connect with the token, plus X-CodeDroid-Client,
+ *      X-CodeDroid-Platform and X-CodeDroid-Bridge, from which the server builds the phone's hello.
+ *      The phone keeps its own socket to the server, so neither side needs the other's address.
  *   3. The first frame is the answer: {type:"approved"} (after the user taps Allow, the first time),
  *      {type:"denied", reason}, or, from the server, {type:"unavailable", reason}.
  *   4. Then MCP: one JSON-RPC message per text frame, both ways.
  *
  * A library: failures surface through start() rejecting or onclose/onerror, never process.exit().
  */
+import os from "os";
 import WebSocket from "ws";
-import { PAIRING_STEPS, pairedDevice, readHosts } from "./host.js";
+import { LoginLapsedError, accessToken } from "./account.js";
+import { PAIRING_STEPS, pairedDevice, readAccount, readHosts } from "./host.js";
 import { VERSION } from "./version.js";
 
 export class PhoneUnavailableError extends Error {
@@ -30,10 +34,14 @@ export class PhoneDeniedError extends Error {
   }
 }
 
-/** The relay's WebSocket URL for a normalized [server] (host.js): https → wss, http → ws. */
-export function connectUrl(server) {
+/**
+ * The relay's WebSocket URL for a normalized [server] (host.js): https → wss, http → ws. With
+ * [device], the phone an account connection is for.
+ */
+export function connectUrl(server, device) {
   const url = new URL(`${server}/v1/mcp/connect`);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  if (device) url.searchParams.set("device", device);
   return url.href;
 }
 
@@ -49,6 +57,8 @@ export class RelayPhoneTransport {
    * @param {number} [options.approvalTimeoutMs] the first time, a person taps Allow on the phone
    * @param {() => {server: string, host_id: string, token: string, device: {id: string, model: string | null}} | null} [options.host]
    *   the pairing to connect through, null when there is none; this computer's first by default
+   * @param {(host: object) => Promise<string>} [options.token]  the bearer token for a pairing: its
+   *   host token, or an access token for the account (account.js) when it is the account's
    * @param {(msg: string) => void} [options.log]
    */
   constructor(options = {}) {
@@ -60,6 +70,9 @@ export class RelayPhoneTransport {
     this._env = options.env ?? process.env;
     this._approvalTimeoutMs = options.approvalTimeoutMs ?? 130_000;
     this._host = options.host ?? (() => readHosts()[0] ?? null);
+    this._token =
+      options.token ??
+      (async (host) => (host.account ? accessToken(readAccount({ env: this._env })) : host.token));
     this._log = options.log ?? (() => {});
     this._ws = null;
     this._open = false;
@@ -70,19 +83,30 @@ export class RelayPhoneTransport {
     const host = this._host();
     if (!host) throw new PhoneUnavailableError(`This computer is not paired with a phone. ${PAIRING_STEPS}`);
     this.device = pairedDevice(host);
-    this._log(`Phone ${host.device?.id} (${host.device?.model ?? "unknown model"}) through ${host.server}`);
-    await this._handshake(host);
+    this._log(`Phone ${host.device?.id} (${host.device?.model ?? "unknown model"}) through ${host.server}${host.account ? " (account)" : ""}`);
+    let token;
+    try {
+      token = await this._token(host);
+    } catch (e) {
+      throw e instanceof LoginLapsedError ? new PhoneUnavailableError(e.message) : e;
+    }
+    await this._handshake(host, token);
     this._log("Approved by the phone");
   }
 
-  _handshake(host) {
+  _handshake(host, token) {
+    const lapsed = host.account
+      ? "This computer's CodeDroid sign-in is no longer valid: it was removed on the phone (Settings > Computers) " +
+        "or signed out. Run npx -y @codedroid/mcp login to sign in again."
+      : `This computer's pairing was removed or is no longer valid. Pair it again. ${PAIRING_STEPS}`;
     return new Promise((resolve, reject) => {
-      const ws = new WebSocket(connectUrl(host.server), {
+      const ws = new WebSocket(connectUrl(host.server, host.account ? host.device?.id : undefined), {
         headers: {
-          Authorization: `Bearer ${host.token}`,
+          Authorization: `Bearer ${token}`,
           // Only what the user set: one daemon serves every MCP client here, so a guess from its
           // environment would name whichever client happened to start it.
           "X-CodeDroid-Client": this._env.CODEDROID_MCP_CLIENT?.trim() ?? "",
+          "X-CodeDroid-Platform": os.platform(),
           "X-CodeDroid-Bridge": VERSION,
         },
       });
@@ -119,7 +143,7 @@ export class RelayPhoneTransport {
         settle(
           new PhoneUnavailableError(
             res.statusCode === 401 || res.statusCode === 403
-              ? `This computer's pairing was removed or is no longer valid. Pair it again. ${PAIRING_STEPS}`
+              ? lapsed
               : `The CodeDroid server at ${host.server} refused the connection (HTTP ${res.statusCode}).`,
           ),
         );

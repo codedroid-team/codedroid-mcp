@@ -1,12 +1,20 @@
 /**
- * This computer's pairings with phones, kept in ~/.codedroid/host.json (dir 0700, file 0600):
- * {pairings: [{server, host_id, token, device: {id, model}}, ...]}. A file from before several
- * phones holds one pairing at its top level, and is read as a list of one; the latest pairing is
- * kept there too, so an older codedroid-mcp still finds a phone.
+ * This computer's credentials for phones, kept in ~/.codedroid/host.json (dir 0700, file 0600):
  *
- * The phone shows a one-time code (Settings > Computers > Pair a computer); `pair` redeems it at
- * the CodeDroid server for a host token. The token is the key to the relay: anyone holding it
- * reaches the phone (still behind its Allow sheet), so the file is the user's alone.
+ *   {account: {server, email, refresh_token, access_token, expires_at, devices: [{id, model}]},
+ *    pairings: [{server, host_id, token, device: {id, model}}, ...]}
+ *
+ * The account is this computer signed in with the user's Google account (`login`, account.js):
+ * every phone signed in to CodeDroid with that account is reached, with no pairing. A pairing is
+ * the older way, one phone at a time: the phone shows a one-time code (Settings > Computers > Pair
+ * a computer) that `pair` redeems at the CodeDroid server for a host token. Either credential is
+ * the key to the relay: anyone holding it reaches the phones (still behind their Allow sheet), so
+ * the file is the user's alone. A file from before several phones holds one pairing at its top
+ * level, and is read as a list of one; the latest pairing is kept there too, so an older
+ * codedroid-mcp still finds a phone.
+ *
+ * readHosts lists every phone this computer can reach, the account's first, as pairings: an
+ * account's entry has `account: true` and no token (relay-transport.js gets an access token for it).
  */
 import { randomBytes } from "crypto";
 import fs from "fs";
@@ -15,13 +23,22 @@ import path from "path";
 
 export const DEFAULT_SERVER = "https://orchestrator.codedroid.com";
 
+export const LOGIN_STEP =
+  "Run npx -y @codedroid/mcp login and sign in with the Google account you use in CodeDroid: every phone " +
+  "signed in to CodeDroid with it is reached, with nothing to pair.";
+
 export const PAIR_BY_HAND =
   "On the phone, open CodeDroid > Settings > Computers > Pair a computer, then run the command it shows " +
   "on this computer (npx -y @codedroid/mcp pair XXXX-XXXX).";
 
 export const PAIRING_STEPS =
-  "Plug the phone into this computer with USB debugging on and run npx -y @codedroid/mcp setup: it installs " +
-  `CodeDroid if needed and pairs. Or pair by hand. ${PAIR_BY_HAND}`;
+  `${LOGIN_STEP} Or plug the phone into this computer with USB debugging on and run npx -y @codedroid/mcp setup: ` +
+  `it installs CodeDroid if needed and signs the phone in. Or pair by hand. ${PAIR_BY_HAND}`;
+
+/** What to do when the account has no phone: the one problem signing in does not solve. */
+export const NO_ACCOUNT_PHONE =
+  "No phone is signed in to CodeDroid with this account. On the phone, open CodeDroid and sign in with the same " +
+  "Google account, or plug it in with USB debugging on and run npx -y @codedroid/mcp setup.";
 
 export function hostFilePath(home = os.homedir()) {
   return path.join(home, ".codedroid", "host.json");
@@ -102,25 +119,82 @@ function validHost(host) {
   }
 }
 
-/** The saved pairings, in the order they were made; empty when this computer is not paired. */
-export function readHosts({ home = os.homedir() } = {}) {
-  let saved;
+/** host.json as saved, or {} when there is none or it is not JSON. */
+function readHostFile(home) {
   try {
-    saved = JSON.parse(fs.readFileSync(hostFilePath(home), "utf8"));
+    return JSON.parse(fs.readFileSync(hostFilePath(home), "utf8")) ?? {};
   } catch (e) {
-    return [];
+    return {};
   }
-  const entries = Array.isArray(saved?.pairings) ? saved.pairings : [saved];
-  return entries.map(validHost).filter(Boolean);
 }
 
-export function saveHosts(hosts, { home = os.homedir() } = {}) {
+function writeHostFile(saved, home) {
   const file = hostFilePath(home);
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
   // A new file, renamed over the old: 0600 from its first byte, and never half-written.
   const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify({ ...hosts.at(-1), pairings: hosts }, null, 2) + "\n", { mode: 0o600 });
+  fs.writeFileSync(tmp, JSON.stringify(saved, null, 2) + "\n", { mode: 0o600 });
   fs.renameSync(tmp, file);
+}
+
+/** The explicit pairings, in the order they were made; empty when none was made. */
+export function readPairings({ home = os.homedir() } = {}) {
+  const saved = readHostFile(home);
+  const entries = Array.isArray(saved?.pairings) ? saved.pairings : [saved];
+  return entries.map(validHost).filter(Boolean);
+}
+
+/**
+ * The account this computer is signed in with: CODEDROID_TOKEN in the environment (a refresh
+ * token from `login --ci`, for CI; CODEDROID_SERVER names its server), else host.json's. Null when
+ * neither.
+ */
+export function readAccount({ home = os.homedir(), env = process.env } = {}) {
+  const fromEnv = env.CODEDROID_TOKEN?.trim();
+  if (fromEnv) {
+    return { server: normalizeServer(env.CODEDROID_SERVER?.trim() || DEFAULT_SERVER), refresh_token: fromEnv, fromEnv: true, devices: [] };
+  }
+  const account = readHostFile(home).account;
+  if (!account?.refresh_token || !account.server) return null;
+  try {
+    return { ...account, server: normalizeServer(account.server), devices: Array.isArray(account.devices) ? account.devices : [] };
+  } catch (e) {
+    return null;
+  }
+}
+
+/** Keeps [account] (null to sign out) in host.json, leaving the pairings as they are. */
+export function saveAccount(account, { home = os.homedir() } = {}) {
+  const saved = readHostFile(home);
+  const { account: _, ...rest } = saved;
+  if (account?.fromEnv) return;
+  writeHostFile(account ? { ...rest, account } : rest, home);
+}
+
+/** An account's phone as a pairing entry: reached with an access token, not a host token. */
+export function accountHost(account, device) {
+  return { server: account.server, account: true, host_id: null, token: null, device: { id: device.id, model: device.model ?? null } };
+}
+
+/**
+ * Every phone this computer reaches, the account's phones first, then the pairings with any other
+ * phone. [accountDevices] is the account's phone list to use instead of the saved one (the daemon
+ * keeps a fresh one). Empty when this computer is neither signed in with a phone nor paired.
+ */
+export function readHosts({ home = os.homedir(), env = process.env, accountDevices } = {}) {
+  const account = readAccount({ home, env });
+  const devices = account ? (accountDevices ?? account.devices).filter((d) => d?.id) : [];
+  const own = new Set(devices.map((d) => String(d.id)));
+  return [
+    ...devices.map((d) => accountHost(account, d)),
+    ...readPairings({ home }).filter((h) => !own.has(String(deviceKey(h)))),
+  ];
+}
+
+export function saveHosts(hosts, { home = os.homedir() } = {}) {
+  const pairings = hosts.filter((h) => !h.account);
+  const { account } = readHostFile(home);
+  writeHostFile({ ...pairings.at(-1), pairings, ...(account ? { account } : {}) }, home);
 }
 
 /** What names a pairing's phone: its device id, or the host id from a server that sent none. */
@@ -159,15 +233,23 @@ export function findHost(hosts, selector) {
 
 /** Forgets the pairing [selector] names (findHost); resolves the one removed. */
 export function unpair(selector, { home = os.homedir() } = {}) {
-  const hosts = readHosts({ home });
-  const removed = findHost(hosts, selector);
-  saveHosts(hosts.filter((h) => h !== removed), { home });
+  const removed = findHost(readHosts({ home }), selector);
+  if (removed.account) {
+    throw new Error(
+      `${describeHost(removed)} is reached through your account, not a pairing. To stop reaching it, sign CodeDroid ` +
+        "out on the phone, remove this computer in CodeDroid > Settings > Computers there, or run npx -y @codedroid/mcp logout.",
+    );
+  }
+  // Every saved pairing, not readHosts': that list hides pairings with phones also on the account.
+  saveHosts(readPairings({ home }).filter((h) => deviceKey(h) !== deviceKey(removed)), { home });
   return removed;
 }
 
 /** The phone a pairing points at, as status and /health show it. */
 export function pairedDevice(host) {
-  return host ? { id: host.device?.id ?? null, model: host.device?.model ?? null, server: host.server } : null;
+  return host
+    ? { id: host.device?.id ?? null, model: host.device?.model ?? null, server: host.server, ...(host.account ? { account: true } : {}) }
+    : null;
 }
 
 /** A loopback host, where plaintext http is safe because nothing leaves this machine. */
@@ -247,7 +329,7 @@ export async function pair(
     token: body.token,
     device: { id: body.device?.id ?? null, model: body.device?.model ?? null },
   };
-  const others = readHosts({ home }).filter((h) => deviceKey(h) !== deviceKey(host));
+  const others = readPairings({ home }).filter((h) => deviceKey(h) !== deviceKey(host));
   saveHosts([...others, host], { home });
   return host;
 }

@@ -23,9 +23,10 @@ import { randomUUID, timingSafeEqual } from "crypto";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
+import { fetchDevices } from "./account.js";
 import { createAdbTool } from "./adb-tool.js";
 import { CLIENT_ADB_HEADER, CLIENT_CWD_HEADER } from "./daemon-transport.js";
-import { describeHost, ensureDaemonToken, readHosts } from "./host.js";
+import { describeHost, ensureDaemonToken, readAccount, readHosts } from "./host.js";
 import { createInstallTool } from "./install-tool.js";
 import { createSetupPhoneTool } from "./phone-setup.js";
 import { Phones } from "./phones.js";
@@ -37,6 +38,10 @@ import { VERSION } from "./version.js";
 
 export const DEFAULT_PORT = 4826;
 export const DAEMON_AUTHENTICATION = "bearer-v1";
+// How often the account's phone list is read again from the server: a phone signed in since shows up.
+export const ACCOUNT_REFRESH_MS = 5 * 60_000;
+// The longest a start waits on the server for the account's phones before serving.
+export const ACCOUNT_STARTUP_WAIT_MS = 8_000;
 const MAX_BODY_BYTES = 8 * 1024 * 1024;
 
 /** How long a link stays trusted after its last proven round-trip. Past
@@ -295,22 +300,63 @@ function jsonRpcError(res, status, id, code, message) {
  *   can still decline it for its own session (daemon-transport.js). Off only when the
  *   daemon itself is started with --no-adb or CODEDROID_MCP_ADB=0 (index.js).
  * @param {string} [options.home]  Where ~/.codedroid lives; overridable for tests.
+ * @param {() => Promise<object[]>} [options.accountDevices]  The account's phones from the server
+ *   (account.js fetchDevices); read at start and every ACCOUNT_REFRESH_MS, and on demand by the
+ *   status tools. Null when this computer is not signed in.
+ * @param {number} [options.accountStartupWaitMs]  How long a start waits for the first read when the
+ *   account has no phones saved (CODEDROID_TOKEN); past it the daemon serves and the read goes on.
  * @returns {Promise<{port: number, authToken: string, close: () => Promise<void>, phones: Phones}>}
  *   authToken is this user's daemon token (host.js ensureDaemonToken), which /mcp and /shutdown require.
  */
 export async function startDaemon({
   port = DEFAULT_PORT,
   host = "127.0.0.1",
-  pairings = () => readHosts({ home }),
+  pairings,
   phoneTransportFactory,
   log = () => {},
   enableAdbTool = true,
   home = os.homedir(),
+  accountDevices = async () => {
+    const account = readAccount({ home });
+    return account ? fetchDevices(account, { home }) : null;
+  },
+  accountRefreshMs = ACCOUNT_REFRESH_MS,
+  accountStartupWaitMs = ACCOUNT_STARTUP_WAIT_MS,
 } = {}) {
   /** Set once the port is ours (below); no request is handled before that. */
   let authToken = null;
+  /**
+   * The account's phones as last read from the server, with the login they were read for: a list
+   * read before a logout and a login as someone else is not theirs. Null until read.
+   */
+  let known = null;
+  const loginOf = (account) => (account ? `${account.server} ${account.refresh_token}` : null);
+  const refreshAccount = async () => {
+    const login = loginOf(readAccount({ home }));
+    try {
+      const devices = await accountDevices();
+      if (devices && login) known = { login, devices };
+      return devices;
+    } catch (e) {
+      log(`The account's phones could not be listed: ${e.message}`);
+      return null;
+    }
+  };
+  const knownDevices = () => (known && known.login === loginOf(readAccount({ home })) ? known.devices : undefined);
+  // CODEDROID_TOKEN's account has no phones saved: a CI run's first call needs them read first. The
+  // wait is bounded, under the stdio shim's 20 s for the daemon to come up, so a server that hangs
+  // never keeps the daemon from serving; the read goes on and lands when it answers.
+  const startAccount = readAccount({ home });
+  if (startAccount) {
+    const first = refreshAccount();
+    if (!startAccount.devices.length) {
+      let timer;
+      await Promise.race([first, new Promise((resolve) => (timer = setTimeout(resolve, accountStartupWaitMs)))]);
+      clearTimeout(timer);
+    }
+  }
   const phones = new Phones({
-    pairings,
+    pairings: pairings ?? (() => readHosts({ home, accountDevices: knownDevices() })),
     createManager: (pairing) => {
       const phoneLog = (msg) => log(`[${describeHost(pairing)}] ${msg}`);
       return new PhoneManager({
@@ -329,6 +375,7 @@ export async function startDaemon({
   const setupJobs = new Map();
   const flowJobs = new Map();
 
+  phones.refreshAccount = refreshAccount;
   phones.onNotification = (notification) =>
     broadcastNotification(
       [...sessions.values()].map((s) => s.server),
@@ -511,11 +558,17 @@ export async function startDaemon({
     await new Promise((resolve) => httpServer.close(resolve));
     throw e;
   }
+  const refreshTimer = setInterval(() => {
+    if (readAccount({ home })) refreshAccount();
+    else known = null;
+  }, accountRefreshMs);
+  refreshTimer.unref?.();
   log(`CodeDroid MCP daemon listening on http://${host}:${boundPort}/mcp`);
   if (enableAdbTool) log("The adb tool is on: connected MCP clients can run adb commands on this machine.");
   else log("The adb tool is off for every client: this daemon was started with --no-adb or CODEDROID_MCP_ADB=0.");
 
   const close = async () => {
+    clearInterval(refreshTimer);
     for (const { transport } of sessions.values()) {
       try {
         await transport.close();
