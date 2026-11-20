@@ -405,8 +405,9 @@ async function waitUntil(state, selector, { visible, timeoutMs }) {
   const needle = typeof selector === "object" && selector !== null ? selector : { text: String(selector) };
   // wait_for watches text on the phone itself; anything else polls the screen from here.
   if (needle.text !== undefined && needle.id === undefined) {
+    // The first chunk is the whole timeout, not what the clock says is left of it a tick later.
+    let left = timeoutMs;
     for (;;) {
-      const left = Math.max(0, deadline - Date.now());
       const chunk = Math.min(left, WAIT_FOR_MAX_MS);
       const result = await send(state, "wait_for", { ...(visible ? { text: String(needle.text) } : { gone_text: String(needle.text) }), timeout_ms: Math.max(chunk, 1) });
       let met;
@@ -416,7 +417,8 @@ async function waitUntil(state, selector, { visible, timeoutMs }) {
         met = undefined;
       }
       if (met === true) return true;
-      if (Date.now() >= deadline) return met === true;
+      left = Math.max(0, deadline - Date.now());
+      if (left === 0) return false;
     }
   }
   for (;;) {
