@@ -43,6 +43,8 @@ export const SUPPORTED_COMMANDS = [
   "extendedWaitUntil",
   "waitForAnimationToEnd",
   "takeScreenshot",
+  "hideKeyboard",
+  "openLink",
   "runFlow",
   "repeat",
   "codedroidTask",
@@ -192,6 +194,16 @@ export function stepsForCall(name, args = {}, { lastScreen, screenshotIndex = 0 
     }
     case "take_screenshot":
       return [{ takeScreenshot: `step-${screenshotIndex}` }];
+    case "open_url":
+      return [{ openLink: String(args.url ?? "") }];
+    case "dismiss_keyboard":
+      return ["hideKeyboard"];
+    case "scroll_until": {
+      const direction = { down: "DOWN", up: "UP", left: "LEFT", right: "RIGHT" }[String(args.direction ?? "down").toLowerCase()] ?? "DOWN";
+      return [{ scrollUntilVisible: { element: { text: String(args.text ?? "") }, direction } }];
+    }
+    case "alert":
+      return [{ comment: `alert ${args.text ? JSON.stringify(args.text) : (args.action ?? "accept")}: the button tapped depends on the dialog; tap it by text to record it` }];
     case "run_task":
       return [{ codedroidTask: String(args.goal ?? "") }];
     case "clipboard":
@@ -525,6 +537,18 @@ async function execute(command, value, state) {
     case "waitForAnimationToEnd":
       await sleep(Math.min(Number(value?.timeout ?? 1000), 5000));
       return null;
+    case "hideKeyboard":
+      await send(state, "dismiss_keyboard", {});
+      return null;
+    case "openLink": {
+      const url = typeof value === "string" ? value : value?.link;
+      if (!url) throw new FlowError("openLink: needs a link.");
+      if (value && typeof value === "object" && (value.autoVerify || value.browser)) {
+        throw new FlowError("openLink: autoVerify and browser are not supported on CodeDroid.");
+      }
+      await send(state, "open_url", { url: String(url) });
+      return null;
+    }
     case "takeScreenshot": {
       const result = await send(state, "take_screenshot", {});
       const image = result.content?.find((item) => item.type === "image");

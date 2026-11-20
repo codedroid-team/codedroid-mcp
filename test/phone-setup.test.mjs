@@ -238,6 +238,7 @@ try {
     const result = await run(phone, fakeWeb(), { home });
     assert.equal(result.status, "already-paired");
     assert.ok(!phone.calls.some((line) => line.includes("mcp/pairing")), "makes no new code");
+    assert.ok(!phone.calls.some((line) => line.includes("enabled_accessibility_services")), "without turning on again what is on");
   }
 
   // ── Still signed out when the wait ends ─────────────────────────────

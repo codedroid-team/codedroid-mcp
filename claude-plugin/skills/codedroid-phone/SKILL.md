@@ -96,6 +96,11 @@ depend on each other fail with `not_found`.
 | `open_app` | By `package` (and optionally `activity`); `list_apps` finds the package by name |
 | `wait_for` | Until `text` shows, `gone_text` goes, or `package` is in front, up to `timeout_ms` (30 s). Use it instead of sleeping |
 | `clipboard` | Read it, or set it with `text` |
+| `scroll_until` | Swipe (`direction` down by default, `max_swipes` up to 20) until `text` is on the screen; then `get_screen` |
+| `alert` | Tap a dialog's button: `action` accept (OK, Allow, Yes...) or dismiss (Cancel, Deny, No...), or its `text` |
+| `dismiss_keyboard` | Hide the keyboard when it covers what you need |
+| `open_url` | A web page or a deep link (`myapp://...`), in the app that handles it |
+| `notifications` | What the notification shade holds (it opens and closes it) |
 | `device_info` | Model, Android version, Android user, screen, locked, CodeDroid ready and signed in |
 | `run_task`, `get_task`, `answer_task`, `cancel_task` | Hand CodeDroid's own phone agent a whole goal (below) |
 | `codedroid_devices` | The phones: id, model, and whether each is connected |
@@ -122,7 +127,7 @@ the run with that step and the screen's first lines. Pick it up by hand from the
 runnable: a case whose flow passes needs no driving by you, and `npx -y @codedroid/mcp flow run
 <file>` runs it from a terminal or CI with no model at all. `screenshot_dir` is where its
 `takeScreenshot` steps save images. A flow written for Maestro runs too, except commands CodeDroid
-does not have (openLink, clearState, hideKeyboard, index selectors, percent points), which fail the
+does not have (clearState, copyTextFrom, index selectors, percent points), which fail the
 run where they are rather than being skipped.
 
 ## iPhones

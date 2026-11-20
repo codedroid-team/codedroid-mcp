@@ -19,6 +19,11 @@ read progress, or `cancel_task` to stop the task.
 | `open_app`, `list_apps` | Launch an app by package name or list installed apps. |
 | `wait_for` | Wait for text to appear or disappear, or for an app to open. |
 | `clipboard` | Read or update the clipboard. |
+| `open_url` | Open a web page or a deep link in the app that handles it. |
+| `dismiss_keyboard` | Hide the on-screen keyboard. |
+| `alert` | Tap a dialog's button: `action` accept or dismiss, or its `text`. |
+| `scroll_until` | Swipe in a direction until `text` is on the screen. |
+| `notifications` | Read the notification shade (opened, read, closed). |
 | `device_info` | Inspect the device model, Android version, user, screen, lock state, and CodeDroid readiness. |
 | `run_task`, `get_task`, `cancel_task` | Start, monitor, or cancel a task run by CodeDroid's agent. |
 | `install_apk` | Install an APK from this computer through CodeDroid's connection, with no cable or shared network. |
@@ -63,7 +68,7 @@ background; the command polls until it ends.
 
 Call `record_start` before `open_app`, so the flow starts by launching the app; a flow with no
 `launchApp` starts wherever the phone is. Recording turns each successful `open_app`, `tap`, `long_press`, `type_text`, `swipe`,
-`press_key`, `wait_for`, `take_screenshot` and `run_task` into a step; reads are not steps, and a
+`press_key`, `wait_for`, `take_screenshot`, `open_url`, `dismiss_keyboard`, `scroll_until` and `run_task` into a step; reads are not steps, and a
 step that failed is not recorded. A tap by node is written as a tap by the text, resource id or
 content description that node showed, and by its point only when it had none. What Maestro cannot
 express (a wait for an app, the clipboard) stays in the file as a comment.
@@ -71,7 +76,7 @@ express (a wait for an app, the clipboard) stays in the file as a comment.
 Replay supports `launchApp`, `tapOn`, `longPressOn` (by text, `id`, or `point: "x,y"` in pixels),
 `inputText`, `eraseText`, `pressKey` (Enter, Home, Back, Recents), `back`, `swipe` (points or a
 direction), `scroll`, `scrollUntilVisible`, `assertVisible`, `assertNotVisible` (both wait up to 7 s
-like Maestro), `extendedWaitUntil`, `waitForAnimationToEnd`, `takeScreenshot`, `runFlow` (a file),
+like Maestro), `extendedWaitUntil`, `waitForAnimationToEnd`, `takeScreenshot`, `hideKeyboard`, `openLink`, `runFlow` (a file),
 `repeat` (with `times`), `optional: true`, `${VAR}` from the flow's `env:` and `--env`, and
 `codedroidTask`, a CodeDroid extension that hands CodeDroid's agent a goal. Any other command
 fails the run at that step, so a pass means every step ran: a flow that skipped a command it did not

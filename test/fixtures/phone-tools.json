@@ -262,6 +262,114 @@
   {
     "inputSchema": {
       "type": "object",
+      "properties": {"url": {"type": "string"}},
+      "required": ["url"]
+    },
+    "name": "open_url",
+    "description": "Open a web page or a deep link (myapp://...) in the app that handles it. Returns what changed.",
+    "annotations": {
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "title": "Open a link",
+      "destructiveHint": false,
+      "readOnlyHint": false
+    },
+    "title": "Open a link"
+  },
+  {
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    },
+    "name": "dismiss_keyboard",
+    "description": "Hide the on-screen keyboard when it covers what you need; does nothing when none is shown.",
+    "annotations": {
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "title": "Hide the keyboard",
+      "destructiveHint": false,
+      "readOnlyHint": false
+    },
+    "title": "Hide the keyboard"
+  },
+  {
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "accept",
+            "dismiss"
+          ]
+        },
+        "text": {"type": "string"}
+      }
+    },
+    "name": "alert",
+    "description": "Tap a dialog's button: action accept (OK, Allow, Yes...) or dismiss (Cancel, Deny, No...), or the button's text.",
+    "annotations": {
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "title": "Answer a dialog",
+      "destructiveHint": false,
+      "readOnlyHint": false
+    },
+    "title": "Answer a dialog"
+  },
+  {
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "text": {"type": "string"},
+        "direction": {
+          "default": "down",
+          "type": "string",
+          "enum": [
+            "down",
+            "up",
+            "left",
+            "right"
+          ]
+        },
+        "max_swipes": {
+          "default": 10,
+          "maximum": 20,
+          "type": "integer"
+        }
+      },
+      "required": ["text"]
+    },
+    "name": "scroll_until",
+    "description": "Swipe in direction (down by default) until text is on the screen, up to max_swipes times. Returns found and swipes.",
+    "annotations": {
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "title": "Scroll until visible",
+      "destructiveHint": false,
+      "readOnlyHint": false
+    },
+    "title": "Scroll until visible"
+  },
+  {
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    },
+    "name": "notifications",
+    "description": "What is in the notification shade: opens it, reads it, closes it.",
+    "annotations": {
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "title": "Read notifications",
+      "destructiveHint": false,
+      "readOnlyHint": false
+    },
+    "title": "Read notifications"
+  },
+  {
+    "inputSchema": {
+      "type": "object",
       "properties": {}
     },
     "name": "device_info",

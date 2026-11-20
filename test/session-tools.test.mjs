@@ -223,7 +223,7 @@ try {
   assert.match(text(failed), /^Failed at step 2\.\nPASS 1\. tapOn Save \(screen_changed: true\)\nFAIL 2\. tapOn Nope \(tap: No element Nope Read the screen\.\)\n\nScreen now:\napp: Contacts/);
   assert.match(text(await a.callTool({ name: "run_flow", arguments: {} })), /pass path or yaml/);
   assert.match(text(await a.callTool({ name: "run_flow", arguments: { path: "missing.yaml" } })), /ENOENT|no such file/i);
-  assert.match(text(await a.callTool({ name: "run_flow", arguments: { yaml: "- openLink: x\n" } })), /FAIL 1\. openLink x \(openLink is not supported on CodeDroid/);
+  assert.match(text(await a.callTool({ name: "run_flow", arguments: { yaml: "- copyTextFrom: x\n" } })), /FAIL 1\. copyTextFrom x \(copyTextFrom is not supported on CodeDroid/);
 
   // ── A client with no project directory needs absolute paths ────────────────
   const c = await connect(os.homedir());
