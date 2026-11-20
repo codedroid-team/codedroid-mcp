@@ -233,15 +233,15 @@ export function findHost(hosts, selector) {
 
 /** Forgets the pairing [selector] names (findHost); resolves the one removed. */
 export function unpair(selector, { home = os.homedir() } = {}) {
-  const hosts = readHosts({ home });
-  const removed = findHost(hosts, selector);
+  const removed = findHost(readHosts({ home }), selector);
   if (removed.account) {
     throw new Error(
       `${describeHost(removed)} is reached through your account, not a pairing. To stop reaching it, sign CodeDroid ` +
         "out on the phone, remove this computer in CodeDroid > Settings > Computers there, or run npx -y @codedroid/mcp logout.",
     );
   }
-  saveHosts(hosts.filter((h) => h !== removed), { home });
+  // Every saved pairing, not readHosts': that list hides pairings with phones also on the account.
+  saveHosts(readPairings({ home }).filter((h) => deviceKey(h) !== deviceKey(removed)), { home });
   return removed;
 }
 

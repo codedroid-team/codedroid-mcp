@@ -51,9 +51,11 @@ runs:
         VERSION: ${{ inputs.version }}
       run: |
         set -euo pipefail
+        # Stop the daemon however the run ends: on a self-hosted runner it would outlive the job,
+        # holding this job's token for the next one.
+        trap 'npx -y "@codedroid/mcp@$VERSION" stop >/dev/null 2>&1 || true' EXIT
         args=("$FLOW")
         [ -n "$DEVICE" ] && args+=("--device=$DEVICE")
         [ -n "$FLOW_ENV" ] && args+=("--env=$FLOW_ENV")
         [ -n "$SCREENSHOTS" ] && mkdir -p "$SCREENSHOTS" && args+=("--screenshots=$SCREENSHOTS")
         npx -y "@codedroid/mcp@$VERSION" flow run "${args[@]}"
-        npx -y "@codedroid/mcp@$VERSION" stop >/dev/null 2>&1 || true

@@ -22,7 +22,7 @@ import path from "path";
 import { promisify } from "util";
 import { fetchDevices, mintSignInCode } from "./account.js";
 import { adbLocations } from "./adb-tool.js";
-import { DEFAULT_SERVER, PAIR_BY_HAND, accountHost, normalizeServer, pair, readAccount, readHosts } from "./host.js";
+import { DEFAULT_SERVER, PAIR_BY_HAND, accountHost, normalizeServer, pair, readAccount, readPairings } from "./host.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -202,14 +202,6 @@ export async function setUpPhone({
       return { status: "already-paired", detail: "The phone is on your account.", host: accountHost(account, { id: status.deviceId, model: status.metadata?.model_name ?? null }) };
     }
 
-    // Paired, unless the phone says it no longer has this computer (Remove, or a sign-out): an
-    // app from before `computers` is taken at its word, and the connection will say.
-    const existing = readHosts({ home }).find((h) => !h.account && h.device?.id && h.device.id === status.deviceId);
-    if (existing && !viaAccount && (!Array.isArray(status.computers) || status.computers.includes(existing.host_id))) {
-      return { status: "already-paired", detail: "This computer is already paired with the phone.", host: existing };
-    }
-    if (existing && !viaAccount) log("The phone no longer allows this computer. Pairing again.");
-
     // Who the phone is signed in as, from the app: signed out, this account, or another. An app
     // from before mcp/signin cannot say, and cannot be signed in from here.
     if (viaAccount) {
@@ -234,6 +226,17 @@ export async function setUpPhone({
           log(`The phone could not be signed in from here (${e.message}); sign in on the phone instead.`);
         }
       }
+    }
+
+    // Off the account (another server, an app from before mcp/signin, another Google account), a
+    // pairing reaches the phone: the one kept, unless the phone says it no longer has this computer
+    // (Remove, or a sign-out). An app from before `computers` is taken at its word.
+    if (!viaAccount) {
+      const existing = readPairings({ home }).find((h) => h.device?.id && h.device.id === status.deviceId);
+      if (existing && (!Array.isArray(status.computers) || status.computers.includes(existing.host_id))) {
+        return { status: "already-paired", detail: "This computer is already paired with the phone.", host: existing };
+      }
+      if (existing) log("The phone no longer allows this computer. Pairing again.");
     }
 
     // An app from before mcp/pairing says nothing of signing in: the pairing itself will.

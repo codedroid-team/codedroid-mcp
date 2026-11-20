@@ -291,6 +291,7 @@ export async function logout({ fetch = globalThis.fetch, home = os.homedir(), en
   } catch (e) {
     // Offline: the account is forgotten here, and the server's grant lapses unused.
   }
-  saveAccount(null, { home });
+  // CODEDROID_TOKEN's login is not the one host.json keeps: that one stays, still valid.
+  if (!account.fromEnv) saveAccount(null, { home });
   return account;
 }

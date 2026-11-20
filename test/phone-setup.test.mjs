@@ -177,6 +177,19 @@ try {
     assert.equal(result.status, "paired");
     assert.ok(!result.host.account, "a phone on another server pairs");
 
+    // Already paired, and the account cannot reach the phone: the pairing is kept, not made again.
+    for (const [why, phone] of [
+      ["an app without mcp/signin", fakePhone({ installed: true, accessibility: true, signin: false, computers: ["h"] })],
+      ["another account's phone", fakePhone({ installed: true, accessibility: true, email: "bob@example.com", computers: ["h"] })],
+    ]) {
+      const home = newHome();
+      saveHosts([{ server: SERVER, host_id: "h", token: "t", device: { id: "dev-1", model: "Pixel 9" } }], { home });
+      result = await run(phone, fakeWeb(), { home, account, mintCode: async () => assert.fail(why) });
+      assert.equal(result.status, "already-paired", why);
+      assert.equal(result.host.token, "t", why);
+      assert.ok(!phone.calls.some((line) => line.includes("mcp/pairing")), `${why}: no new pairing`);
+    }
+
     // The code could not be minted: the user signs in on the phone instead, and it is reached as the account once registered.
     const phone = fakePhone({ installed: true, accessibility: true, signedIn: false, pairing: [{ error: "signed_out" }] });
     const quiet = [];

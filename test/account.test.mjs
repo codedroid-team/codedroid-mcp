@@ -10,7 +10,8 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { accessToken, emailOf, fetchDevices, login, LoginLapsedError, logout, mintSignInCode, openBrowser } from "../src/account.js";
-import { hostFilePath, readAccount, readHosts, saveAccount, saveHosts } from "../src/host.js";
+import { startDaemon } from "../src/daemon.js";
+import { hostFilePath, readAccount, readHosts, readPairings, saveAccount, saveHosts, unpair } from "../src/host.js";
 
 const ALICE = "alice@example.com";
 
@@ -87,6 +88,8 @@ async function fakeServer({ approveAfter = 2, slowDownAt = null, refreshAnswers 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "codedroid-account-"));
 const newHome = () => fs.mkdtempSync(path.join(root, "home-"));
 const noSleep = async () => {};
+// The daemon reads the account from this process's environment: these cases are about host.json.
+delete process.env.CODEDROID_TOKEN;
 
 try {
   // ── login: the link and code are shown, polling waits, the account is kept with its phones ──
@@ -192,6 +195,60 @@ try {
     await new Promise((resolve) => old.listen(0, "127.0.0.1", resolve));
     await assert.rejects(login({ server: `http://127.0.0.1:${old.address().port}`, home, log: () => {}, sleep: noSleep, open: false }), /has no account login yet; pair with a code/);
     await new Promise((resolve) => old.close(resolve));
+  }
+
+  // ── unpair keeps the pairings readHosts hides behind the account ──
+  {
+    const home = newHome();
+    const pairing = (id) => ({ server: "https://orchestrator.example.com", host_id: `h-${id}`, token: `t-${id}`, device: { id, model: null } });
+    saveHosts([pairing("dev-2"), pairing("dev-3"), pairing("dev-4")], { home });
+    saveAccount({ server: "https://orchestrator.example.com", email: ALICE, refresh_token: "r", devices: [{ id: "dev-2", model: "Pixel 8" }] }, { home });
+    assert.equal(unpair("dev-4", { home }).device.id, "dev-4");
+    assert.deepEqual(readPairings({ home }).map((h) => h.device.id), ["dev-2", "dev-3"], "the pairing with a phone also on the account stays");
+    assert.throws(() => unpair("dev-2", { home }), /reached through your account/);
+    assert.deepEqual(readPairings({ home }).map((h) => h.device.id), ["dev-2", "dev-3"]);
+    assert.equal(readAccount({ home, env: {} }).refresh_token, "r", "unpair keeps the account");
+  }
+
+  // ── logout with CODEDROID_TOKEN revokes that token and leaves host.json's login alone ──
+  {
+    const server = await fakeServer();
+    const home = newHome();
+    saveAccount({ server: server.url, email: ALICE, refresh_token: "cdmcp_r_saved", devices: [] }, { home });
+    const out = await logout({ home, env: { CODEDROID_TOKEN: "cdmcp_r_ci", CODEDROID_SERVER: server.url } });
+    assert.equal(out.fromEnv, true);
+    assert.deepEqual(server.revoked, ["cdmcp_r_ci"]);
+    assert.equal(readAccount({ home, env: {} }).refresh_token, "cdmcp_r_saved", "the saved login is still there, and still valid");
+    await server.close();
+  }
+
+  // ── The daemon: a hanging server never holds up its start; the phone list follows the login ──
+  {
+    const home = newHome();
+    const offline = () => { throw new Error("no phone in this test"); };
+    const hang = () => new Promise(() => {});
+    saveAccount({ server: "https://orchestrator.example.com", email: ALICE, refresh_token: "r-a", devices: [] }, { home });
+    let started = Date.now();
+    let daemon = await startDaemon({ port: 0, home, phoneTransportFactory: offline, accountDevices: hang, accountStartupWaitMs: 100 });
+    assert.ok(Date.now() - started < 3_000, "no phones saved: the start waits, within its bound");
+    await daemon.close();
+
+    saveAccount({ server: "https://orchestrator.example.com", email: ALICE, refresh_token: "r-a", devices: [{ id: "dev-saved", model: null }] }, { home });
+    started = Date.now();
+    daemon = await startDaemon({ port: 0, home, phoneTransportFactory: offline, accountDevices: hang, accountStartupWaitMs: 60_000 });
+    assert.ok(Date.now() - started < 3_000, "phones saved: the start does not wait on the server");
+    assert.deepEqual(daemon.phones.select().map((e) => e.pairing.device.id), ["dev-saved"]);
+    await daemon.close();
+
+    saveAccount({ server: "https://orchestrator.example.com", email: ALICE, refresh_token: "r-a", devices: [] }, { home });
+    daemon = await startDaemon({ port: 0, home, phoneTransportFactory: offline, accountDevices: async () => [{ id: "dev-a", model: null }] });
+    try {
+      assert.deepEqual(daemon.phones.select().map((e) => e.pairing.device.id), ["dev-a"], "the list read at start");
+      saveAccount({ server: "https://orchestrator.example.com", email: "bob@example.com", refresh_token: "r-b", devices: [{ id: "dev-b", model: null }] }, { home });
+      assert.deepEqual(daemon.phones.select().map((e) => e.pairing.device.id), ["dev-b"], "another login: its own phones, not the last one's");
+    } finally {
+      await daemon.close();
+    }
   }
 
   // ── The pieces ──
