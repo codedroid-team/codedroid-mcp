@@ -35,14 +35,43 @@ export const SKILLS = [
 /** Skills earlier releases shipped and this one does not: an install removes its own old copies. */
 export const RETIRED_SKILLS = ["create-cujs", "create-tests"];
 
+/**
+ * Ours: every skill this package shipped carries its don't-force-stop-CodeDroid rule, naming the
+ * app com.codedroid.app before 0.1.5 and com.codedroid.agent since.
+ */
+const OURS = /com\.codedroid\.(app|agent)\b/;
+
 export const SKILLS_SOURCE = fileURLToPath(new URL("../skills/", import.meta.url));
 
 export function skillSource(name) {
   return path.join(SKILLS_SOURCE, name, "SKILL.md");
 }
 
-export function defaultSkillsDir({ codex = false } = {}) {
-  return codex ? path.join(os.homedir(), ".codex", "skills") : path.join(os.homedir(), ".claude", "skills");
+export function defaultSkillsDir({ codex = false, home = os.homedir() } = {}) {
+  return codex ? path.join(home, ".codex", "skills") : path.join(home, ".claude", "skills");
+}
+
+const readOrNull = (file) => {
+  try {
+    return fs.readFileSync(file, "utf8");
+  } catch (e) {
+    return null;
+  }
+};
+
+/**
+ * Brings a `skill install` directory up to this release: when it holds any skill of ours and one is
+ * missing, differs, or is retired, every skill is written again. Returns the written paths, [] when
+ * nothing was stale, or null when none of ours is there (never installed, or all the user's own).
+ */
+export function refreshSkills({ dir = defaultSkillsDir() } = {}) {
+  const current = (name) => readOrNull(path.join(dir, name, "SKILL.md"));
+  const ours = SKILLS.filter((name) => OURS.test(current(name) ?? ""));
+  if (!ours.length) return null;
+  const stale =
+    SKILLS.some((name) => current(name) !== fs.readFileSync(skillSource(name), "utf8")) ||
+    RETIRED_SKILLS.some((name) => OURS.test(current(name) ?? ""));
+  return stale ? installSkills({ dir }) : [];
 }
 
 /**
@@ -53,9 +82,7 @@ export function defaultSkillsDir({ codex = false } = {}) {
 export function installSkills({ dir = defaultSkillsDir() } = {}) {
   for (const name of RETIRED_SKILLS) {
     const file = path.join(dir, name, "SKILL.md");
-    // Ours: every skill this package shipped carries its don't-force-stop-CodeDroid rule, naming the
-    // app com.codedroid.app before 0.1.5 and com.codedroid.agent since.
-    if (fs.existsSync(file) && /com\.codedroid\.(app|agent)\b/.test(fs.readFileSync(file, "utf8"))) {
+    if (OURS.test(readOrNull(file) ?? "")) {
       fs.rmSync(file);
       // Only the file it wrote: anything else the user keeps there stays, and so does the folder.
       if (fs.readdirSync(path.dirname(file)).length === 0) fs.rmdirSync(path.dirname(file));

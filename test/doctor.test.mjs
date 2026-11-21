@@ -127,4 +127,20 @@ const healthy = {
   assert.deepEqual(report.checks.map((c) => c.name).slice(5, 7), ["Daemon", "Phone Pixel 9"], "the lines keep their order");
 }
 
+// ── This release against npm ────────────────────────────────────────────────
+{
+  const names = (report) => report.checks.map((c) => c.name);
+  assert.ok(!names(await collectDoctorReport(healthy)).includes("Version"), "no probe, no line");
+  let report = await collectDoctorReport({ ...healthy, latestVersion: async () => VERSION });
+  assert.deepEqual(names(report).slice(0, 2), ["Node.js", "Version"]);
+  assert.deepEqual([report.checks[1].ok, report.checks[1].detail], [true, `${VERSION}, the newest on npm`]);
+  report = await collectDoctorReport({ ...healthy, latestVersion: async () => "99.0.0" });
+  assert.deepEqual([report.checks[1].ok, report.checks[1].detail], [false, `${VERSION}, and 99.0.0 is on npm`]);
+  assert.match(report.checks[1].fix, /restart the client/);
+  report = await collectDoctorReport({ ...healthy, latestVersion: async () => { throw new Error("offline"); } });
+  assert.deepEqual([report.checks[1].ok, report.checks[1].detail], [true, `${VERSION} (could not ask npm for the newest)`]);
+  report = await collectDoctorReport({ ...healthy, latestVersion: async () => "0.0.1" });
+  assert.equal(report.checks[1].ok, true, "an npx cache ahead of npm is not a problem");
+}
+
 console.log("doctor.test.mjs: ALL PASS");

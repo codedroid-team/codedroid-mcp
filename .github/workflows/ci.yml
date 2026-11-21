@@ -1,0 +1,66 @@
+# Every pull request and every push to main: the tests, on each Node.js the package supports, and
+# the release rules, so that what reaches main can be released from there (release.yml).
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  # main is what the plugins install, and the version is what tells a client there is something new,
+  # so a change to what ships has to come with a version npm does not have yet. A pull request with
+  # the `no-release` label is exempt: part of a change that a later one releases.
+  release-rules:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Check the version against npm and the base branch
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          EXEMPT: ${{ contains(github.event.pull_request.labels.*.name, 'no-release') }}
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./package.json').version")
+          base_version=$(git show "$BASE:package.json" | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).version")
+          latest=$(npm view @codedroid/mcp dist-tags.latest)
+          on_npm=$(npm view "@codedroid/mcp@$version" version 2>/dev/null || true)
+          shipped=$(git diff --name-only "$BASE" HEAD -- src skills .mcp.json mcp_config.json .claude-plugin .codex-plugin .antigravity-plugin package.json | grep -v '^$' || true)
+          echo "version $version (base $base_version, npm latest $latest)"
+          if [ "$version" != "$base_version" ]; then
+            if [ -n "$on_npm" ]; then
+              echo "::error::@codedroid/mcp@$version is already on npm. Pick the next version."
+              exit 1
+            fi
+            if ! node -e "import('./src/update-check.js').then((m) => process.exit(m.compareVersions('$version', '$latest') > 0 ? 0 : 1))"; then
+              echo "::error::$version is not newer than $latest on npm, so npm would not call it latest."
+              exit 1
+            fi
+          elif [ -n "$shipped" ] && [ "$EXEMPT" != "true" ]; then
+            echo "::error::This changes what ships ($(echo "$shipped" | head -3 | tr '\n' ' ')...) without a new version. Run node scripts/set-version.mjs <x.y.z>, or add the no-release label."
+            exit 1
+          fi

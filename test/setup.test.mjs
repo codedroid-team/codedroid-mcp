@@ -10,7 +10,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { addServer, clients, pickClients, runCli, SERVER } from "../src/setup.js";
+import { addServer, clients, enableClaudeAutoUpdate, pickClients, refreshInstalls, runCli, SERVER } from "../src/setup.js";
+import { installSkills, SKILLS, skillSource } from "../src/skill.js";
 import { VERSION } from "../src/version.js";
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "codedroid-setup-"));
@@ -29,7 +30,7 @@ function fakeRun(answers = {}) {
 }
 
 try {
-  assert.deepEqual(SERVER.args, ["-y", `@codedroid/mcp@${VERSION}`], "pinned like the plugin's .mcp.json");
+  assert.deepEqual(SERVER.args, ["-y", "@codedroid/mcp@latest"], "@latest like the plugins' .mcp.json: a release arrives with the next start");
 
   // ── JSON configs: add, then nothing to do, then a newer pin keeps the env ──
   {
@@ -259,6 +260,104 @@ try {
     const mac = newHome();
     fs.mkdirSync(path.join(mac, "Applications", "Antigravity.app"), { recursive: true });
     assert.equal(clients({ home: mac, platform: "darwin", env: {}, run: fakeRun().run }).find((c) => c.id === "antigravity").installed(), true, "the app in ~/Applications");
+  }
+
+  // ── Claude Code: auto-update for the marketplace, which Claude leaves off for one that is not Anthropic's ──
+  {
+    const home = newHome();
+    const file = path.join(home, ".claude", "plugins", "known_marketplaces.json");
+    assert.equal(enableClaudeAutoUpdate(home), false, "no Claude Code here: nothing to write");
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify({ codedroid: { source: { source: "github", repo: "codedroid-team/codedroid-mcp" }, installLocation: "/x" } }, null, 2) + "\n");
+    assert.equal(enableClaudeAutoUpdate(home), true);
+    assert.equal(readJson(file).codedroid.autoUpdate, true);
+    assert.equal(readJson(file).codedroid.installLocation, "/x", "the rest of the entry stays");
+    assert.equal(enableClaudeAutoUpdate(home), false, "already on");
+    fs.writeFileSync(file, JSON.stringify({ codedroid: { autoUpdate: false } }));
+    assert.equal(enableClaudeAutoUpdate(home), false, "a choice made in /plugin stays");
+    assert.equal(readJson(file).codedroid.autoUpdate, false);
+    fs.writeFileSync(file, JSON.stringify({ other: {} }));
+    assert.equal(enableClaudeAutoUpdate(home), false, "a marketplace Claude does not know is not added");
+
+    // setup with the plugin present turns it on; check reports the plugin's version and the switch.
+    fs.writeFileSync(file, JSON.stringify({ codedroid: { source: {} } }));
+    const listing = (version) => ({ "claude plugin list --json": { ok: true, stdout: JSON.stringify([{ id: "codedroid@codedroid", version }]) } });
+    const claude = (answers) => clients({ home, env: {}, run: fakeRun(answers).run }).find((c) => c.id === "claude-code");
+    assert.deepEqual(claude(listing("0.1.3")).setup(), { status: "updated", detail: `has the CodeDroid plugin 0.1.3, ${VERSION} arrives with the next Claude Code start, auto-update on` });
+    assert.equal(claude(listing("0.1.3")).setup().status, "present", "and then nothing to do");
+    fs.writeFileSync(file, JSON.stringify({ codedroid: { autoUpdate: false } }));
+    assert.equal(claude(listing("0.1.3")).check().detail, `has the CodeDroid plugin 0.1.3, this is ${VERSION}: run claude plugin update codedroid@codedroid, auto-update off`);
+    assert.equal(claude(listing(VERSION)).setup().detail, `has the CodeDroid plugin ${VERSION}, auto-update off`);
+    // A fresh install turns it on too, once claude has recorded the marketplace.
+    fs.writeFileSync(file, JSON.stringify({ codedroid: { source: {} } }));
+    const install = "claude plugin install codedroid --marketplace codedroid-team/codedroid-mcp";
+    assert.deepEqual(claude({ "claude plugin list --json": { ok: true, stdout: "[]" }, [install]: { ok: true } }).setup(), { status: "added", detail: "installed the CodeDroid plugin, auto-update on" });
+    assert.equal(readJson(file).codedroid.autoUpdate, true);
+  }
+
+  // ── Codex: the plugin version in its cache, against this release ──
+  {
+    const home = newHome();
+    const codexHome = path.join(home, ".codex");
+    fs.mkdirSync(path.join(codexHome, "plugins", "cache", "codedroid", "codedroid", "0.1.9"), { recursive: true });
+    fs.mkdirSync(path.join(codexHome, "plugins", "cache", "codedroid", "codedroid", "0.1.15"), { recursive: true });
+    fs.writeFileSync(path.join(codexHome, "config.toml"), '[plugins."codedroid@codedroid"]\nenabled = true\n');
+    const codex = clients({ home, env: {}, run: fakeRun().run }).find((c) => c.id === "codex");
+    assert.equal(codex.check().detail, `has the CodeDroid plugin 0.1.15 (this is ${VERSION}: run codex plugin marketplace upgrade codedroid, then codex plugin add codedroid@codedroid)`);
+    fs.mkdirSync(path.join(codexHome, "plugins", "cache", "codedroid", "codedroid", VERSION));
+    assert.equal(codex.check().detail, `has the CodeDroid plugin ${VERSION}`);
+  }
+
+  // ── The daemon's refresh: what earlier releases left becomes this release, and nothing new appears ──
+  {
+    const home = newHome();
+    assert.deepEqual(refreshInstalls({ home, platform: "linux", env: {} }), [], "an empty computer: nothing to do");
+
+    // A config pinned to an older release moves to @latest and keeps its env; @latest and someone else's stay.
+    const cursor = path.join(home, ".cursor", "mcp.json");
+    fs.mkdirSync(path.dirname(cursor), { recursive: true });
+    fs.writeFileSync(cursor, JSON.stringify({ mcpServers: { codedroid: { command: "npx", args: ["-y", "@codedroid/mcp@0.1.14"], env: { CODEDROID_MCP_ADB: "0" } } } }));
+    const vscode = path.join(home, ".config", "Code", "User", "mcp.json");
+    fs.mkdirSync(path.dirname(vscode), { recursive: true });
+    fs.writeFileSync(vscode, JSON.stringify({ servers: { codedroid: { type: "stdio", command: "npx", args: ["-y", "@codedroid/mcp@latest"] } } }));
+    const windsurf = path.join(home, ".codeium", "windsurf", "mcp_config.json");
+    fs.mkdirSync(path.dirname(windsurf), { recursive: true });
+    fs.writeFileSync(windsurf, JSON.stringify({ mcpServers: { codedroid: { command: "other" } } }));
+    // An older Antigravity plugin of ours.
+    const pluginDir = path.join(home, ".gemini", "config", "plugins", "codedroid");
+    fs.mkdirSync(path.join(pluginDir, ".antigravity-plugin"), { recursive: true });
+    fs.writeFileSync(path.join(pluginDir, ".antigravity-plugin", "plugin.json"), JSON.stringify({ name: "codedroid", version: "0.1.14" }));
+    // Skills a `skill install` of an older release left, one of them changed since.
+    const skills = path.join(home, ".claude", "skills");
+    installSkills({ dir: skills });
+    fs.writeFileSync(path.join(skills, "codedroid-phone", "SKILL.md"), "---\nname: codedroid-phone\n---\nOld text about com.codedroid.agent.\n");
+    // Claude Code knows the marketplace, with the switch untouched.
+    const known = path.join(home, ".claude", "plugins", "known_marketplaces.json");
+    fs.mkdirSync(path.dirname(known), { recursive: true });
+    fs.writeFileSync(known, JSON.stringify({ codedroid: { source: {} } }));
+
+    assert.deepEqual(refreshInstalls({ home, platform: "linux", env: {} }), [
+      "Claude Code: turned on auto-update for the codedroid marketplace in Claude Code",
+      `Antigravity: updated the CodeDroid plugin in ${pluginDir}, 0.1.14 to ${VERSION}`,
+      `Cursor: moved ${cursor} from 0.1.14 to @latest`,
+      `Skills: brought the ${SKILLS.length} in ${skills} up to ${VERSION}`,
+    ]);
+    assert.deepEqual(readJson(cursor).mcpServers.codedroid, { ...SERVER, env: { CODEDROID_MCP_ADB: "0" } });
+    assert.deepEqual(readJson(windsurf), { mcpServers: { codedroid: { command: "other" } } });
+    assert.equal(readJson(path.join(pluginDir, ".antigravity-plugin", "plugin.json")).version, VERSION);
+    assert.ok(fs.existsSync(path.join(pluginDir, "skills", "codedroid-phone", "SKILL.md")));
+    assert.equal(fs.readFileSync(path.join(skills, "codedroid-phone", "SKILL.md"), "utf8"), fs.readFileSync(skillSource("codedroid-phone"), "utf8"));
+    assert.equal(readJson(known).codedroid.autoUpdate, true);
+    assert.ok(!fs.existsSync(path.join(home, ".codex", "skills")), "installs nothing where there was nothing");
+    assert.deepEqual(refreshInstalls({ home, platform: "linux", env: {} }), [], "and then there is nothing to do");
+
+    // One client's broken file is one line: the others still get theirs.
+    fs.writeFileSync(path.join(pluginDir, ".antigravity-plugin", "plugin.json"), JSON.stringify({ name: "codedroid", version: "0.1.14" }));
+    fs.rmSync(cursor);
+    fs.mkdirSync(path.join(cursor, "mcp.json"), { recursive: true });
+    const lines = refreshInstalls({ home, platform: "linux", env: {} });
+    assert.match(lines.find((l) => l.startsWith("Cursor")) ?? "", /could not update it/);
+    assert.ok(lines.some((l) => l.startsWith("Antigravity: updated")));
   }
 
   // ── The CLI: --client and --yes write the config, then say how to pair ──

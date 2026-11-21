@@ -1,11 +1,12 @@
 # Publishes server.json to the official MCP Registry under io.github.codedroid-team.
 # GitHub OIDC proves the run comes from this org's repository, so any maintainer who can run
 # workflows can publish; the interactive `mcp-publisher login github` needs an org Owner.
-# Run it after the npm release that server.json names is live.
+# release.yml runs it after publishing to npm; by hand, run it once the npm release server.json names is live.
 name: Publish to MCP Registry
 
 on:
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read

@@ -1,6 +1,6 @@
 {
   "name": "@codedroid/mcp",
-  "version": "0.1.18",
+  "version": "0.1.19",
   "mcpName": "io.github.codedroid-team/codedroid-mcp",
   "description": "MCP server for controlling Android devices through CodeDroid from Claude Code, Codex, Antigravity, and other MCP clients.",
   "type": "module",
@@ -43,7 +43,8 @@
   ],
   "homepage": "https://get.codedroid.com",
   "scripts": {
-    "test": "for f in src/*.js; do node --check \"$f\" || exit 1; done && for t in test/*.test.mjs; do node \"$t\" || exit 1; done"
+    "test": "for f in src/*.js; do node --check \"$f\" || exit 1; done && for t in test/*.test.mjs; do node \"$t\" || exit 1; done",
+    "set-version": "node scripts/set-version.mjs"
   },
   "repository": {
     "type": "git",

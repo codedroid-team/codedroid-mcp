@@ -2,11 +2,16 @@
  * `setup` adds CodeDroid to the coding clients on this computer:
  *
  * - Claude Code and Codex get the plugin through their own CLI, as the README's install commands
- *   do: the MCP server and the skills, updated by the client.
+ *   do: the MCP server and the skills, updated by the client. In Claude Code, auto-update is off for
+ *   a marketplace that is not Anthropic's unless the user turns it on, so `setup` turns it on.
  * - Antigravity gets the plugin copied into its global plugins folder, which the app, the IDE and
- *   the CLI all load. Running a newer `setup` replaces it with that release.
- * - Cursor, VS Code, Claude Desktop, Windsurf and Zed get the MCP server in their JSON config, pinned
- *   to this release like the plugin's .mcp.json. Running a newer `setup` moves the pin.
+ *   the CLI all load.
+ * - Cursor, VS Code, Claude Desktop, Windsurf and Zed get the MCP server in their JSON config.
+ *
+ * Every one launches `npx -y @codedroid/mcp@latest`, like the plugins' .mcp.json, so a new release
+ * on npm reaches each client with its next start. What a release cannot reach that way, the copied
+ * Antigravity plugin, `skill install` copies and configs an earlier release pinned to itself, the
+ * daemon brings up to its own release when it starts (refreshInstalls).
  *
  * A client that already has some other `codedroid` server is left alone, so its tools are never
  * registered twice. A config keeps its comments and formatting, and one that cannot be read or
@@ -18,16 +23,19 @@ import { applyEdits, modify, parse } from "jsonc-parser";
 import os from "os";
 import path from "path";
 import { fileURLToPath } from "url";
+import { defaultSkillsDir, refreshSkills } from "./skill.js";
+import { compareVersions } from "./update-check.js";
 import { VERSION } from "./version.js";
 
 const PACKAGE = "@codedroid/mcp";
 const REPO = "codedroid-team/codedroid-mcp";
 const PLUGIN = "codedroid@codedroid";
+const MARKETPLACE = "codedroid";
 const PACKAGE_ROOT = fileURLToPath(new URL("../", import.meta.url));
 /** What the Antigravity plugin is made of, as the repository root holds it for `agy plugin install`. */
 const ANTIGRAVITY_PLUGIN_FILES = [".antigravity-plugin", "assets", "mcp_config.json", "skills"];
 
-export const SERVER = { command: "npx", args: ["-y", `${PACKAGE}@${VERSION}`] };
+export const SERVER = { command: "npx", args: ["-y", `${PACKAGE}@latest`] };
 export const MANUAL_SETUP = `https://github.com/${REPO}/blob/main/docs/reference.md#mcp-configuration`;
 
 /**
@@ -73,7 +81,14 @@ export function clients({ home = os.homedir(), platform = process.platform, env 
   const appData = appDataDir({ home, platform, env });
   const onPath = (command) => () => run(command, ["--version"]).ok;
   return [
-    { id: "claude-code", name: "Claude Code", installed: onPath("claude"), setup: () => setupClaudeCode(run), check: () => checkClaudeCode(run) },
+    {
+      id: "claude-code",
+      name: "Claude Code",
+      installed: onPath("claude"),
+      setup: () => setupClaudeCode(run, home),
+      check: () => checkClaudeCode(run, home),
+      refresh: () => enableClaudeAutoUpdate(home) && `turned on auto-update for the ${MARKETPLACE} marketplace in Claude Code`,
+    },
     {
       id: "codex",
       name: "Codex",
@@ -101,30 +116,91 @@ export function pickClients(all, only) {
 
 const failed = (result) => ({ status: "failed", detail: `failed: ${result.reason}` });
 
+/** How Claude Code's copy of the plugin stands: its version, and whether the marketplace updates itself. */
+function describeClaudePlugin(plugin, home) {
+  const version = plugin?.version;
+  const behind = version && compareVersions(version, VERSION) < 0;
+  const auto = claudeMarketplaces(home)?.[MARKETPLACE]?.autoUpdate === true;
+  const update = !behind ? "" : auto ? `, ${VERSION} arrives with the next Claude Code start` : `, this is ${VERSION}: run claude plugin update ${PLUGIN}`;
+  return `has the CodeDroid plugin${version ? ` ${version}` : ""}${update}, auto-update ${auto ? "on" : "off"}`;
+}
+
 /**
  * Each client's `check` says how CodeDroid stands there without changing anything (for doctor):
  * present (the plugin or this package's server), other (some other codedroid server), or absent.
  */
-function checkClaudeCode(run) {
+function checkClaudeCode(run, home) {
   const plugins = parseJson(run("claude", ["plugin", "list", "--json"]).stdout);
-  if (Array.isArray(plugins) && plugins.some((p) => p.id === PLUGIN)) return { status: "present", detail: "has the CodeDroid plugin" };
+  const plugin = Array.isArray(plugins) ? plugins.find((p) => p.id === PLUGIN) : undefined;
+  if (plugin) return { status: "present", detail: describeClaudePlugin(plugin, home) };
   if (run("claude", ["mcp", "get", "codedroid"]).ok) return { status: "other", detail: "has a codedroid MCP server added by hand" };
   return { status: "absent", detail: "has neither the CodeDroid plugin nor a codedroid server" };
 }
 
+/** The newest version of the plugin Codex has installed, from its cache, or undefined. */
+function codexPluginVersion(codexHome) {
+  try {
+    return fs
+      .readdirSync(path.join(codexHome, "plugins", "cache", MARKETPLACE, "codedroid"))
+      .filter((name) => /^\d+\.\d+\.\d+$/.test(name))
+      .sort(compareVersions)
+      .at(-1);
+  } catch (e) {
+    return undefined;
+  }
+}
+
 function checkCodex(codexHome) {
   const config = readText(path.join(codexHome, "config.toml")) ?? "";
-  if (/^\s*\[plugins\."codedroid@codedroid"\]/m.test(config)) return { status: "present", detail: "has the CodeDroid plugin" };
+  if (/^\s*\[plugins\."codedroid@codedroid"\]/m.test(config)) {
+    const version = codexPluginVersion(codexHome);
+    const behind = version && compareVersions(version, VERSION) < 0;
+    return {
+      status: "present",
+      detail: `has the CodeDroid plugin${version ? ` ${version}` : ""}${behind ? ` (this is ${VERSION}: run codex plugin marketplace upgrade ${MARKETPLACE}, then codex plugin add ${PLUGIN})` : ""}`,
+    };
+  }
   if (/^\s*\[mcp_servers\.codedroid\]/m.test(config)) return { status: "other", detail: "has a codedroid MCP server added by hand" };
   return { status: "absent", detail: `no CodeDroid in ${path.join(codexHome, "config.toml")}` };
 }
 
-function setupClaudeCode(run) {
+function setupClaudeCode(run, home) {
   const plugins = parseJson(run("claude", ["plugin", "list", "--json"]).stdout);
-  if (Array.isArray(plugins) && plugins.some((p) => p.id === PLUGIN)) return { status: "present", detail: "has the CodeDroid plugin" };
+  const plugin = Array.isArray(plugins) ? plugins.find((p) => p.id === PLUGIN) : undefined;
+  if (plugin) {
+    const turnedOn = enableClaudeAutoUpdate(home);
+    return { status: turnedOn ? "updated" : "present", detail: describeClaudePlugin(plugin, home) };
+  }
   if (run("claude", ["mcp", "get", "codedroid"]).ok) return { status: "skipped", detail: "already has a codedroid MCP server" };
   const install = run("claude", ["plugin", "install", "codedroid", "--marketplace", REPO]);
-  return install.ok ? { status: "added", detail: "installed the CodeDroid plugin" } : failed(install);
+  if (!install.ok) return failed(install);
+  const auto = enableClaudeAutoUpdate(home) || claudeMarketplaces(home)?.[MARKETPLACE]?.autoUpdate === true;
+  return { status: "added", detail: `installed the CodeDroid plugin${auto ? ", auto-update on" : ""}` };
+}
+
+function claudeMarketplacesPath(home) {
+  return path.join(home, ".claude", "plugins", "known_marketplaces.json");
+}
+
+/** Claude Code's record of the marketplaces it knows, or undefined when there is none it can read. */
+function claudeMarketplaces(home) {
+  const marketplaces = parseJson(readText(claudeMarketplacesPath(home)));
+  return isObject(marketplaces) ? marketplaces : undefined;
+}
+
+/**
+ * Turns on auto-update for the codedroid marketplace in Claude Code, where it is off unless the user
+ * turns it on: the same field the Marketplaces tab of /plugin writes. A choice already made there,
+ * on or off, stays. True when it changed the file.
+ */
+export function enableClaudeAutoUpdate(home = os.homedir()) {
+  const marketplaces = claudeMarketplaces(home);
+  const entry = marketplaces?.[MARKETPLACE];
+  if (!isObject(entry) || entry.autoUpdate !== undefined) return false;
+  const file = claudeMarketplacesPath(home);
+  const text = readText(file);
+  writeText(file, applyEdits(text, modify(text, [MARKETPLACE, "autoUpdate"], true, { formattingOptions: { insertSpaces: true, tabSize: 2 } })));
+  return true;
 }
 
 function setupCodex(run, codexHome) {
@@ -160,11 +236,18 @@ function antigravity({ home, platform, env }) {
       const existing = pluginManifest(pluginDir);
       if (existing?.name === "codedroid") {
         const outdated = compareVersions(existing.version, VERSION) < 0;
-        return { status: "present", detail: `has the CodeDroid plugin ${existing.version}${outdated ? ` (this is ${VERSION}: run setup to update it)` : ""}` };
+        return { status: "present", detail: `has the CodeDroid plugin ${existing.version}${outdated ? ` (this is ${VERSION}: the daemon updates it when it next starts, or run setup)` : ""}` };
       }
       const server = parseJson(readText(configPath))?.mcpServers?.codedroid;
       if (server) return launchesCodeDroid(server) ? { status: "present", detail: `has the server in ${configPath}` } : { status: "other", detail: `has another codedroid server in ${configPath}` };
       return { status: "absent", detail: `no CodeDroid plugin in ${pluginDir}` };
+    },
+    // The plugin folder, when an earlier release's `setup` made it, becomes this release's.
+    refresh() {
+      const existing = pluginManifest(pluginDir);
+      if (existing?.name !== "codedroid" || compareVersions(existing.version, VERSION) >= 0) return null;
+      const result = this.setup();
+      return result.status === "updated" ? `${result.detail}, ${existing.version} to ${VERSION}` : null;
     },
     setup: () => {
       const existing = pluginManifest(pluginDir);
@@ -193,18 +276,19 @@ function pluginManifest(dir) {
   return parseJson(readText(path.join(dir, ".antigravity-plugin", "plugin.json"))) ?? parseJson(readText(path.join(dir, "plugin.json")));
 }
 
-/** Negative when version a is older than b; a missing or malformed version counts as oldest. */
-function compareVersions(a, b) {
-  const parts = (v) => (typeof v === "string" ? v.split(".").map((n) => Number.parseInt(n, 10) || 0) : [-1]);
-  const [x, y] = [parts(a), parts(b)];
-  for (let i = 0; i < Math.max(x.length, y.length); i++) {
-    if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) - (y[i] ?? 0);
-  }
-  return 0;
+/** The version a config entry pins this package to, undefined when it is unpinned or @latest. */
+function pinnedVersion(entry) {
+  const pinned = entry.args.find((arg) => String(arg).startsWith(`${PACKAGE}@`))?.slice(PACKAGE.length + 1);
+  return pinned && pinned !== "latest" ? pinned : undefined;
 }
 
 function jsonClient(id, name, dir, file, key, entry) {
   const configPath = path.join(dir, file);
+  /** Our entry in the config, or undefined: no file, not JSON, no entry, or someone else's. */
+  const ours = () => {
+    const existing = parseJson(readText(configPath))?.[key]?.codedroid;
+    return existing && launchesCodeDroid(existing) ? existing : undefined;
+  };
   const check = () => {
     const text = readText(configPath);
     if (text === undefined) return { status: "absent", detail: `no ${configPath}` };
@@ -213,11 +297,49 @@ function jsonClient(id, name, dir, file, key, entry) {
     const existing = config?.[key]?.codedroid;
     if (!existing) return { status: "absent", detail: `no codedroid server in ${configPath}` };
     if (!launchesCodeDroid(existing)) return { status: "other", detail: `another codedroid server in ${configPath}` };
-    const pinned = existing.args.find((arg) => String(arg).startsWith(`${PACKAGE}@`))?.slice(PACKAGE.length + 1);
-    const outdated = pinned && compareVersions(pinned, VERSION) < 0;
-    return { status: "present", detail: `set up in ${configPath}${outdated ? ` (pinned to ${pinned}, this is ${VERSION}: run setup to update it)` : ""}` };
+    const pinned = pinnedVersion(existing);
+    return { status: "present", detail: `set up in ${configPath}${pinned ? ` (pinned to ${pinned}: the daemon moves it to @latest when it next starts, or run setup)` : ""}` };
   };
-  return { id, name, installed: () => fs.existsSync(dir), setup: () => addServer(configPath, key, entry), check };
+  // An entry an earlier release pinned to itself moves to @latest, keeping its env and the rest.
+  const refresh = () => {
+    const existing = ours();
+    const pinned = existing && pinnedVersion(existing);
+    if (!pinned) return null;
+    const result = addServer(configPath, key, entry);
+    return result.status === "updated" ? `moved ${configPath} from ${pinned} to @latest` : null;
+  };
+  return { id, name, installed: () => fs.existsSync(dir), setup: () => addServer(configPath, key, entry), check, refresh };
+}
+
+/**
+ * Brings what earlier releases left on this computer up to this one, installing nothing new: the
+ * Antigravity plugin folder, `skill install` copies, configs pinned to an older release, and Claude
+ * Code's auto-update switch. The daemon runs it when it starts, so a new release reaches every
+ * client here once any one of them launches it. Returns a line per change, for the log; a client
+ * whose files it cannot update gets a line too, and the rest go on.
+ */
+export function refreshInstalls({ home = os.homedir(), platform = process.platform, env = process.env } = {}) {
+  const lines = [];
+  const noCli = () => ({ ok: false, stdout: "", reason: "not run" });
+  for (const client of clients({ home, platform, env, run: noCli })) {
+    if (!client.refresh) continue;
+    try {
+      const line = client.refresh();
+      if (line) lines.push(`${client.name}: ${line}`);
+    } catch (e) {
+      lines.push(`${client.name}: could not update it: ${e.message}`);
+    }
+  }
+  for (const codex of [false, true]) {
+    const dir = defaultSkillsDir({ codex, home });
+    try {
+      const written = refreshSkills({ dir });
+      if (written?.length) lines.push(`Skills: brought the ${written.length} in ${dir} up to ${VERSION}`);
+    } catch (e) {
+      lines.push(`Skills: could not update ${dir}: ${e.message}`);
+    }
+  }
+  return lines;
 }
 
 const isObject = (value) => typeof value === "object" && value !== null && !Array.isArray(value);

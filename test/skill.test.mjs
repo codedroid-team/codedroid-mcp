@@ -15,7 +15,7 @@ import { createInstallTool } from "../src/install-tool.js";
 import { createSetupPhoneTool } from "../src/phone-setup.js";
 import { GET_SCREEN_OPTIONS } from "../src/screen-text.js";
 import { createSessionTools } from "../src/session-tools.js";
-import { installSkills, SKILLS, SKILLS_SOURCE, skillSource } from "../src/skill.js";
+import { installSkills, refreshSkills, SKILLS, SKILLS_SOURCE, skillSource } from "../src/skill.js";
 import { createDevicesTool, createStatusTool } from "../src/status-tool.js";
 
 const phone = JSON.parse(fs.readFileSync(new URL("./fixtures/phone-tools.json", import.meta.url), "utf8")).tools;
@@ -114,6 +114,33 @@ try {
   assert.ok(fs.existsSync(path.join(foreign, "create-tests", "SKILL.md")), "a same-named skill that is not ours stays");
 } finally {
   fs.rmSync(foreign, { recursive: true, force: true });
+}
+
+// The daemon's refresh: a `skill install` directory of ours comes up to this release when any skill
+// is missing, differs or is retired; a directory with none of ours is left as it is.
+const refreshed = fs.mkdtempSync(path.join(os.tmpdir(), "codedroid-skill-refresh-"));
+try {
+  assert.equal(refreshSkills({ dir: refreshed }), null, "nothing installed here");
+  assert.equal(refreshSkills({ dir: path.join(refreshed, "missing") }), null, "no such directory");
+  installSkills({ dir: refreshed });
+  assert.deepEqual(refreshSkills({ dir: refreshed }), [], "current already");
+  fs.writeFileSync(path.join(refreshed, "test-on-device", "SKILL.md"), "---\nname: test-on-device\n---\nAn older text about com.codedroid.agent.\n");
+  fs.rmSync(path.join(refreshed, "app-e2e-bug"), { recursive: true });
+  assert.equal(refreshSkills({ dir: refreshed }).length, SKILLS.length, "one changed, one gone: all written again");
+  assert.equal(fs.readFileSync(path.join(refreshed, "test-on-device", "SKILL.md"), "utf8"), fs.readFileSync(skillSource("test-on-device"), "utf8"));
+  assert.ok(fs.existsSync(path.join(refreshed, "app-e2e-bug", "SKILL.md")));
+  fs.mkdirSync(path.join(refreshed, "create-tests"));
+  fs.writeFileSync(path.join(refreshed, "create-tests", "SKILL.md"), "---\nname: create-tests\n---\nNever force-stop com.codedroid.agent.\n");
+  assert.equal(refreshSkills({ dir: refreshed }).length, SKILLS.length, "a retired skill of ours left behind is reason enough");
+  assert.ok(!fs.existsSync(path.join(refreshed, "create-tests", "SKILL.md")));
+  // The user's own skills, one of them named like ours, are not touched.
+  const theirs = path.join(refreshed, "theirs");
+  fs.mkdirSync(path.join(theirs, "codedroid-phone"), { recursive: true });
+  fs.writeFileSync(path.join(theirs, "codedroid-phone", "SKILL.md"), "---\nname: codedroid-phone\n---\nMine.\n");
+  assert.equal(refreshSkills({ dir: theirs }), null);
+  assert.deepEqual(fs.readdirSync(theirs), ["codedroid-phone"]);
+} finally {
+  fs.rmSync(refreshed, { recursive: true, force: true });
 }
 
 console.log("skill.test.mjs: ALL PASS");

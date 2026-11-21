@@ -25,6 +25,10 @@ needed, turns on its accessibility service, and signs it in with your account, s
 phone with no Google account on it needs no sign-in of its own. Setting up over USB needs
 [adb](https://developer.android.com/tools/releases/platform-tools).
 
+That is the last command you need: every client launches `@codedroid/mcp@latest`, so a new
+release is with you the next time the client starts, and the running server brings the skills and
+plugin copies on your computer along with it ([details](docs/reference.md#updates)).
+
 Already have the plugin? Ask your agent to "set up my phone" instead: it does the same, and asks
 you before installing anything.
 
@@ -152,9 +156,11 @@ phone tools alone. `claude-plugin/` in this repository is what the directory lis
 
 ## Privacy and security
 
-The plugin runs `npx -y @codedroid/mcp@<version>`, which downloads that exact release from npm
-and starts a local MCP server. The `app-e2e` skills also run `npx -y @codedroid/mcp e2e report`,
-with no version, which runs the newest release on npm. Everything it sends goes over TLS to the CodeDroid server, `orchestrator.codedroid.com`
+The plugin runs `npx -y @codedroid/mcp@latest`, which asks npm for the newest release, downloads
+it when it has changed, and starts a local MCP server; the `app-e2e` skills run
+`npx -y @codedroid/mcp e2e report` the same way. Once a day the server asks npm for the newest
+version too, sending nothing but the package name (`CODEDROID_MCP_UPDATE_CHECK=0` turns that off).
+Everything else it sends goes over TLS to the CodeDroid server, `orchestrator.codedroid.com`
 unless the pairing command shown on your phone names another:
 
 - **Pairing** sends the one-time code, your computer's name, and its OS (for example `darwin`),

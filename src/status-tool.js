@@ -71,8 +71,12 @@ export function createDevicesTool(phones) {
   };
 }
 
-/** @param {import("./phones.js").Phones} phones */
-export function createStatusTool(phones) {
+/**
+ * @param {import("./phones.js").Phones} phones
+ * @param {object} [options]
+ * @param {() => object | null} [options.update] a newer release on npm, as update-check.js describes it
+ */
+export function createStatusTool(phones, { update = () => null } = {}) {
   return {
     definition: {
       name: "codedroid_status",
@@ -110,10 +114,12 @@ export function createStatusTool(phones) {
         : noPhoneProblem(account);
       // A session that opened before a phone connected never got these at its handshake.
       const instructions = phones.getInstructions();
+      const newer = update();
       return statusResult({
         connected: devices.length > 0 && devices.every((d) => d.connected),
         bridge: VERSION,
         ...(account ? { account } : {}),
+        ...(newer ? { update: newer } : {}),
         ...(devices.length === 1 ? { device: pairedDevice(entries[0].pairing) } : {}),
         devices,
         ...(problem ? { problem } : {}),

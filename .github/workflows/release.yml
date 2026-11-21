@@ -1,0 +1,90 @@
+# A merge to main is a release: when npm does not have the version package.json names, this
+# publishes it (with provenance, through npm's trusted publishing for this repository and workflow),
+# tags it, writes the GitHub release, and then publishes server.json to the MCP Registry. A merge that
+# leaves the version alone does nothing here. Clients launch @codedroid/mcp@latest, so the release is
+# with them on their next start.
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  npm:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    outputs:
+      published: ${{ steps.publish.outputs.published }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      # Trusted publishing (OIDC, no token to keep) needs npm 11.5.1 or later.
+      - run: npm install -g npm@latest
+      - run: npm ci
+      - run: npm test
+
+      - name: Is this version on npm?
+        id: version
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./package.json').version")
+          latest=$(npm view @codedroid/mcp dist-tags.latest)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if npm view "@codedroid/mcp@$version" version >/dev/null 2>&1; then
+            echo "@codedroid/mcp@$version is on npm already: nothing to release."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          elif ! node -e "import('./src/update-check.js').then((m) => process.exit(m.compareVersions('$version', '$latest') > 0 ? 0 : 1))"; then
+            echo "::error::$version is older than $latest on npm: publishing it would move latest backwards."
+            exit 1
+          else
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish to npm
+        id: publish
+        if: steps.version.outputs.release == 'true'
+        env:
+          # Unset: trusted publishing. Set NPM_TOKEN in the repository's secrets to use a token instead.
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -n "${NPM_TOKEN:-}" ]; then echo '//registry.npmjs.org/:_authToken=${NPM_TOKEN}' > ~/.npmrc; fi
+          npm publish --access public --provenance
+          echo "published=true" >> "$GITHUB_OUTPUT"
+
+      # Also for a version published by hand: the tag and the release it still lacks.
+      - name: Tag and release on GitHub
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          tag="v$VERSION"
+          if ! git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
+            git tag "$tag" "$GITHUB_SHA"
+            git push origin "$tag"
+          fi
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" --target "$GITHUB_SHA" --title "CodeDroid MCP $VERSION" --generate-notes --latest
+          fi
+
+  mcp-registry:
+    needs: npm
+    if: needs.npm.outputs.published == 'true'
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/publish-mcp-registry.yml
