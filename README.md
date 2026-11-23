@@ -16,9 +16,10 @@ npx -y @codedroid/mcp setup
 
 It adds CodeDroid to every coding client it finds (Claude Code, Codex, Antigravity, Cursor, VS Code,
 Claude Desktop, Windsurf, Zed) and signs this computer in with the Google account you use in
-CodeDroid, in your browser. Every phone signed in to CodeDroid with that account is reached, with
-nothing to pair: open CodeDroid on the phone and tap **Allow** when your computer first connects.
-Then restart your coding client.
+CodeDroid, in your browser: check that the page shows the code the terminal prints on its own
+line. Every phone signed in to CodeDroid with that account is reached, with nothing to pair. `setup`
+then connects to your phones, and each asks once whether to allow this computer: tap **Allow**. Then
+restart your coding client.
 
 With a phone plugged in (**USB debugging** on), `setup` also installs the CodeDroid app on it if
 needed, turns on its accessibility service, and signs it in with your account, so an emulator or a

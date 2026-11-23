@@ -35,6 +35,10 @@
  */
 import { VERSION } from "./version.js";
 
+// How long setup waits for a phone to join the account it just signed in with, and how often it looks.
+const ACCOUNT_PHONE_WAIT_MS = 10 * 60_000;
+const ACCOUNT_PHONE_POLL_MS = 5_000;
+
 function log(...parts) {
   process.stderr.write(`[codedroid-mcp] ${parts.join(" ")}\n`);
 }
@@ -212,7 +216,9 @@ async function runLogin({ server, ci = false, browser = true } = {}) {
   const { login } = await import("./account.js");
   const { DEFAULT_SERVER, describeHost, accountHost } = await import("./host.js");
   const say = (line) => process.stdout.write(`${line}\n`);
-  const account = await login({ server: server ?? DEFAULT_SERVER, log: say, open: browser, save: !ci });
+  const bold = process.stdout.isTTY && !process.env.NO_COLOR;
+  const highlight = (code) => (bold ? `\x1b[1m${code}\x1b[22m` : code);
+  const account = await login({ server: server ?? DEFAULT_SERVER, log: say, open: browser, save: !ci, highlight });
   const who = account.email ?? "your account";
   if (ci) {
     say(`Signed in as ${who}. Nothing was saved here. Keep this token as the CODEDROID_TOKEN secret of your CI:\n\n${account.refresh_token}\n`);
@@ -220,8 +226,69 @@ async function runLogin({ server, ci = false, browser = true } = {}) {
     return account;
   }
   const phones = account.devices.map((d) => describeHost(accountHost(account, d)));
-  say(`Signed in as ${who}. ${phones.length ? `Phones on the account: ${phones.join(", ")}.` : "No phone is signed in to CodeDroid with this account yet: sign in on the phone with the same account, or plug it in and run setup."}`);
+  say(`Signed in as ${who}.${phones.length ? ` Phones on the account: ${phones.join(", ")}.` : ""}`);
   return account;
+}
+
+/** What to tap on which phone, said before connecting: "the first time" is when the phone asks. */
+async function allowPrompt(device) {
+  const { findHost, readHosts } = await import("./host.js");
+  let hosts = readHosts();
+  try {
+    if (device) hosts = [findHost(hosts, device)];
+  } catch (e) {
+    /* codedroid_status says what is wrong with the selector */
+  }
+  const models = [...new Set(hosts.map((h) => h.device?.model ?? "your phone"))];
+  const which = models.length === 1 ? models[0] : models.length ? `${models.slice(0, -1).join(", ")} and ${models.at(-1)}` : "your phone";
+  return `Connecting to ${which}. If CodeDroid on the phone asks whether to allow this computer, tap Allow.`;
+}
+
+/**
+ * codedroid_status as a person reads it: the phones connected on one line, then each one that is
+ * not with its problem. True when at least one phone is connected: an old pairing that is offline
+ * does not undo a setup that reached the phone in hand.
+ */
+function printConnection(status, forget) {
+  const devices = status.devices ?? [];
+  const name = (d) => d.model ?? "your phone";
+  const connected = devices.filter((d) => d.connected);
+  const failed = devices.filter((d) => !d.connected);
+  if (!devices.length) {
+    process.stdout.write(`Not connected: ${status.problem}\n`);
+    return false;
+  }
+  if (connected.length) process.stdout.write(`Connected to ${connected.map(name).join(", ")}.\n`);
+  for (const d of failed) process.stdout.write(`${connected.length ? "Not connected to" : "Not connected:"} ${name(d)} (${d.id}): ${d.problem}\n`);
+  if (connected.length && failed.length) process.stdout.write(`${forget}\n`);
+  return connected.length > 0;
+}
+
+/**
+ * Waits for a phone on the signed-in account to come online (someone installing CodeDroid and
+ * signing in on it now), so setup can connect and the phone can ask to allow this computer. False
+ * after ACCOUNT_PHONE_WAIT_MS with none, or when the account cannot be read.
+ */
+async function waitForAccountPhone(say) {
+  const { fetchDevices } = await import("./account.js");
+  const { readAccount } = await import("./host.js");
+  const account = readAccount();
+  say(
+    `No phone is on ${account.email ?? "your account"} yet. On the phone, get CodeDroid from https://get.codedroid.com, ` +
+      "sign in with that Google account and turn on Accessibility. Waiting for it here (Ctrl-C to stop)...",
+  );
+  const deadline = Date.now() + ACCOUNT_PHONE_WAIT_MS;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, ACCOUNT_PHONE_POLL_MS));
+    try {
+      // Online, so connecting reaches it and it can ask to allow this computer.
+      if ((await fetchDevices(account)).some((d) => d.linked)) return true;
+    } catch (e) {
+      say(e.message);
+      return false;
+    }
+  }
+  return false;
 }
 
 function printResult(result) {
@@ -241,6 +308,8 @@ async function main() {
   let paired = null;
   // Set when `setup` runs: the clients it changed, to restart once the phone is connected.
   let setupRestart = command === "setup" ? [] : null;
+  // "setup" or "login" when the command ends by connecting: say what happened per phone, not the status JSON.
+  let guided = command === "setup" ? "setup" : null;
   const port = resolvePort(args);
   const enableAdbTool = resolveEnableAdb(args);
 
@@ -255,12 +324,20 @@ async function main() {
 
   if (command === "login") {
     if (args._.length > 1) fatal("Usage: codedroid-mcp login [--ci] [--no-browser] [--server=<url>]", 2);
-    await runLogin({ server: args.server, ci: !!args.ci, browser: !args["no-browser"] });
+    const account = await runLogin({ server: args.server, ci: !!args.ci, browser: !args["no-browser"] });
     if (args.ci) return;
-    // The running daemon reads the account on its next request; its phone list refreshes with it.
-    const health = await daemonHealth(port);
-    if (health) process.stdout.write("The running daemon picks the account up on its next call.\n");
-    return;
+    if (!account.devices.length) {
+      process.stdout.write("No phone is signed in to CodeDroid with this account yet: sign in on the phone with the same account, or plug it in and run setup.\n");
+      // The running daemon reads the account on its next request; its phone list refreshes with it.
+      const health = await daemonHealth(port);
+      if (health) process.stdout.write("The running daemon picks the account up on its next call.\n");
+      return;
+    }
+    // Connect now, so each phone asks to allow this computer while the person is here, not on
+    // their agent's first call.
+    command = "connect";
+    args._ = ["connect"];
+    guided = "login";
   }
 
   if (command === "logout") {
@@ -433,6 +510,9 @@ async function main() {
             say(`Phones: ${hosts.map(describeHost).join(", ")}. Checking the connection.`);
             command = "connect";
             args._ = ["connect"];
+          } else if (readAccount() && process.stdin.isTTY && (await waitForAccountPhone(say))) {
+            command = "connect";
+            args._ = ["connect"];
           } else {
             say(
               readAccount()
@@ -548,23 +628,26 @@ async function main() {
 
   if (command === "status" || command === "connect" || command === "pair") {
     await requirePhones();
-    if (command !== "status") log("Connecting. The first time, the phone asks whether to allow this computer: tap Allow.");
     const device = args._.slice(1).join(" ") || undefined;
+    if (command !== "status") {
+      const prompt = await allowPrompt(device);
+      if (guided) process.stdout.write(`${prompt}\n`);
+      else log(prompt);
+    }
     const client = await daemonClient(port, enableAdbTool);
     const result = await client.callTool({ name: "codedroid_status", arguments: { device } }, undefined, { timeout: 150_000 });
     await client.close();
     const status = JSON.parse(result.content?.[0]?.text ?? "{}");
-    if (setupRestart) {
-      // The end of setup: what to do next, not the status a script reads.
-      const restart = setupRestart.length ? `Restart ${setupRestart.join(", ")}, then ask` : "Ask your coding agent";
-      process.stdout.write(
-        status.connected
-          ? `Connected to ${status.device?.model ?? "your phone"}. ${restart}: "Read the screen on my phone and describe what is open."\n`
-          : `Not connected: ${status.problem}\n`,
-      );
-    } else {
-      printResult(result);
+    if (guided) {
+      // The end of setup or login: what to do next, not the status a script reads.
+      const restart = setupRestart?.length ? `Restart ${setupRestart.join(", ")}, then ask` : "Ask your coding agent";
+      const { FORGET } = await import("./status-tool.js");
+      const connected = printConnection(status, FORGET);
+      if (connected) process.stdout.write(`${restart}: "Read the screen on my phone and describe what is open."\n`);
+      // A login that signed in succeeded, whether or not a phone is online now.
+      process.exit(connected || guided === "login" ? (process.exitCode ?? 0) : 1);
     }
+    printResult(result);
     process.exit(status.connected ? (process.exitCode ?? 0) : 1);
   }
 
