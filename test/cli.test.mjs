@@ -359,6 +359,41 @@ try {
     }
   }
 
+  // ── setup sets up every device on adb, and names each in what it says ──
+  {
+    const { home, env } = sandbox("setup-several");
+    const fakeAdb = path.join(home, "fake-adb");
+    fs.writeFileSync(
+      fakeAdb,
+      `#!/bin/sh
+if [ "$1" = "devices" ]; then printf 'List of devices attached\\nTAB1\\tdevice\\nTAB2\\tdevice\\nTAB3\\tunauthorized\\n\\n'; exit 0; fi
+serial="$2"; shift 3
+echo "$serial $*" >> "${path.join(home, "adb.log")}"
+case "$*" in
+  "am get-current-user") echo 0 ;;
+  "getprop ro.product.model") echo "Galaxy Tab S9" ;;
+  "pm path"*) echo "package:/data/app/base.apk" ;;
+  *device/status*) printf 'Row: 0 result={"deviceId":"dev-%s","server":"https://orchestrator.example.com","signedIn":true,"accessibility":true}\\n' "$serial" ;;
+  *mcp/pairing*) printf 'Row: 0 result={"error":"disabled"}\\n' ;;
+  *) echo "unexpected $*" >&2; exit 1 ;;
+esac
+`,
+      { mode: 0o755 },
+    );
+    const setup = await cli(["setup", "--client=zed", "--yes", "--no-login", `--port=${await freePort()}`], { ...env, ADB: fakeAdb });
+    assert.equal(setup.code, 1, "a device not set up fails setup");
+    assert.match(
+      setup.stdout,
+      /^Devices on adb:\n {2}Galaxy Tab S9 \(TAB1\): CodeDroid installed\n {2}Galaxy Tab S9 \(TAB2\): CodeDroid installed\n {2}TAB3: Accept the USB debugging prompt on the phone, then run this again\.$/m,
+    );
+    assert.match(setup.stdout, /^Galaxy Tab S9 \(TAB1\): Turn on Allow computers to connect/m);
+    assert.match(setup.stdout, /^Galaxy Tab S9 \(TAB2\): Turn on Allow computers to connect/m);
+    assert.match(setup.stdout, /^TAB3: Accept the USB debugging prompt/m);
+    const asked = fs.readFileSync(path.join(home, "adb.log"), "utf8");
+    assert.ok(asked.includes("TAB1 content query") && asked.includes("TAB2 content query"), "both tablets are set up");
+    assert.ok(!asked.includes("TAB3"), "the unauthorized device is left alone");
+  }
+
   // ── doctor says what to fix and exits 1 ──
   {
     const { home, env } = sandbox("doctor");

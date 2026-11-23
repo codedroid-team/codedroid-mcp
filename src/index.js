@@ -197,12 +197,36 @@ async function daemonHealth(port) {
   return fetchHealth(port ?? DEFAULT_PORT);
 }
 
-async function confirm(question) {
+async function ask(question) {
   const { createInterface } = await import("readline/promises");
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   const answer = await rl.question(question);
   rl.close();
-  return !/^n/i.test(answer.trim());
+  return answer.trim();
+}
+
+async function confirm(question) {
+  return !/^n/i.test(await ask(question));
+}
+
+/**
+ * Which of several devices on adb `setup` sets up, and whether it installs CodeDroid where it is
+ * missing: every one, installing, with --yes; outside a terminal, every one, installing on none;
+ * otherwise as the user answers, all at once or one by one.
+ */
+async function choosePhones(phones, args) {
+  if (args.yes) return { chosen: phones, install: true };
+  if (!process.stdin.isTTY) return { chosen: phones, install: false };
+  const missing = phones.filter((p) => !p.installed).length;
+  const installing = missing ? `, installing CodeDroid on ${missing === phones.length ? "each" : missing}` : "";
+  const answer = await ask(`Set up all ${phones.length}${installing}? [Y/n/pick] `);
+  if (/^n/i.test(answer)) return { chosen: [], install: false };
+  if (!/^p/i.test(answer)) return { chosen: phones, install: true };
+  const chosen = [];
+  for (const p of phones) {
+    if (await confirm(`Set up ${p.label}${p.installed ? "" : ", installing CodeDroid"}? [Y/n] `)) chosen.push(p);
+  }
+  return { chosen, install: true };
 }
 
 /** Stops with the next step when this computer has no phone to reach: not signed in and not paired. */
@@ -304,7 +328,7 @@ async function main() {
   if (args.help || args._[0] === "help") return void process.stdout.write(HELP);
 
   let command = args._[0];
-  // A pairing `setup` just made over adb, which `pair` then connects as its own.
+  // The phones `setup` just reached over adb, which `pair` then connects as its own.
   let paired = null;
   // Set when `setup` runs: the clients it changed, to restart once the phone is connected.
   let setupRestart = command === "setup" ? [] : null;
@@ -495,8 +519,8 @@ async function main() {
     }
     command = "pair";
     if (args._.length === 1) {
-      const { describeHost, deviceKey, PAIR_BY_HAND, LOGIN_STEP, readAccount, readHosts } = await import("./host.js");
-      const { setUpPhone } = await import("./phone-setup.js");
+      const { describeHost, PAIR_BY_HAND, LOGIN_STEP, readAccount, readHosts } = await import("./host.js");
+      const { findPhones, phoneLines, setUpPhones } = await import("./phone-setup.js");
       const say = (line) => process.stdout.write(`${line}\n`);
       // Signing in reaches every phone on the account: first, unless asked not to, or there is
       // no terminal to sign in from (a script runs login once, or sets CODEDROID_TOKEN).
@@ -509,47 +533,60 @@ async function main() {
           }
         }
       }
-      const phone = await setUpPhone({
-        log: say,
-        // Never unasked: without a terminal to ask in, only --yes installs (agents have codedroid_setup_phone).
-        confirmInstall: async (model) =>
-          !!args.yes || (!!process.stdin.isTTY && (await confirm(`Install CodeDroid on ${model} and set it up? [Y/n] `))),
-      });
-      if (phone.status === "paired") {
-        paired = phone.host;
-      } else if (phone.status === "already-paired") {
-        say(`${phone.detail} Checking the connection.`);
-        command = "connect";
-        args._ = ["connect", deviceKey(phone.host)];
-      } else {
-        const hosts = readHosts();
-        say(phone.detail);
-        if (phone.status === "no-phone") {
-          if (hosts.length) {
-            say(`Phones: ${hosts.map(describeHost).join(", ")}. Checking the connection.`);
-            command = "connect";
-            args._ = ["connect"];
-          } else if (readAccount() && process.stdin.isTTY && (await waitForAccountPhone(say))) {
-            command = "connect";
-            args._ = ["connect"];
-          } else {
-            say(
-              readAccount()
-                ? "No phone is on the account yet: open CodeDroid on the phone and sign in with the same Google account, or plug it in with USB debugging on and run this again."
-                : `To reach a phone: ${LOGIN_STEP} Or plug the phone in with USB debugging on and run this again, or pair by hand. ${PAIR_BY_HAND}`,
-            );
-          }
-        } else if (phone.status === "not-installed") {
-          if (process.stdin.isTTY) say("Left it as it was.");
-          else {
-            say("Run this again with --yes to install it.");
-            process.exitCode = 1;
-          }
-        } else {
+      const found = await findPhones();
+      const devices = found.phones ?? [];
+      const several = devices.length > 1;
+      if (several) say(`Devices on adb:\n${phoneLines(devices).join("\n")}`);
+      const usable = devices.filter((p) => !p.problem);
+      const { chosen, install } = usable.length > 1 ? await choosePhones(usable, args) : { chosen: usable, install: null };
+      // The devices that can't be set up are reported with the chosen ones, as not set up.
+      const toSetUp = chosen.length ? devices.filter((p) => p.problem || chosen.includes(p)) : [];
+      const results = toSetUp.length
+        ? await setUpPhones({
+            phones: toSetUp,
+            log: say,
+            // Never unasked: without a terminal to ask in, only --yes installs (agents have codedroid_setup_phone).
+            confirmInstall: async (model) =>
+              install ?? (!!args.yes || (!!process.stdin.isTTY && (await confirm(`Install CodeDroid on ${model} and set it up? [Y/n] `)))),
+          })
+        : [];
+      const reached = results.filter((r) => r.status === "paired" || r.status === "already-paired");
+      const failed = results.filter((r) => r.status === "failed" || r.status === "signed-out" || r.status === "no-phone");
+      for (const r of results) say(toSetUp.length > 1 ? `${r.label}: ${r.detail}` : r.detail);
+      if (failed.length) process.exitCode = 1;
+      if (usable.length && !chosen.length) say("Left them as they were.");
+      if (results.some((r) => r.status === "not-installed")) {
+        if (process.stdin.isTTY) say(`Left ${toSetUp.length > 1 ? "those" : "it"} as ${toSetUp.length > 1 ? "they were" : "it was"}.`);
+        else {
+          say("Run this again with --yes to install it.");
           process.exitCode = 1;
-          if (phone.status === "failed" && !hosts.length && !phone.detail.includes(PAIR_BY_HAND)) say(`To pair by hand: ${PAIR_BY_HAND}`);
         }
-        if (command !== "connect") return;
+      }
+      if (reached.length) {
+        paired = reached.map((r) => r.host);
+      } else if (!usable.length) {
+        const hosts = readHosts();
+        if (!several) say(found.problem ?? devices[0].problem);
+        if (hosts.length) {
+          say(`Phones: ${hosts.map(describeHost).join(", ")}. Checking the connection.`);
+          command = "connect";
+          args._ = ["connect"];
+        } else if (readAccount() && process.stdin.isTTY && (await waitForAccountPhone(say))) {
+          command = "connect";
+          args._ = ["connect"];
+        } else {
+          say(
+            readAccount()
+              ? "No phone is on the account yet: open CodeDroid on the phone and sign in with the same Google account, or plug it in with USB debugging on and run this again."
+              : `To reach a phone: ${LOGIN_STEP} Or plug the phone in with USB debugging on and run this again, or pair by hand. ${PAIR_BY_HAND}`,
+          );
+          return;
+        }
+      } else {
+        if (results.some((r) => r.status === "failed") && !readHosts().length && !results.some((r) => r.detail.includes(PAIR_BY_HAND))) {
+          say(`To pair by hand: ${PAIR_BY_HAND}`);
+        }
+        return;
       }
     }
   }
@@ -606,9 +643,10 @@ async function main() {
     const code = args._.slice(1).join(" ");
     if (!code && !paired) fatal("Usage: codedroid-mcp pair <code> [--server=<url>]. The phone shows the command: CodeDroid > Settings > Computers > Pair a computer.");
     const { DEFAULT_SERVER, deviceKey, pair } = await import("./host.js");
-    const host = paired ?? (await pair(code, { server: args.server ?? DEFAULT_SERVER }));
-    if (!host.account) log(`Paired with ${host.device.model ?? "the phone"} through ${host.server}.`);
-    args._ = ["pair", deviceKey(host)];
+    const hosts = paired ?? [await pair(code, { server: args.server ?? DEFAULT_SERVER })];
+    if (!paired && !hosts[0].account) log(`Paired with ${hosts[0].device.model ?? "the phone"} through ${hosts[0].server}.`);
+    // One phone is connected by name; several, with the rest of the computer's phones.
+    args._ = hosts.length === 1 ? ["pair", deviceKey(hosts[0])] : ["pair"];
     // A daemon that serves several phones reads new pairings itself. An older one connected, or
     // connecting, holds the old pairing's link; a disconnected one reads the new one.
     const health = await daemonHealth(port);
