@@ -275,7 +275,9 @@ async function allowPrompt(device) {
  */
 function printConnection(status, forget) {
   const devices = status.devices ?? [];
-  const name = (d) => d.model ?? "your phone";
+  // A model two phones share names each with its id too.
+  const shared = (model) => devices.filter((d) => d.model === model).length > 1;
+  const name = (d) => (!d.model ? "your phone" : shared(d.model) ? `${d.model} (${d.id})` : d.model);
   const connected = devices.filter((d) => d.connected);
   const failed = devices.filter((d) => !d.connected);
   if (!devices.length) {
@@ -283,7 +285,7 @@ function printConnection(status, forget) {
     return false;
   }
   if (connected.length) process.stdout.write(`Connected to ${connected.map(name).join(", ")}.\n`);
-  for (const d of failed) process.stdout.write(`${connected.length ? "Not connected to" : "Not connected:"} ${name(d)} (${d.id}): ${d.problem}\n`);
+  for (const d of failed) process.stdout.write(`${connected.length ? "Not connected to" : "Not connected:"} ${d.model ?? "your phone"} (${d.id}): ${d.problem}\n`);
   if (connected.length && failed.length) process.stdout.write(`${forget}\n`);
   return connected.length > 0;
 }
