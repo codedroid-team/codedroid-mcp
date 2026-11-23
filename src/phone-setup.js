@@ -474,36 +474,58 @@ async function downloadApk({ fetch, tmpdir, log }) {
   return file;
 }
 
-const TOOL_DESCRIPTION =
-  "Set up CodeDroid on the Android phone plugged into this computer (USB or Wireless debugging), then pair " +
-  "this computer with it, with no code to type: installs the app from get.codedroid.com if it is missing (only " +
-  "with install: true), turns on its Accessibility and keyboard over adb, waits for the user to sign in on the " +
-  "phone, and pairs. Call it when codedroid_status says this computer is not paired. If CodeDroid is not on the " +
-  "phone yet, it says so: ask the user before calling again with install: true. A long setup answers \"still " +
-  "working\": call it again to keep waiting. Once paired, the user taps Allow on the phone; then call codedroid_status.";
+/** Every device on adb, or the one [serial] names, set up side by side (setUpPhones); `{ problem }` with none. */
+export async function setUpAdbPhones({ serial = null, adb = adbRunner(), env = process.env, ...options } = {}) {
+  const found = await findPhones({ adb, env, serial });
+  if (found.problem) return { problem: found.problem };
+  return { phones: await setUpPhones({ phones: found.phones, adb, env, ...options }) };
+}
 
-// What the agent does next, by how setup ended.
+const TOOL_DESCRIPTION =
+  "Set up CodeDroid on the Android phones plugged into this computer (USB or Wireless debugging), every device " +
+  "on adb at once, or the one `serial` names, with no code to type: installs the app from get.codedroid.com where " +
+  "it is missing (only with install: true), turns on its Accessibility and keyboard over adb, signs each phone in " +
+  "with this computer's account (or waits for the user to sign in on it), and pairs. Call it when codedroid_status " +
+  "says this computer is not paired, or the user asks to set up the phones or tablets on this computer. If " +
+  "CodeDroid is not on a phone yet, it says so: ask the user before calling again with install: true. A long setup " +
+  'answers "still working": call it again to keep waiting. Then call codedroid_status.';
+
+// What the agent does next, by how setup ended: [phones] ended so, [named] when there were several.
 const NEXT = {
-  paired: "Ask the user to tap Allow on the phone, then call codedroid_status.",
-  "already-paired": "Call codedroid_status to connect.",
-  "signed-out": "Ask the user to sign in to CodeDroid on the phone (tap send, then sign in with Google), then call this again.",
-  "not-installed": "Ask the user whether to install CodeDroid on it. If they agree, call this again with install: true.",
-  "no-phone": `Ask the user to fix that, then call this again. Or they pair by hand: ${PAIR_BY_HAND}`,
+  paired: (phones, named) => `Ask the user to tap Allow on ${named ? "each phone" : "the phone"} if CodeDroid asks, then call codedroid_status.`,
+  "already-paired": () => "Call codedroid_status to connect.",
+  "signed-out": (phones, named) =>
+    `Ask the user to sign in to CodeDroid on ${named ? phones.map((p) => p.label).join(", ") : "the phone"} (tap send, then sign in with Google), then call this again.`,
+  "not-installed": (phones, named) =>
+    `Ask the user whether to install CodeDroid on ${named ? phones.map((p) => p.label).join(", ") : "it"}. If they agree, call this again with install: true.`,
+  "no-phone": () => `Ask the user to fix that, then call this again. Or they pair by hand: ${PAIR_BY_HAND}`,
 };
 
+/** What a setup's [outcome] (setUpAdbPhones') tells the agent, and whether every phone was reached. */
+function report(outcome) {
+  if (outcome.problem) return { ok: false, lines: [outcome.problem, NEXT["no-phone"]()] };
+  const { phones } = outcome;
+  const named = phones.length > 1;
+  const lines = phones.map((p) => (named ? `${p.label}: ${p.detail}` : p.detail));
+  for (const status of new Set(phones.map((p) => p.status))) {
+    lines.push(NEXT[status]?.(phones.filter((p) => p.status === status), named));
+  }
+  return { ok: phones.every((p) => p.status === "paired" || p.status === "already-paired"), lines: lines.filter(Boolean) };
+}
+
 /**
- * codedroid_setup_phone: setUpPhone for the agent. A setup can take minutes (a download, then the
+ * codedroid_setup_phone: setUpAdbPhones for the agent. A setup can take minutes (a download, then the
  * user signing in), longer than a client waits for one call (Codex: 60 s), so it runs as a job on
  * the daemon: a call waits up to [waitMs] and otherwise says it is still working, and the next call
  * joins the same job instead of starting a second install. A result no call picks up within [keepMs]
- * is dropped, since the phone may have changed since.
+ * is dropped, since the phones may have changed since.
  *
  * @param {object} options
  * @param {Map<string, object>} options.jobs setups under way on this daemon, shared by its sessions
  */
 export function createSetupPhoneTool({
   jobs,
-  setUp = setUpPhone,
+  setUp = setUpAdbPhones,
   waitMs = 45_000,
   signInWaitMs = 3 * 60_000,
   keepMs = 2 * 60_000,
@@ -512,22 +534,22 @@ export function createSetupPhoneTool({
   return {
     definition: {
       name: "codedroid_setup_phone",
-      title: "Set up the phone over USB",
+      title: "Set up the phones over USB",
       description: TOOL_DESCRIPTION,
       inputSchema: {
         type: "object",
         properties: {
           install: { type: "boolean", description: "Install CodeDroid if it is missing. Only once the user has agreed." },
-          serial: { type: "string", description: "adb serial of the phone (adb devices), when several devices are on adb" },
+          serial: { type: "string", description: "adb serial of the one phone to set up (adb devices); without it, every device on adb" },
         },
       },
-      annotations: { title: "Set up the phone over USB", readOnlyHint: false, destructiveHint: true, openWorldHint: true },
+      annotations: { title: "Set up the phones over USB", readOnlyHint: false, destructiveHint: true, openWorldHint: true },
     },
     async handler({ install = false, serial } = {}) {
       let job = jobs.get("setup");
       const sameSerial = !serial || job?.serial === serial;
       if (job && job.finishedAt === undefined && !sameSerial) {
-        const text = `Setting up ${job.serial ?? "the phone on adb"} already. Call this again once that is done.`;
+        const text = `Setting up ${job.serial ?? "the phones on adb"} already. Call this again once that is done.`;
         return { content: [{ type: "text", text }], isError: true };
       }
       if (job?.finishedAt !== undefined && (!sameSerial || now() - job.finishedAt > keepMs)) job = null;
@@ -539,7 +561,7 @@ export function createSetupPhoneTool({
           serial,
           signInWaitMs,
         })
-          .catch((e) => ({ status: "failed", detail: e.message }))
+          .catch((e) => ({ problem: e.message }))
           .then((result) => ((started.finishedAt = now()), result));
         jobs.set("setup", (job = started));
       }
@@ -551,9 +573,8 @@ export function createSetupPhoneTool({
         return { content: [{ type: "text", text }], isError: false };
       }
       if (jobs.get("setup") === job) jobs.delete("setup");
-      const text = [...job.progress, result.detail, NEXT[result.status]].filter(Boolean).join("\n");
-      const ok = result.status === "paired" || result.status === "already-paired";
-      return { content: [{ type: "text", text }], isError: !ok };
+      const { ok, lines } = report(result);
+      return { content: [{ type: "text", text: [...job.progress, ...lines].join("\n") }], isError: !ok };
     },
   };
 }

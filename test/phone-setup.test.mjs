@@ -10,7 +10,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { readHosts, saveHosts } from "../src/host.js";
-import { adbRunner, APK_FEED, createSetupPhoneTool, findPhones, parseProviderRow, phoneLines, pickPhone, setUpPhone, setUpPhones } from "../src/phone-setup.js";
+import { adbRunner, APK_FEED, createSetupPhoneTool, findPhones, parseProviderRow, phoneLines, pickPhone, setUpAdbPhones, setUpPhone, setUpPhones } from "../src/phone-setup.js";
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "codedroid-phone-setup-"));
 const newHome = () => fs.mkdtempSync(path.join(root, "home-"));
@@ -424,6 +424,8 @@ try {
 
   // ── The agent's tool: consent, what to do next, and one job across calls ──
   {
+    // One phone's result, as setUpAdbPhones resolves it.
+    const one = (result) => ({ phones: [{ serial: "S", label: "Pixel 9", ...result }] });
     const jobs = new Map();
     let asked;
     let tool = createSetupPhoneTool({
@@ -431,7 +433,7 @@ try {
       setUp: async ({ log, confirmInstall, serial }) => {
         asked = { install: await confirmInstall("Pixel 9"), serial };
         log("Installing.");
-        return { status: "paired", detail: "Paired with Pixel 9." };
+        return one({ status: "paired", detail: "Paired with Pixel 9." });
       },
     });
     let result = await tool.handler({ install: true, serial: "S2" });
@@ -441,7 +443,7 @@ try {
     await tool.handler({});
     assert.equal(asked.install, false, "installs only when the call says so");
 
-    result = await createSetupPhoneTool({ jobs, setUp: async () => ({ status: "not-installed", detail: "CodeDroid is not on Pixel 9." }) }).handler({});
+    result = await createSetupPhoneTool({ jobs, setUp: async () => one({ status: "not-installed", detail: "CodeDroid is not on Pixel 9." }) }).handler({});
     assert.equal(result.isError, true);
     assert.match(result.content[0].text, /Ask the user whether to install CodeDroid on it/);
 
@@ -457,7 +459,7 @@ try {
     assert.equal(result.isError, false);
     result = await tool.handler({ install: true });
     assert.equal(started, 1, "a second call joins the setup under way");
-    finish({ status: "signed-out", detail: "Sign in to CodeDroid on the phone, then try again." });
+    finish(one({ status: "signed-out", detail: "Sign in to CodeDroid on the phone, then try again." }));
     result = await tool.handler({});
     assert.match(result.content[0].text, /Ask the user to sign in/);
     assert.equal(jobs.size, 0, "a finished job is gone once reported");
@@ -473,13 +475,13 @@ try {
       setUp: () => (started++, new Promise((resolve) => (finish = resolve))),
     });
     await tool.handler({});
-    finish({ status: "signed-out", detail: "Sign in to CodeDroid on the phone, then try again." });
+    finish(one({ status: "signed-out", detail: "Sign in to CodeDroid on the phone, then try again." }));
     await new Promise((resolve) => setImmediate(resolve));
     clock = 5_000;
     result = await tool.handler({});
     assert.equal(started, 2, "a stale result starts a new setup");
     assert.match(result.content[0].text, /Still working/);
-    finish({ status: "signed-out", detail: "Sign in to CodeDroid on the phone, then try again." });
+    finish(one({ status: "signed-out", detail: "Sign in to CodeDroid on the phone, then try again." }));
     await new Promise((resolve) => setImmediate(resolve));
     result = await tool.handler({});
     assert.equal(started, 2, "a fresh result is reported, not run again");
@@ -498,12 +500,53 @@ try {
     assert.match(result.content[0].text, /Setting up S1 already/);
     await tool.handler({});
     assert.deepEqual(serials, ["S1"], "a call without serial follows the setup under way");
-    finish({ status: "paired", detail: "Paired with Pixel 9." });
+    finish(one({ status: "paired", detail: "Paired with Pixel 9." }));
     await new Promise((resolve) => setImmediate(resolve));
     await tool.handler({ serial: "S2" });
     assert.deepEqual(serials, ["S1", "S2"], "S1's result is not S2's");
-    finish({ status: "paired", detail: "Paired with Pixel 8." });
+    finish(one({ status: "paired", detail: "Paired with Pixel 8." }));
     await tool.handler({});
+
+    // Several phones: each named, what to do next for each kind of outcome, ok only when all are reached.
+    result = await createSetupPhoneTool({
+      jobs,
+      setUp: async () => ({
+        phones: [
+          { serial: "TAB1", label: "Galaxy Tab S9 (TAB1)", status: "paired", detail: "Galaxy Tab S9 is on your account: this computer reaches it with nothing to pair." },
+          { serial: "TAB2", label: "Galaxy Tab S9 (TAB2)", status: "not-installed", detail: "CodeDroid is not on Galaxy Tab S9." },
+          { serial: "TAB3", label: "Lenovo Tab P12", status: "not-installed", detail: "CodeDroid is not on Lenovo Tab P12." },
+        ],
+      }),
+    }).handler({});
+    assert.equal(result.isError, true);
+    assert.equal(
+      result.content[0].text,
+      [
+        "Galaxy Tab S9 (TAB1): Galaxy Tab S9 is on your account: this computer reaches it with nothing to pair.",
+        "Galaxy Tab S9 (TAB2): CodeDroid is not on Galaxy Tab S9.",
+        "Lenovo Tab P12: CodeDroid is not on Lenovo Tab P12.",
+        "Ask the user to tap Allow on each phone if CodeDroid asks, then call codedroid_status.",
+        "Ask the user whether to install CodeDroid on Galaxy Tab S9 (TAB2), Lenovo Tab P12. If they agree, call this again with install: true.",
+      ].join("\n"),
+    );
+    result = await createSetupPhoneTool({ jobs, setUp: async () => ({ problem: "No phone is on adb." }) }).handler({});
+    assert.equal(result.isError, true);
+    assert.match(result.content[0].text, /^No phone is on adb\.\nAsk the user to fix that/);
+    result = await createSetupPhoneTool({ jobs, setUp: async () => Promise.reject(new Error("boom")) }).handler({});
+    assert.match(result.content[0].text, /^boom\n/, "a setup that threw says why");
+  }
+
+  // ── setUpAdbPhones: every device on adb, or the one serial names ──
+  {
+    const tabs = ["TAB1", "TAB2"].map((serial, i) => Object.assign(fakePhone({ serial, deviceId: `dev-${i + 1}`, installed: true, accessibility: true, computers: ["h"] }), { serial }));
+    const fleet = fakeFleet(tabs);
+    const home = newHome();
+    saveHosts(["dev-1", "dev-2"].map((id) => ({ server: SERVER, host_id: "h", token: "t", device: { id, model: "Pixel 9" } })), { home });
+    let outcome = await setUpAdbPhones({ adb: fleet.adb, env: {}, home, fetch: fakeWeb().fetch, tmpdir: root, pollMs: 1 });
+    assert.deepEqual(outcome.phones.map((p) => [p.serial, p.status]), [["TAB1", "already-paired"], ["TAB2", "already-paired"]]);
+    outcome = await setUpAdbPhones({ serial: "TAB2", adb: fleet.adb, env: {}, home, fetch: fakeWeb().fetch, tmpdir: root, pollMs: 1 });
+    assert.deepEqual(outcome.phones.map((p) => p.serial), ["TAB2"]);
+    assert.match((await setUpAdbPhones({ serial: "NOPE", adb: fleet.adb, env: {}, home })).problem, /NOPE is not on adb/);
   }
 
   console.log("phone-setup tests passed");
