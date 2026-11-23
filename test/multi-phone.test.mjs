@@ -147,11 +147,12 @@ try {
   assert.equal(read.contents[0].text, "Pixel 9 at codedroid://device", "the phone reads its own URI");
   await assert.rejects(client.readResource({ uri: "codedroid://device" }), /2 phones are paired/);
 
-  // ── codedroid_devices: every paired phone and its link, without connecting ──
+  // ── codedroid_devices: every paired phone, its link and whether it is free, without connecting ──
+  // These fake phones answer device_info with no status, as a CodeDroid from before leases does.
   const listed = JSON.parse(text(await client.callTool({ name: "codedroid_devices", arguments: {} })));
   assert.deepEqual(listed.devices, [
-    { id: XPS.device.id, model: "XPS Googlebook", server: XPS.server, state: "connected" },
-    { id: PIXEL.device.id, model: "Pixel 9", server: PIXEL.server, state: "connected" },
+    { id: XPS.device.id, model: "XPS Googlebook", server: XPS.server, state: "connected", status: "online" },
+    { id: PIXEL.device.id, model: "Pixel 9", server: PIXEL.server, state: "connected", status: "online" },
   ]);
 
   // ── Status: every phone, or the one named ───────────────────────────
@@ -184,6 +185,7 @@ try {
   const connectsBefore = connects.get(TABLET.device.id);
   const devices = JSON.parse(text(await client.callTool({ name: "codedroid_devices", arguments: {} }))).devices;
   assert.deepEqual(devices.map((d) => d.state), ["connected", "disconnected", "connected"]);
+  assert.deepEqual(devices.map((d) => d.status), ["online", "offline", "online"]);
   assert.equal(devices[1].problem, "Pixel 9 is not online.", "a phone that failed says why");
   assert.equal(connects.get(TABLET.device.id), connectsBefore, "listing devices connects nothing");
   const partial = await status(client);

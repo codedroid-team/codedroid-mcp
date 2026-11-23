@@ -24,11 +24,12 @@ read progress, or `cancel_task` to stop the task.
 | `alert` | Tap a dialog's button: `action` accept or dismiss, or its `text`. |
 | `scroll_until` | Swipe in a direction until `text` is on the screen. |
 | `notifications` | Read the notification shade (opened, read, closed). |
-| `device_info` | Inspect the device model, Android version, user, screen, lock state, and CodeDroid readiness. |
+| `device_info` | Inspect the device model, Android version, user, screen, lock state, CodeDroid readiness, and whether it is free (`status`, `lease`). |
+| `claim_device`, `release_device` | Hold the phone for one job, so no other agent or computer acts on it, and let it go. See [Shared phones](#shared-phones-claims-and-status). |
 | `run_task`, `get_task`, `cancel_task` | Start, monitor, or cancel a task run by CodeDroid's agent. |
 | `install_apk` | Install an APK from this computer through CodeDroid's connection, with no cable or shared network. |
 | `adb` | Run local adb commands against the phone attached to this computer. Turn off with `--no-adb` or `CODEDROID_MCP_ADB=0`. |
-| `codedroid_devices` | List the paired phones (id, model, server) and whether each is connected, without connecting. |
+| `codedroid_devices` | List the phones (id, model, server), whether each is connected, and its status: `available`, `in_use` (who holds it) or `offline`. Never connects. |
 | `codedroid_status` | Connect to the paired phones, report each connection, and get instructions for resolving problems. |
 | `batch` | Run up to 20 screen tool calls in one round trip with the phone held; stops at the first failure. |
 | `record_start`, `record_stop` | Record the session's phone actions as a Maestro flow and write the YAML. See [Flows](#flows-record-and-replay). |
@@ -585,6 +586,33 @@ others. With several phones, resource URIs end in `?device=<id>`.
 you name (`npx -y @codedroid/mcp status "Pixel 9"`, or `{"device": "Pixel 9"}`). The CLI's `call`
 takes `device` the same way: `npx -y @codedroid/mcp call get_screen '{"device": "Pixel 9"}'`.
 
+### Shared phones: claims and status
+
+A phone can serve several agents and computers at once: your own agents, coworkers signed in with
+the same account or paired with the phone, the hosted connector, and CI. CodeDroid on the phone
+keeps each job whole, so another caller's tap never lands in the middle of yours:
+
+- **Claims.** `claim_device` holds the phone for the calling agent (`purpose`, shown to others;
+  `idle_minutes`, 15 by default, up to 30). Every call by the holder renews it; a running task keeps
+  it. `release_device` lets it go. An agent that never claims still gets a 5-minute hold from its
+  first action on a free phone; reading the screen takes none.
+- **Everyone else** gets `in_use` on every call but `device_info`, `claim_device` and
+  `release_device`. The reply names the holder (for example "claude-code on ana-mbp"), its purpose,
+  and how long until it frees.
+- **Status.** `codedroid_devices` lists each phone as `available`, `in_use` (with `lease`: `holder`,
+  `yours`, `purpose`, `held_s`, `idle_s`, `frees_in_s`) or `offline`. With several phones,
+  `claim_device` with `device` "any" takes whichever is available and says its id.
+- **Who is who.** The holder is the computer, as the relay knows it from its login or pairing, and
+  on the local bridge the agent session within it, so two agents on one computer are kept apart too.
+  `force` takes a hold over from another session of the same computer only (an agent that crashed);
+  nothing takes it from another computer. The CLI's commands speak for the whole computer.
+- **Letting go by itself.** A hold lapses after its idle time with no call. A client that ends its
+  session releases what it held. `flow run` claims a free phone for the run and releases it after.
+  On the phone, Stop on "... is using this device", or removing the computer in Settings > Computers,
+  ends the hold. Restarting the daemon keeps holds; restarting CodeDroid ends them.
+
+A CodeDroid too old for claims shows `status: "online"`, and its calls are only serialized.
+
 ## CI: replay flows from GitHub Actions
 
 A [flow](#flows-record-and-replay) replays on your own phone from any runner, with no emulator and
@@ -651,7 +679,9 @@ MCP client → stdio bridge → local daemon → CodeDroid relay → Android app
 
 All clients on a computer share a local daemon and its connection to each paired phone. The
 phone and daemon each open an outbound WebSocket to the CodeDroid server. The phone reconnects
-after a restart or network change. MCP screen interactions are serialized on each phone. If the
+after a restart or network change. MCP screen interactions are serialized on each phone, and the
+phone's claims keep one agent's job from being interleaved with another's, from any computer
+([Shared phones](#shared-phones-claims-and-status)). If the
 daemon restarts, the stdio bridge opens a new session on its next request, so the MCP client
 doesn't need to reconnect. A client newer than the running daemon replaces it, keeping `--no-adb`,
 so an upgrade reaches every client on the computer. A call in flight at that moment gets an error.

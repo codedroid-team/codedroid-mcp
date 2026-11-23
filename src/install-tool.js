@@ -102,13 +102,13 @@ export function createInstallTool({ phones, cwd = null, jobs, retryDelayMs = RET
    * first, install_begin: a phone unreachable from the start (unpaired, denied) will not come back
    * by waiting, and getClient has already tried to reconnect.
    */
-  const call = async (device, name, args) => {
+  const call = async (device, name, args, meta) => {
     const deadline = Date.now() + RECONNECT_MS;
     for (;;) {
       let result;
       try {
         result = await phones.request(
-          { method: "tools/call", params: { name, arguments: { ...args, device } } },
+          { method: "tools/call", params: { name, arguments: { ...args, device }, ...(meta ? { _meta: meta } : {}) } },
           CallToolResultSchema,
           { timeout: CALL_TIMEOUT_MS },
         );
@@ -132,30 +132,31 @@ export function createInstallTool({ phones, cwd = null, jobs, retryDelayMs = RET
     }
   };
 
-  const run = async (job, device) => {
+  /** [meta]: the asking session's, so the phone counts the install as its, under its hold. */
+  const run = async (job, device, meta) => {
     let fd;
     try {
       fd = await fs.promises.open(job.file, "r");
       const { sha256, size } = job;
-      let { offset } = await call(device, "install_begin", { sha256, size });
+      let { offset } = await call(device, "install_begin", { sha256, size }, meta);
       job.sent = offset;
       const buffer = Buffer.alloc(CHUNK_BYTES);
       while (offset < size) {
         const { bytesRead } = await fd.read(buffer, 0, CHUNK_BYTES, offset);
         if (bytesRead === 0) throw new Refused(`install_apk: ${job.file} changed while it was being sent.`);
         const data = buffer.subarray(0, bytesRead).toString("base64");
-        ({ offset } = await call(device, "install_write", { sha256, offset, data }));
+        ({ offset } = await call(device, "install_write", { sha256, offset, data }, meta));
         job.sent = offset;
       }
       job.stage = "installing";
-      let state = await call(device, "install_commit", { sha256 });
+      let state = await call(device, "install_commit", { sha256 }, meta);
       const deadline = Date.now() + INSTALL_ANSWER_MS;
       while (!state.installed) {
         if (Date.now() >= deadline) {
           throw new Refused("Android has not finished the install after 5 minutes. Read the screen with get_screen, then call install_apk again.");
         }
         await pause();
-        state = await call(device, "install_status", { sha256 });
+        state = await call(device, "install_status", { sha256 }, meta);
       }
       return text(state);
     } catch (e) {
@@ -182,7 +183,7 @@ export function createInstallTool({ phones, cwd = null, jobs, retryDelayMs = RET
     },
 
     /** @param {{path?: string, device?: string}} args */
-    async handler(args) {
+    async handler(args, { meta } = {}) {
       let apk;
       let sha256;
       try {
@@ -198,7 +199,7 @@ export function createInstallTool({ phones, cwd = null, jobs, retryDelayMs = RET
       let job = jobs.get(key);
       if (!job) {
         job = { ...apk, sha256, sent: 0, stage: "sending" };
-        job.done = run(job, device).finally(() => {
+        job.done = run(job, device, meta).finally(() => {
           setTimeout(() => {
             if (jobs.get(key) === job) jobs.delete(key);
           }, KEEP_RESULT_MS).unref();

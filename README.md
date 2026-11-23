@@ -129,6 +129,8 @@ Android platform-tools and a USB or wireless debugging connection. See [adb setu
 
 - **MCP tools** to read the screen, take screenshots, tap, type, swipe, open apps, and hand
   CodeDroid's agent a multi-step task, on one phone or [several](docs/reference.md#several-phones).
+  Phones can be shared like a device farm: an agent claims one for its job, and every other agent
+  or computer sees it `in_use` until it is released ([details](docs/reference.md#shared-phones-claims-and-status)).
   See the [tool list](docs/reference.md#tools).
 - **Skills**: `codedroid-phone` teaches the agent to drive the phone one checked step at a time,
   and `test-on-device` walks it through building, installing, and verifying an Android app change.

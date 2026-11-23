@@ -390,6 +390,24 @@ async function main() {
     };
     await requirePhones();
     const client = await daemonClient(port, enableAdbTool);
+    const phone = args.device ? { device: args.device } : {};
+    // A free phone is claimed for the run, so the fleet sees what holds it, and let go after: a CI
+    // run must not leave it held. One this computer already holds (an agent's) is left as it was.
+    const claim = async () => {
+      try {
+        const info = await client.callTool({ name: "device_info", arguments: phone }, undefined, { timeout: 30_000 });
+        if (info.isError || JSON.parse(info.content?.[0]?.text ?? "{}").status !== "available") return false;
+        const claimed = await client.callTool(
+          { name: "claim_device", arguments: { ...phone, purpose: `flow run ${path.basename(file)}`, idle_minutes: 5 } },
+          undefined,
+          { timeout: 30_000 },
+        );
+        return !claimed.isError;
+      } catch (e) {
+        return false;
+      }
+    };
+    const claimed = await claim();
     let result;
     for (;;) {
       result = await client.callTool({ name: "run_flow", arguments: toolArgs }, undefined, { timeout: 600_000 });
@@ -397,6 +415,7 @@ async function main() {
       if (result.isError || !text.startsWith("Still running")) break;
       log(text.split("\n")[0]);
     }
+    if (claimed) await client.callTool({ name: "release_device", arguments: phone }, undefined, { timeout: 30_000 }).catch(() => {});
     printResult(result);
     await client.close();
     process.exit(result.isError ? 1 : 0);

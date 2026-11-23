@@ -371,8 +371,10 @@ export async function startDaemon({
     },
     listWaitMs: LIST_WAIT_MS,
   });
-  /** sessionId → { transport, server } */
+  /** sessionId → { transport, server, session } */
   const sessions = new Map();
+  /** Set while the daemon itself closes its sessions: their phones stay held, as their clients come back. */
+  let shuttingDown = false;
   /** Installs under way: a new session can pick one up. */
   const installJobs = new Map();
   const setupJobs = new Map();
@@ -462,9 +464,9 @@ export async function startDaemon({
         // New session — must be an initialize request.
         if (!sessionId && isInitializeRequest(body)) {
           let server;
+          // This session's own state: its screen options, its recording, its batch and flow tools.
+          const session = createSessionTools({ phones, cwd: clientCwd(req), flowJobs });
           try {
-            // This session's own state: its screen options, its recording, its batch and flow tools.
-            const session = createSessionTools({ phones, cwd: clientCwd(req), flowJobs });
             // Phones queues each phone's calls itself and proves its links alive.
             server = await buildProxyServer({
               getClient: async () => phones,
@@ -498,7 +500,7 @@ export async function startDaemon({
           const transport = new StreamableHTTPServerTransport({
             sessionIdGenerator: () => randomUUID(),
             onsessioninitialized: (id) => {
-              sessions.set(id, { transport, server });
+              sessions.set(id, { transport, server, session });
               log(`Session ${id.slice(0, 8)}… opened (${sessions.size} active)`);
             },
           });
@@ -506,6 +508,8 @@ export async function startDaemon({
             const id = transport.sessionId;
             if (id && sessions.delete(id)) {
               log(`Session ${id.slice(0, 8)}… closed (${sessions.size} active)`);
+              // The client ended it: its agent is done with the phones it held.
+              if (!shuttingDown) session.releaseHeld();
             }
           };
 
@@ -571,6 +575,7 @@ export async function startDaemon({
   else log("The adb tool is off for every client: this daemon was started with --no-adb or CODEDROID_MCP_ADB=0.");
 
   const close = async () => {
+    shuttingDown = true;
     clearInterval(refreshTimer);
     for (const { transport } of sessions.values()) {
       try {

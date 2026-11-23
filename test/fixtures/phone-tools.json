@@ -373,7 +373,7 @@
       "properties": {}
     },
     "name": "device_info",
-    "description": "The device: model, Android version, user, screen, locked, and whether CodeDroid is set up and signed in.",
+    "description": "The device: model, Android version, user, screen, locked, whether CodeDroid is set up and signed in, and status: available, or in_use with lease (who holds it, purpose, frees_in_s).",
     "annotations": {
       "idempotentHint": true,
       "openWorldHint": false,
@@ -382,6 +382,53 @@
       "readOnlyHint": true
     },
     "title": "Device info"
+  },
+  {
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "idle_minutes": {
+          "default": 15,
+          "maximum": 30,
+          "type": "integer",
+          "minimum": 1
+        },
+        "purpose": {
+          "description": "What the job is, shown to others",
+          "type": "string"
+        },
+        "force": {
+          "default": false,
+          "type": "boolean"
+        }
+      }
+    },
+    "name": "claim_device",
+    "description": "Hold the device for your job alone: until release_device, or idle_minutes with no call from you. Other agents and computers get in_use meanwhile. Acting on a free device holds it for 5 idle minutes by itself; claim for a longer job. force takes it from another agent on this same computer.",
+    "annotations": {
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "title": "Claim the device",
+      "destructiveHint": false,
+      "readOnlyHint": false
+    },
+    "title": "Claim the device"
+  },
+  {
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    },
+    "name": "release_device",
+    "description": "Let go of the device you hold, so others can use it. Call it when your job is done.",
+    "annotations": {
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "title": "Release the device",
+      "destructiveHint": false,
+      "readOnlyHint": false
+    },
+    "title": "Release the device"
   },
   {
     "inputSchema": {

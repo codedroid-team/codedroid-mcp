@@ -39,9 +39,11 @@ export const FORGET = "A phone this computer no longer uses stays paired until y
 const statusResult = (status) => ({ content: [{ type: "text", text: JSON.stringify(status, null, 2) }], isError: false });
 
 const DEVICES_DESCRIPTION =
-  "List the Android phones paired with this computer: each one's id and model (what phone tools take as " +
-  "device), its CodeDroid server, and its link now: connected, connecting or disconnected, with the last " +
-  "problem. Instant; it does not connect. codedroid_status connects and says how to fix a problem.";
+  "List the Android phones this computer reaches: each one's id and model (what phone tools take as device), " +
+  "its CodeDroid server, its link (connected, connecting or disconnected, with the last problem), and status: " +
+  "available, in_use (lease says who holds it, what for, and frees_in_s) or offline. Phones can be shared " +
+  "with other agents and computers: pick an available one, or claim_device with device \"any\". Quick: it " +
+  "asks only the phones already connected. codedroid_status connects and says how to fix a problem.";
 
 /** @param {import("./phones.js").Phones} phones */
 export function createDevicesTool(phones) {
@@ -54,13 +56,15 @@ export function createDevicesTool(phones) {
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
       _meta: { "anthropic/alwaysLoad": true },
     },
-    async handler() {
+    async handler(_args, { meta } = {}) {
       await refreshAccount(phones);
       const account = accountSummary();
-      const devices = phones.select().map(({ pairing, manager }) => ({
+      const devices = (await phones.statuses(meta)).map(({ entry: { pairing, manager }, status, lease, problem }) => ({
         ...pairedDevice(pairing),
         state: manager.state,
-        ...(manager.state !== "connected" && manager.lastError ? { problem: manager.lastError } : {}),
+        status,
+        ...(lease ? { lease } : {}),
+        ...(problem ? { problem } : {}),
       }));
       return statusResult({
         ...(account ? { account } : {}),
