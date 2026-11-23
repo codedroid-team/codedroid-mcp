@@ -101,8 +101,9 @@ try {
     const opened = [];
     const account = await login({ server: server.url, home, hostname: "borna-mbp.local", log: (l) => log.push(l), sleep: noSleep, openUrl: (u) => (opened.push(u), true) });
     assert.equal(server.requests[0].form.client_name, "borna-mbp", "the phone shows the computer's name");
-    assert.ok(log[0].includes(`${server.url}/oauth/device?user_code=ABCD-EFGH`), log[0]);
-    assert.ok(log[1].includes("ABCD-EFGH"), "the code is shown, to check against the page");
+    assert.ok(log.includes(`  ${server.url}/oauth/device?user_code=ABCD-EFGH`), log.join("\n"));
+    assert.ok(log.includes("    ABCD-EFGH"), "the code stands on its own line, to check against the page");
+    assert.ok(log.some((l) => l.startsWith("Opened it in your browser")), "it says the browser was opened");
     assert.deepEqual(opened, [`${server.url}/oauth/device?user_code=ABCD-EFGH`]);
     assert.equal(server.polls, 3, "pending, slow_down, then the tokens");
     assert.equal(account.email, ALICE);
@@ -186,8 +187,11 @@ try {
   {
     const server = await fakeServer({ approveAfter: 0 });
     const home = newHome();
-    const account = await login({ server: server.url, home, save: false, log: () => {}, sleep: noSleep, open: false });
+    const log = [];
+    const account = await login({ server: server.url, home, save: false, log: (l) => log.push(l), sleep: noSleep, open: false, highlight: (c) => `*${c}*` });
     assert.equal(account.refresh_token, "cdmcp_r_1");
+    assert.ok(log.includes("Open it in a browser and check that the page shows this code:"), "with no browser opened, it says to open the link");
+    assert.ok(log.includes("    *ABCD-EFGH*"), "the code is shown through highlight");
     assert.ok(!fs.existsSync(hostFilePath(home)));
     await server.close();
 

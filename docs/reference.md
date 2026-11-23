@@ -106,9 +106,10 @@ npx -y @codedroid/mcp login
 npx -y @codedroid/mcp logout
 ```
 
-`login` signs this computer in with the Google account you use in CodeDroid: it prints a link and a
-code, opens the link in your browser (`--no-browser` to only print it), and waits while you check
-the code and sign in. From then on every phone signed in to CodeDroid with that account is reached,
+`login` signs this computer in with the Google account you use in CodeDroid: it prints a link and,
+on its own line, a code, opens the link in your browser (`--no-browser` to only print it), and waits
+while you check that the page shows the same code and sign in. Then it connects to the account's
+phones, so each one asks to allow this computer while you are there. From then on every phone signed in to CodeDroid with that account is reached,
 with nothing to pair, including phones signed in later: the daemon reads the account's phones when
 it starts and every five minutes, and `codedroid_devices` and `codedroid_status` read them again
 when called. `setup` runs `login` first unless `--no-login` is passed or there is no terminal to
@@ -255,7 +256,11 @@ Wireless debugging), it sets the phone up:
    tap **Allow** on the phone.
 
 With several devices on adb, set `CODEDROID_SERIAL` to the one to set up. With no phone on adb, or
-no adb, `setup` connects to the account's phones, or says how to pair by hand. If the phone removed
+no adb, `setup` connects to the account's phones, or says how to pair by hand. Signed in with no
+phone on the account yet, it waits up to ten minutes in a terminal for one to come online (CodeDroid
+installed and signed in on it) and connects to it. Connecting is when a phone asks, the first time,
+whether to allow this computer: `setup` names the phones to tap **Allow** on, then says which
+connected. It succeeds when one did, and names any old pairing that did not. If the phone removed
 this computer, `setup` pairs it again. Signing in and pairing over USB need a CodeDroid version that
 has them; older ones are told to update or pair.
 `setup` exits with 1 when the phone isn't set up (signed out, declined outside a terminal, failed).

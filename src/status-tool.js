@@ -34,7 +34,7 @@ const DESCRIPTION =
   "whether CodeDroid on each is connected, and if not, why and how to fix it. Also retries the connection. " +
   "Once connected it returns the phones' instructions for driving them. Pass device for one phone alone.";
 
-const FORGET = "A phone this computer no longer uses stays paired until you forget it: npx -y @codedroid/mcp unpair <its id>.";
+export const FORGET = "A phone this computer no longer uses stays paired until you forget it: npx -y @codedroid/mcp unpair <its id>.";
 
 const statusResult = (status) => ({ content: [{ type: "text", text: JSON.stringify(status, null, 2) }], isError: false });
 

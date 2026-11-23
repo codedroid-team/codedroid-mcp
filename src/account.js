@@ -78,6 +78,7 @@ export function openBrowser(url, { platform = process.platform, spawner = spawn 
  * @param {boolean} [options.save]  keep the account in host.json (false for `login --ci`)
  * @param {string} [options.hostname]  how the phone names this computer
  * @param {number} [options.timeoutMs]  how long to wait for the sign-in
+ * @param {(code: string) => string} [options.highlight]  how the code to check is shown (bold on a terminal)
  */
 export async function login({
   server = DEFAULT_SERVER,
@@ -91,6 +92,7 @@ export async function login({
   sleep = sleepMs,
   now = Date.now,
   openUrl = openBrowser,
+  highlight = (code) => code,
 } = {}) {
   const base = normalizeServer(server);
   const started = await post(fetch, `${base}/oauth/device_authorization`, {
@@ -108,9 +110,14 @@ export async function login({
   }
   const { device_code, user_code, verification_uri, verification_uri_complete, interval = 5, expires_in = 600 } = started.body;
   const link = verification_uri_complete ?? verification_uri;
-  log(`Sign in with Google at ${link}`);
-  log(`Check that the page shows the code ${user_code}, then continue with the account you use in CodeDroid.`);
-  if (open && openUrl(link)) log("Opened it in your browser.");
+  // The code stands on its own line, to check at a glance against the page: a link someone else
+  // started would show another code.
+  log("Sign in with the Google account you use in CodeDroid:");
+  log(`  ${link}`);
+  log(open && openUrl(link) ? "Opened it in your browser. Check that the page shows this code:" : "Open it in a browser and check that the page shows this code:");
+  log("");
+  log(`    ${highlight(user_code)}`);
+  log("");
 
   const deadline = now() + (timeoutMs ?? expires_in * 1000);
   let wait = Math.max(1, interval) * 1000;
