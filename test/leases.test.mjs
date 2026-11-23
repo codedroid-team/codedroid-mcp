@@ -25,7 +25,11 @@ const pairingOf = (id, model) => ({ server: "https://orchestrator.example", host
 const PIXEL = pairingOf("9a1e7c00-1111-4222-8333-444455556666", "Pixel 9");
 const GALAXY = pairingOf("5ca1ab1e-1111-4222-8333-444455556666", "Galaxy S24");
 
-/** Per phone id: {holder, calls: [{name, session}], stealNext}. */
+/**
+ * Per phone id: {holder, calls: [{name, session}], stealNext}. The phone's rules for one computer:
+ * the holder is a session (or null, the computer itself); a call naming no session runs under any
+ * hold but never releases another's; acting on a free phone holds it even when the action fails.
+ */
 const phones = new Map([PIXEL, GALAXY].map((p) => [p.device.id, { holder: undefined, calls: [], stealNext: false }]));
 const READ_ONLY = new Set(["get_screen", "device_info"]);
 const json = (value, isError = false) => ({ content: [{ type: "text", text: JSON.stringify(value) }], isError });
@@ -34,7 +38,7 @@ function fakePhone(pairing) {
   const state = phones.get(pairing.device.id);
   const phone = new Server({ name: "phone", version: "1" }, { capabilities: { tools: {} }, instructions: "PHONE RULES" });
   phone.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: ["get_screen", "tap", "device_info", "claim_device", "release_device", "install_begin"].map((name) => ({
+    tools: ["get_screen", "tap", "fail", "device_info", "claim_device", "release_device", "install_begin"].map((name) => ({
       name,
       inputSchema: { type: "object", properties: {} },
     })),
@@ -43,7 +47,7 @@ function fakePhone(pairing) {
     const { name } = req.params;
     const session = req.params._meta?.[SESSION_META_KEY] ?? null;
     state.calls.push({ name, session });
-    const same = (holder) => holder === null || session === null || holder === session;
+    const same = (holder) => holder === session;
     const free = state.holder === undefined;
     if (name === "device_info") {
       return json({ model_name: pairing.device.model, status: free ? "available" : "in_use", lease: free ? null : { holder: `agent ${state.holder}`, yours: same(state.holder) } });
@@ -57,8 +61,9 @@ function fakePhone(pairing) {
       state.stealNext = false;
       state.holder = "someone-else";
     }
-    if (state.holder !== undefined && !same(state.holder)) return json({ error: "in_use", message: `agent ${state.holder} is using this device` }, true);
+    if (state.holder !== undefined && !same(state.holder) && session !== null) return json({ error: "in_use", message: `agent ${state.holder} is using this device` }, true);
     if (name === "claim_device" || (state.holder === undefined && !READ_ONLY.has(name))) state.holder = session;
+    if (name === "fail") return json({ error: "stale_node", message: "gone" }, true);
     return json({ ok: name, on: pairing.device.model });
   });
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
@@ -142,6 +147,28 @@ try {
   phones.get(PIXEL.device.id).stealNext = true;
   assert.match(text(await carol.callTool({ name: "claim_device", arguments: { device: "any" } })), /Claimed Galaxy S24/);
   phones.get(PIXEL.device.id).holder = undefined;
+
+  // ── "any" again: the phone this session holds, not a second one ─────
+  assert.match(text(await carol.callTool({ name: "claim_device", arguments: { device: "any" } })), /Claimed Galaxy S24/);
+  assert.equal(phones.get(PIXEL.device.id).holder, undefined, "the free phone was left free");
+  await carol.callTool({ name: "release_device", arguments: { device: "Galaxy" } });
+
+  // ── A failed action still held the phone: the session lets go of it at its end ──
+  const dan = await connect(daemon.port, daemon.authToken);
+  assert.equal((await dan.callTool({ name: "fail", arguments: { device: "Galaxy" } })).isError, true);
+  const danSession = phones.get(GALAXY.device.id).holder;
+  assert.match(danSession, /^ses_/);
+  await dan.close();
+  await new Promise((r) => setTimeout(r, 100));
+  assert.equal(phones.get(GALAXY.device.id).holder, undefined, "released though the action failed");
+
+  // ── A session that only ran a flow lets go of its phone at its end ───
+  const eve = await connect(daemon.port, daemon.authToken);
+  assert.ok(!(await eve.callTool({ name: "run_flow", arguments: { device: "Galaxy", path: flowFile } })).isError);
+  assert.match(phones.get(GALAXY.device.id).holder, /^ses_/);
+  await eve.close();
+  await new Promise((r) => setTimeout(r, 100));
+  assert.equal(phones.get(GALAXY.device.id).holder, undefined, "the flow's hold is released");
 
   // ── A session its client ends lets go of its phones ─────────────────
   await bo.callTool({ name: "tap", arguments: { device: "Pixel 9" } });

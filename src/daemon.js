@@ -204,6 +204,17 @@ export class PhoneManager {
   }
 }
 
+/** [tool], whose calls to a phone take a hold on it that the session lets go of when it ends. */
+function heldBy(session, tool) {
+  return {
+    ...tool,
+    handler: (args, context) => {
+      session.track(tool.definition.name, args?.device, context?.meta);
+      return tool.handler(args, context);
+    },
+  };
+}
+
 function isLoopbackHost(hostHeader) {
   if (!hostHeader) return false;
   // Strip port; tolerate IPv6 brackets.
@@ -480,7 +491,7 @@ export async function startDaemon({
               localTools: [
                 createDevicesTool(phones),
                 createStatusTool(phones, { update }),
-                createInstallTool({ phones, cwd: clientCwd(req), jobs: installJobs }),
+                heldBy(session, createInstallTool({ phones, cwd: clientCwd(req), jobs: installJobs })),
                 ...session.localTools,
                 ...(enableAdbTool && req.headers[CLIENT_ADB_HEADER] !== "off"
                   ? [createAdbTool({ cwd: clientCwd(req), phones }), createSetupPhoneTool({ jobs: setupJobs })]

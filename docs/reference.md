@@ -605,7 +605,9 @@ keeps each job whole, so another caller's tap never lands in the middle of yours
 - **Who is who.** The holder is the computer, as the relay knows it from its login or pairing, and
   on the local bridge the agent session within it, so two agents on one computer are kept apart too.
   `force` takes a hold over from another session of the same computer only (an agent that crashed);
-  nothing takes it from another computer. The CLI's commands speak for the whole computer.
+  nothing takes it from another computer. The CLI's commands (`call`, `flow run`, `viewer`) are the
+  computer itself: they run under its agents' holds but never renew, replace or release them, and a
+  viewer left open never keeps a phone held.
 - **Letting go by itself.** A hold lapses after its idle time with no call. A client that ends its
   session releases what it held. `flow run` claims a free phone for the run and releases it after.
   On the phone, Stop on "... is using this device", or removing the computer in Settings > Computers,

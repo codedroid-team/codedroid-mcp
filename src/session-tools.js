@@ -16,7 +16,6 @@
 import { createHash } from "crypto";
 import fs from "fs";
 import path from "path";
-import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import { confinedFile } from "./adb-tool.js";
 import { FlowError, Recorder, parseFlow, runFlow, textOf } from "./flow.js";
 import { describeHost, deviceKey } from "./host.js";
@@ -105,19 +104,26 @@ export function createSessionTools({ phones, cwd = null, flowJobs = new Map() })
   const held = new Map();
 
   /**
-   * Remembers what [name] on phone [device] did to this session's hold on it. A call that names no
-   * session (the CLI's) holds for the whole computer: its run ending must not let go of an agent's hold.
+   * Remembers what [name] on phone [device] did to this session's hold on it. Acting takes a hold
+   * even when the action then fails, so only a refusal (in_use, an unreachable phone) takes none. A
+   * call that names no session (the CLI's) is the computer's, which the phone never lets go for it.
    */
-  const track = (name, device, meta, result) => {
-    if (result.isError || !meta?.[SESSION_META_KEY]) return;
-    if (name === "release_device") held.delete(device ?? "");
-    else if (!LOOKING_TOOLS.has(name)) held.set(device ?? "", meta);
+  const track = (name, device, meta, result = {}) => {
+    if (!meta?.[SESSION_META_KEY] || LOOKING_TOOLS.has(name)) return;
+    if (name === "release_device") {
+      if (!result.isError) held.delete(device ?? "");
+      return;
+    }
+    if (result.isError && (name === "claim_device" || /"in_use"|is not connected|"busy"/.test(textOf(result)))) return;
+    held.set(device ?? "", meta);
   };
 
   /** claim_device on whichever phone says it is available, the next one when another caller takes it first. */
   const claimAny = async (args, forward, meta) => {
     const statuses = await phones.statuses(meta, { connect: true });
-    for (const { entry } of statuses.filter((s) => s.status === "available")) {
+    // A phone this session already holds first: calling it twice must not tie up a second one.
+    const candidates = [...statuses.filter((s) => s.lease?.yours), ...statuses.filter((s) => s.status === "available")];
+    for (const { entry } of candidates) {
       const id = String(deviceKey(entry.pairing));
       const result = await forward({ ...args, device: id });
       if (!result.isError) {
@@ -147,19 +153,16 @@ export function createSessionTools({ phones, cwd = null, flowJobs = new Map() })
     return result;
   };
 
-  /** The session ended: let go of every phone it held, so the next agent need not wait out the hold. */
+  /**
+   * The session ended: let go of every phone it held, so the next agent need not wait out the hold.
+   * Queued behind that phone's screen calls, so it never lands in the middle of a batch or flow.
+   */
   const releaseHeld = async () => {
     const phonesHeld = [...held.entries()];
     held.clear();
     await Promise.all(
       phonesHeld.map(([device, meta]) =>
-        phones
-          .request(
-            { method: "tools/call", params: { name: "release_device", arguments: device ? { device } : {}, _meta: meta } },
-            CallToolResultSchema,
-            { timeout: RELEASE_TIMEOUT_MS },
-          )
-          .catch(() => {}),
+        phones.withPhone(device || undefined, ({ call }) => call("release_device"), { timeout: RELEASE_TIMEOUT_MS, meta }).catch(() => {}),
       ),
     );
   };
@@ -363,6 +366,7 @@ export function createSessionTools({ phones, cwd = null, flowJobs = new Map() })
         }
         if (!flow.steps.length) return failure(`run_flow: ${resolved ?? "the flow"} has no steps.`);
         job = { key, file: resolved, done: false, finishedAt: null, log: [], startedAt: Date.now() };
+        track("run_flow", device, meta);
         job.promise = phones
           .withPhone(device, ({ call }) => runFlow(flow, call, { env, baseDir, screenshotDir, log: (line) => job.log.push(line) }), { timeout: STEP_TIMEOUT_MS, meta })
           .then(
@@ -394,5 +398,5 @@ export function createSessionTools({ phones, cwd = null, flowJobs = new Map() })
     },
   };
 
-  return { shapeTool, interceptCall: handle, releaseHeld, localTools: [batch, recordStart, recordStop, runFlowTool] };
+  return { shapeTool, interceptCall: handle, releaseHeld, track, localTools: [batch, recordStart, recordStop, runFlowTool] };
 }
