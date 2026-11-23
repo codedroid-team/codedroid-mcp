@@ -24,11 +24,11 @@ signed in or paired yet, no phone is on the account, the phone is offline or Cod
 on it, the user has not tapped Allow on the phone yet). Tell the user that in their words, and call
 `codedroid_status` again once they have fixed it. If this computer is not signed in, the user runs
 `npx -y @codedroid/mcp login` in a terminal and signs in with the Google account they use in
-CodeDroid: every phone on the account is then reached, with nothing to pair. If a phone is plugged
-in (USB debugging on), call `codedroid_setup_phone`: it turns CodeDroid on, signs the phone in with
-the computer's account when it can, and says what the user has left to do (sign in, tap Allow). If
-CodeDroid is not on the phone yet, it says so: ask the user before calling it again with `install`
-true. If it answers "still working", call it again. Without an account or adb, pairing is theirs to
+CodeDroid: every phone on the account is then reached, with nothing to pair. If phones are plugged
+in (USB debugging on), call `codedroid_setup_phone`: it sets up every device on adb at once (or the
+one `serial` names), turns CodeDroid on, signs each in with the computer's account when it can, and
+says what the user has left to do for each (sign in, tap Allow). If CodeDroid is not on a phone
+yet, it says so: ask the user before calling it again with `install` true. If it answers "still working", call it again. Without an account or adb, pairing is theirs to
 do: on the phone, CodeDroid > Settings > Computers > Pair a computer shows a command to run on this
 computer. Once connected it also returns the phone's `instructions`: read them if your session
 started before the phone connected.
@@ -108,7 +108,7 @@ depend on each other fail with `not_found`.
 | `codedroid_devices` | The phones: id, model, whether each is connected, and whether it is free (`status`) |
 | `install_apk` | Local bridge only: install an APK from this computer, with no cable or shared network |
 | `adb` | Local bridge only: this computer's adb, when the phone is on USB or Wireless debugging. `device` picks the phone as elsewhere; `save_to` keeps binary or very long output in a file |
-| `codedroid_status`, `codedroid_setup_phone` | Local bridge only: the pairing's state and what to fix; set the phone up over USB |
+| `codedroid_status`, `codedroid_setup_phone` | Local bridge only: the pairing's state and what to fix; set the phones on adb up over USB |
 | `batch` | Local bridge only: up to 20 screen steps (`tap`, `type_text`, `wait_for`, `get_screen`...) in one call with the phone held; stops at the first failure (`stop_on_error`). For a sequence you already know, never for exploring |
 | `record_start`, `record_stop`, `run_flow` | Local bridge only: record what you do as a Maestro flow, and replay a flow with no model in the loop (below) |
 

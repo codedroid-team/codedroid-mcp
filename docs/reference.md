@@ -34,7 +34,7 @@ read progress, or `cancel_task` to stop the task.
 | `batch` | Run up to 20 screen tool calls in one round trip with the phone held; stops at the first failure. |
 | `record_start`, `record_stop` | Record the session's phone actions as a Maestro flow and write the YAML. See [Flows](#flows-record-and-replay). |
 | `run_flow` | Replay a Maestro flow (a file or inline YAML) on the phone with no model in the loop. |
-| `codedroid_setup_phone` | Set up the phone on this computer's adb: install CodeDroid (only with `install` set, after the user agrees), turn on its accessibility service, and pair with no code to type. `serial` picks the phone when several are on adb. A long setup answers "still working": call it again. Offered with the `adb` tool. |
+| `codedroid_setup_phone` | Set up every phone on this computer's adb at once, or the one `serial` names: install CodeDroid (only with `install` set, after the user agrees), turn on its accessibility service, and sign it in or pair with no code to type. It says each phone's outcome. A long setup answers "still working": call it again. Offered with the `adb` tool. |
 
 `get_screen` takes three options the local bridge applies on your computer: `interactive_only`
 (only the elements a person could act on, with the labels inside them), `max_depth` (cut deep
@@ -238,8 +238,8 @@ even ones it didn't detect. `--yes` skips the confirmation. With a pairing code,
 like `pair`.
 
 Without a code, `setup` first signs this computer in ([the account](#sign-in-the-account)), unless
-it already is, `--no-login` is passed, or there is no terminal. Then, with a phone on adb (USB or
-Wireless debugging), it sets the phone up:
+it already is, `--no-login` is passed, or there is no terminal. Then it sets up every phone on adb
+(USB or Wireless debugging), each one this way:
 
 1. Installs CodeDroid from get.codedroid.com if it is missing, and checks the download against the
    published SHA-256. It asks first. Outside a terminal it installs only with `--yes`.
@@ -256,15 +256,23 @@ Wireless debugging), it sets the phone up:
    instead: CodeDroid hands adb a pairing code, so you don't type one. Then it connects, and you
    tap **Allow** on the phone.
 
-With several devices on adb, set `CODEDROID_SERIAL` to the one to set up. With no phone on adb, or
-no adb, `setup` connects to the account's phones, or says how to pair by hand. Signed in with no
+With several devices on adb, `setup` lists each with its model, serial and whether CodeDroid is
+on it, then asks once: `Set up all 3, installing CodeDroid on each? [Y/n/pick]`. `pick` asks about
+each device in turn. Outside a terminal it sets up all of them, and installs CodeDroid only with
+`--yes`. It sets them up side by side, downloading CodeDroid once for all of them, and names each
+device in what it says, with its serial when another device is the same model. A device it can't
+set up (an unaccepted USB debugging prompt, offline) is reported with what to do, and the others are
+set up anyway. Then it connects to every phone it reached. `CODEDROID_SERIAL` sets up the one device
+it names. With no phone on adb, or no adb, `setup` connects to the account's phones, or says how to
+pair by hand. Signed in with no
 phone on the account yet, it waits up to ten minutes in a terminal for one to come online (CodeDroid
 installed and signed in on it) and connects to it. Connecting is when a phone asks, the first time,
 whether to allow this computer: `setup` names the phones to tap **Allow** on, then says which
 connected. It succeeds when one did, and names any old pairing that did not. If the phone removed
 this computer, `setup` pairs it again. Signing in and pairing over USB need a CodeDroid version that
 has them; older ones are told to update or pair.
-`setup` exits with 1 when the phone isn't set up (signed out, declined outside a terminal, failed).
+`setup` exits with 1 when a phone on adb isn't set up (signed out, declined outside a terminal,
+failed, or a device it couldn't use).
 
 ### Quality report for an app's e2e folder
 
@@ -567,8 +575,9 @@ needs fixing. `flow run` replays a [flow](#flows-record-and-replay); `viewer` op
 
 ### Several phones
 
-Every phone signed in to CodeDroid with your account is there once you `login`. For a phone that is
-not, run `pair` on it. Pairing another phone keeps the earlier ones. Pairing the same phone again
+Every phone signed in to CodeDroid with your account is there once you `login`. Phones plugged in to
+this computer are set up together, from nothing, by one `setup` ([setup command](#setup-command)).
+For a phone that is not on your account, run `pair` on it. Pairing another phone keeps the earlier ones. Pairing the same phone again
 replaces its old pairing. Reinstalling CodeDroid or clearing its data gives the phone a new id, so
 its old pairing stays until you `unpair` it; a phone on the account is reached by its new id by
 itself. The running daemon picks up `login`, `pair` and `unpair` on its next request, so clients

@@ -89,9 +89,9 @@ screen, tap and type, hand CodeDroid a task, and run adb on this computer.
 Usage:
   codedroid-mcp                     MCP stdio server (auto-starts the shared daemon)
   codedroid-mcp setup [code]        Add CodeDroid to the coding clients installed here, sign in
-                                    with Google, and set up the phone on adb if one is plugged in
-                                    (install CodeDroid, turn it on, sign it in); with a code,
-                                    pair with the phone showing it instead
+                                    with Google, and set up every phone on adb (install CodeDroid,
+                                    turn it on, sign it in); with a code, pair with the phone
+                                    showing it instead
                                     (--client=<ids> to choose, --yes to skip the questions,
                                     --no-login to skip signing in)
   codedroid-mcp login               Sign in with the Google account you use in CodeDroid: every
@@ -142,7 +142,8 @@ Options:
   --version    Print version
   --help       This text
 
-Env: CODEDROID_SERIAL picks the adb tool's device when several are attached; ADB is the adb binary.
+Env: CODEDROID_SERIAL picks the adb tool's device when several are attached, and the one setup sets
+     up; ADB is the adb binary.
      CODEDROID_TOKEN is the account token from login --ci (CI); CODEDROID_SERVER its server.
      CODEDROID_MCP_UPDATE_CHECK=0 stops the daemon's daily look at npm for a newer release.
 
