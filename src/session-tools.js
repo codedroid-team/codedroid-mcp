@@ -46,8 +46,6 @@ export const BATCH_MAX_STEPS = 20;
 /** Tools Claude Code keeps loaded (code.claude.com/docs/en/mcp.md): the loop, and how to get going. */
 export const ALWAYS_LOADED_TOOLS = new Set(["get_screen", "tap", "type_text", "swipe", "press_key", "open_app", "wait_for", "codedroid_status", "codedroid_devices"]);
 const ALWAYS_LOAD_META = { "anthropic/alwaysLoad": true };
-/** Phone tools that only look: calling them takes no hold on a free phone. */
-const LOOKING_TOOLS = new Set(["get_screen", "take_screenshot", "list_apps", "wait_for", "device_info", "get_task"]);
 const ANY_DEVICE = "any";
 const CLAIM_DEVICE_SCHEMA = {
   type: "string",
@@ -106,10 +104,13 @@ export function createSessionTools({ phones, cwd = null, flowJobs = new Map() })
   /**
    * Remembers what [name] on phone [device] did to this session's hold on it. Acting takes a hold
    * even when the action then fails, so only a refusal (in_use, an unreachable phone) takes none. A
-   * call that names no session (the CLI's) is the computer's, which the phone never lets go for it.
+   * look the phone answered counts too: the phone is free or this session's, and a hold kept over a
+   * daemon restart is known again only by such calls. device_info answers every caller, so it says
+   * nothing. A call that names no session (the CLI's) is the computer's, which the phone never lets
+   * go for it.
    */
   const track = (name, device, meta, result = {}) => {
-    if (!meta?.[SESSION_META_KEY] || LOOKING_TOOLS.has(name)) return;
+    if (!meta?.[SESSION_META_KEY] || name === "device_info") return;
     if (name === "release_device") {
       if (!result.isError) held.delete(device ?? "");
       return;
@@ -144,6 +145,7 @@ export function createSessionTools({ phones, cwd = null, flowJobs = new Map() })
     if (name === "get_screen") {
       const { options, phoneArgs } = ScreenOptions.split(args);
       const result = await forward(phoneArgs);
+      track(name, args.device, meta, result);
       return screens.apply(screenKey, options, result);
     }
     const lastScreen = screens.last(screenKey);

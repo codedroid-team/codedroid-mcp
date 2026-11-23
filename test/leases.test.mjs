@@ -185,7 +185,18 @@ try {
   await daemon.close();
   assert.deepEqual(sessionsOf(PIXEL, "release_device"), [], "nothing released at shutdown");
   assert.equal(phones.get(PIXEL.device.id).holder, anaSession);
-  daemon = null;
+
+  // ── After the restart, a client that only looks still lets go of its phone at its end ──
+  // Its shim stamps the same session as before, which the new daemon has never seen act.
+  daemon = await startDaemon({ port: 0, pairings: () => [PIXEL, GALAXY], phoneTransportFactory: fakePhone, home });
+  const back = await connect(daemon.port, daemon.authToken);
+  const look = await back.callTool({ name: "get_screen", arguments: { device: "Pixel 9" }, _meta: { [SESSION_META_KEY]: anaSession } });
+  assert.notEqual(look.isError, true, text(look));
+  callsOf(PIXEL).length = 0;
+  await back.close();
+  await new Promise((r) => setTimeout(r, 100));
+  assert.deepEqual(sessionsOf(PIXEL, "release_device"), [anaSession], "released as the session the phone knows");
+  assert.equal(phones.get(PIXEL.device.id).holder, undefined);
 
   console.log("leases.test.mjs: ALL PASS");
 } finally {
