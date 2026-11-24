@@ -583,6 +583,9 @@ its old pairing stays until you `unpair` it; a phone on the account is reached b
 itself. The running daemon picks up `login`, `pair` and `unpair` on its next request, so clients
 stay connected.
 
+A phone on this computer's adb with CodeDroid on it is there too, with nothing to sign in or pair
+([Architecture](#architecture)). `codedroid_devices` shows its serial as `adb`.
+
 Every phone tool takes a `device` argument. It can be a phone's id, the start of its id, or its
 model or part of the model ("Pixel" for "Google Pixel 5"), as long as it names only one paired
 phone. The `codedroid_devices` tool lists the paired phones and the state of each link, without
@@ -685,8 +688,20 @@ accessibility access while they run.
 
 ```text
 MCP client → stdio bridge → local daemon → CodeDroid relay → Android app
+                              ├── adb forward ────────────→ Android app (phone on this computer's adb)
                               └── local adb
 ```
+
+A phone on this computer's adb, by USB, Wireless debugging or as an emulator, is reached over adb
+itself: the daemon forwards a local port to CodeDroid's socket on the phone (`adb forward tcp:0
+localabstract:<socket>`). No server, sign-in or pairing is in between, and calls are faster
+(about 50 ms for `get_screen` against 130 ms through the relay on the same phone). The phone
+accepts that socket only from adb, and asks nothing: adb's own authorization on the phone is the
+consent, as it is for `setup`. It needs a CodeDroid version with the local link, its
+Accessibility on, and **Allow computers to connect** on. The daemon reads `adb devices` every 10 s,
+so a phone plugged in shows up by itself; a phone also on your account or paired is one phone,
+reached over adb while it is plugged in and through the relay otherwise. A phone refused on the
+device (Stop) is not retried through the relay. `--no-adb` turns this off with the `adb` tool.
 
 All clients on a computer share a local daemon and its connection to each paired phone. The
 phone and daemon each open an outbound WebSocket to the CodeDroid server. The phone reconnects

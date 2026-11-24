@@ -89,7 +89,7 @@ export function adbRunner({ run = execFileAsync, env = process.env } = {}) {
 }
 
 /** adb's devices as [serial, state]: only `serial<TAB>state` lines, not the header nor "* daemon started successfully". */
-function parseDevices(output) {
+export function parseDevices(output) {
   return [...output.matchAll(/^([^\s*]\S*)\t([^\r\n]+)/gm)].map((m) => [m[1], m[2].trim()]);
 }
 

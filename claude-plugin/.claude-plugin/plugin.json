@@ -1,7 +1,7 @@
 {
   "name": "codedroid",
   "displayName": "CodeDroid",
-  "version": "0.1.21",
+  "version": "0.1.22",
   "description": "Your Android phone, through CodeDroid: read the screen, tap and type, hand CodeDroid a whole task, and verify app changes on the device. Signs in with your CodeDroid account; nothing runs on your computer.",
   "author": {
     "name": "CodeDroid",

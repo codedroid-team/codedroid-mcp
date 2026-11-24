@@ -18,9 +18,9 @@ function accountSummary() {
   return account ? { email: account.email ?? null, server: account.server } : null;
 }
 
-/** Reads the account's phones again, within a bound, so a phone signed in since shows up. */
+/** Reads the account's phones and adb's again, within a bound, so a phone signed in or plugged in since shows up. */
 async function refreshAccount(phones) {
-  if (!phones.refreshAccount || !readAccount()) return;
+  if (!phones.refreshAccount) return;
   await Promise.race([phones.refreshAccount(), new Promise((resolve) => setTimeout(resolve, ACCOUNT_REFRESH_WAIT_MS).unref?.())]);
 }
 

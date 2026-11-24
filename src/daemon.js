@@ -3,8 +3,9 @@
  * paired phone (through the CodeDroid server's relay) and serves MCP over
  * Streamable HTTP on localhost.
  *
- * The phone connection uses a WebSocket relay. /mcp requires this user's daemon token (a bearer
- * token kept in ~/.codedroid). Each client chooses whether it gets the host-side adb tool.
+ * The phone connection uses a WebSocket relay, or adb itself for a phone on this computer's adb
+ * (local-transport.js), falling back to the relay when that fails. /mcp requires this user's daemon
+ * token (a bearer token kept in ~/.codedroid). Each client chooses whether it gets the host-side adb tool.
  *
  * Every MCP client (Claude Code, Claude Desktop, Cursor, VS Code windows…)
  * connects to http://127.0.0.1:<port>/mcp and gets its own MCP session; tool
@@ -19,19 +20,20 @@
  */
 import http from "http";
 import os from "os";
-import { randomUUID, timingSafeEqual } from "crypto";
+import { createHash, randomUUID, timingSafeEqual } from "crypto";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { fetchDevices } from "./account.js";
 import { createAdbTool } from "./adb-tool.js";
 import { CLIENT_ADB_HEADER, CLIENT_CWD_HEADER } from "./daemon-transport.js";
-import { describeHost, ensureDaemonToken, readAccount, readHosts } from "./host.js";
+import { describeHost, deviceKey, ensureDaemonToken, readAccount, readHosts } from "./host.js";
 import { createInstallTool } from "./install-tool.js";
+import { LocalPhoneTransport, LocalPhones, withLocal } from "./local-transport.js";
 import { createSetupPhoneTool } from "./phone-setup.js";
 import { Phones } from "./phones.js";
 import { buildProxyServer, broadcastNotification } from "./proxy-core.js";
-import { RelayPhoneTransport } from "./relay-transport.js";
+import { PhoneDeniedError, RelayPhoneTransport } from "./relay-transport.js";
 import { createSessionTools } from "./session-tools.js";
 import { createDevicesTool, createStatusTool } from "./status-tool.js";
 import { cachedUpdate } from "./update-check.js";
@@ -43,6 +45,10 @@ export const DAEMON_AUTHENTICATION = "bearer-v1";
 export const ACCOUNT_REFRESH_MS = 5 * 60_000;
 // The longest a start waits on the server for the account's phones before serving.
 export const ACCOUNT_STARTUP_WAIT_MS = 8_000;
+// How often adb is read again for phones plugged in or started since.
+export const LOCAL_SCAN_MS = 10_000;
+// The longest a start waits on adb for its phones before serving.
+const LOCAL_STARTUP_WAIT_MS = 3_000;
 const MAX_BODY_BYTES = 8 * 1024 * 1024;
 
 /** How long a link stays trusted after its last proven round-trip. Past
@@ -318,6 +324,8 @@ function jsonRpcError(res, status, id, code, message) {
  * @param {number} [options.accountStartupWaitMs]  How long a start waits for the first read when the
  *   account has no phones saved (CODEDROID_TOKEN); past it the daemon serves and the read goes on.
  * @param {() => object | null} [options.update]  A newer release on npm, for codedroid_status; the cache by default.
+ * @param {LocalPhones | null} [options.local]  The phones on this computer's adb, reached over adb. Off
+ *   with phoneTransportFactory, which chooses every transport, or without the adb tool (--no-adb).
  * @returns {Promise<{port: number, authToken: string, close: () => Promise<void>, phones: Phones}>}
  *   authToken is this user's daemon token (host.js ensureDaemonToken), which /mcp and /shutdown require.
  */
@@ -336,6 +344,7 @@ export async function startDaemon({
   accountRefreshMs = ACCOUNT_REFRESH_MS,
   accountStartupWaitMs = ACCOUNT_STARTUP_WAIT_MS,
   update = () => cachedUpdate({ home }),
+  local = phoneTransportFactory || !enableAdbTool ? null : new LocalPhones({ log }),
 } = {}) {
   /** Set once the port is ours (below); no request is handled before that. */
   let authToken = null;
@@ -369,14 +378,42 @@ export async function startDaemon({
       clearTimeout(timer);
     }
   }
+  if (local) {
+    let timer;
+    await Promise.race([local.scan(), new Promise((resolve) => (timer = setTimeout(resolve, LOCAL_STARTUP_WAIT_MS)))]);
+    clearTimeout(timer);
+  }
+  const hosts = pairings ?? (() => readHosts({ home, accountDevices: knownDevices() }));
+  /**
+   * This computer as a phone on adb knows it: a pairing's own host id, so its holds and a Stop are
+   * the same on either path; else (an account's phone, a phone only on adb), the daemon token's hash.
+   */
+  const localHostId = (pairing) =>
+    pairing.host_id ?? `adb:${createHash("sha256").update(String(authToken)).digest("hex").slice(0, 16)}`;
+  /** Over adb when the phone is on it, else (or when that fails) through the relay. */
+  const transportTo = async (pairing, phoneLog) => {
+    const serial = local?.serialOf(deviceKey(pairing));
+    if (serial) {
+      const transport = new LocalPhoneTransport({ serial, hostId: localHostId(pairing), adb: local.adb, log: phoneLog });
+      try {
+        await transport.start();
+        return transport;
+      } catch (e) {
+        // Refused on the phone (Stop, a minute ago): the relay must not get round it.
+        if (pairing.local || e instanceof PhoneDeniedError) throw e;
+        phoneLog(`Not over adb (${e.message}): through the relay instead`);
+      }
+    } else if (pairing.local) {
+      throw new Error(`${describeHost(pairing)} is no longer on this computer's adb. Connect it again, or sign it in to reach it through the server.`);
+    }
+    return new RelayPhoneTransport({ host: () => pairing, log: phoneLog });
+  };
   const phones = new Phones({
-    pairings: pairings ?? (() => readHosts({ home, accountDevices: knownDevices() })),
+    pairings: local ? () => withLocal(hosts(), local.phones()) : hosts,
     createManager: (pairing) => {
       const phoneLog = (msg) => log(`[${describeHost(pairing)}] ${msg}`);
       return new PhoneManager({
-        transportFactory: phoneTransportFactory
-          ? () => phoneTransportFactory(pairing)
-          : () => new RelayPhoneTransport({ host: () => pairing, log: phoneLog }),
+        transportFactory: phoneTransportFactory ? () => phoneTransportFactory(pairing) : () => transportTo(pairing, phoneLog),
         log: phoneLog,
       });
     },
@@ -391,7 +428,7 @@ export async function startDaemon({
   const setupJobs = new Map();
   const flowJobs = new Map();
 
-  phones.refreshAccount = refreshAccount;
+  phones.refreshAccount = async () => (await Promise.all([refreshAccount(), local?.scan()]))[0];
   phones.onNotification = (notification) =>
     broadcastNotification(
       [...sessions.values()].map((s) => s.server),
@@ -581,6 +618,8 @@ export async function startDaemon({
     else known = null;
   }, accountRefreshMs);
   refreshTimer.unref?.();
+  const localTimer = local && setInterval(() => local.scan(), LOCAL_SCAN_MS);
+  localTimer?.unref?.();
   log(`CodeDroid MCP daemon listening on http://${host}:${boundPort}/mcp`);
   if (enableAdbTool) log("The adb tool is on: connected MCP clients can run adb commands on this machine.");
   else log("The adb tool is off for every client: this daemon was started with --no-adb or CODEDROID_MCP_ADB=0.");
@@ -588,6 +627,7 @@ export async function startDaemon({
   const close = async () => {
     shuttingDown = true;
     clearInterval(refreshTimer);
+    clearInterval(localTimer);
     for (const { transport } of sessions.values()) {
       try {
         await transport.close();

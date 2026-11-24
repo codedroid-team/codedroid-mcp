@@ -175,7 +175,9 @@ unless the pairing command shown on your phone names another:
 - **Tool calls** are relayed between your agent and the phone: screen contents, screenshots, text
   you ask it to type, clipboard reads and writes, and task progress. Each call also names the MCP
   client that made it and its version. The phone asks you to **Allow** a computer the first time,
-  shows when one is in use, and can stop or revoke it.
+  shows when one is in use, and can stop or revoke it. A phone on this computer's adb (USB,
+  Wireless debugging or an emulator) is reached over adb instead, so its tool calls never leave
+  your computer, and it needs no sign-in or pairing.
 
 The local server listens on `127.0.0.1` only and requires a per-user token. Pairing credentials,
 the token, and logs stay in `~/.codedroid` on your computer. The `adb` tool runs only on your
