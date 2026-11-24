@@ -129,6 +129,28 @@ try {
   assert.match(guide.contents[0].text, /^# Driving a device with CodeDroid/);
   await assert.rejects(client.readResource({ uri: "codedroid://nope" }), /No resource/);
 
+  // A shared phone: this session holds it since its first tap, and another session is kept off,
+  // told who holds it, until it lets go. The phone tells the sessions apart by the bridge's _meta.
+  const other = new Client({ name: "other", version: "0" });
+  await other.connect(
+    new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${daemon.port}/mcp`), {
+      requestInit: { headers: { Authorization: `Bearer ${daemon.authToken}` } },
+    }),
+  );
+  const refused = errorOf(await other.callTool({ name: "tap", arguments: { node: 1 } }));
+  assert.equal(refused.error, "in_use");
+  assert.match(refused.message, /^contract on contract is using this device/);
+  const seen = JSON.parse(text(await other.callTool({ name: "codedroid_devices", arguments: {} }))).devices[0];
+  assert.equal(seen.status, "in_use");
+  assert.equal(seen.lease.yours, false);
+  const claimed = JSON.parse(text(await client.callTool({ name: "claim_device", arguments: { purpose: "contract run" } })));
+  assert.equal(claimed.claimed, true);
+  assert.equal(claimed.yours, true);
+  assert.match(errorOf(await other.callTool({ name: "get_screen", arguments: {} })).message, /for "contract run"/);
+  assert.equal(JSON.parse(text(await client.callTool({ name: "release_device", arguments: {} }))).released, true);
+  assert.notEqual((await other.callTool({ name: "get_screen", arguments: {} })).isError, true);
+  await other.close();
+
   await client.ping();
   const status = JSON.parse(text(await client.callTool({ name: "codedroid_status", arguments: {} })));
   assert.equal(status.connected, true);

@@ -23,7 +23,11 @@ export const DEVICE_SCHEMA = {
 
 const MULTI_PHONE_INSTRUCTIONS =
   "Several phones are paired: pass `device` (an id or model from codedroid_devices) on every phone tool call. " +
-  "Each phone has its own screen, tasks and task ids.";
+  "Each phone has its own screen, tasks and task ids. Phones may be shared with other agents and computers: " +
+  "codedroid_devices says which are available, and claim_device with device \"any\" takes one that is.";
+
+/** How long codedroid_devices waits on one phone's answer about whether it is free. */
+const STATUS_WAIT_MS = 5_000;
 
 /** List methods, and the field of their result that holds the items. */
 const MERGED_LISTS = {
@@ -200,6 +204,39 @@ export class Phones {
       };
       return fn({ call, pairing: entry.pairing });
     });
+  }
+
+  /**
+   * Whether each phone is free, as it says itself (device_info): {entry, status, lease?, problem?} in
+   * pairing order. status is available or in_use, offline when it is not connected, or online from a
+   * CodeDroid too old to say. [meta] is the asking session's, so `lease.yours` is its own. Only
+   * [connect] tries a phone that is not connected, for up to listWaitMs.
+   */
+  async statuses(meta, { connect = false } = {}) {
+    return Promise.all(
+      this.sync().map(async (entry) => {
+        try {
+          const client = connect ? await within(entry.manager.getClient(), this._listWaitMs) : entry.manager.current;
+          if (!client) return { entry, status: "offline", ...(entry.manager.lastError ? { problem: entry.manager.lastError } : {}) };
+          const result = await client.request(
+            { method: "tools/call", params: { name: "device_info", arguments: {}, ...(meta ? { _meta: meta } : {}) } },
+            CallToolResultSchema,
+            { timeout: STATUS_WAIT_MS },
+          );
+          entry.manager.markAlive();
+          let info = {};
+          try {
+            info = JSON.parse(result.content?.[0]?.text ?? "{}") ?? {};
+          } catch (e) {
+            /* not JSON: a CodeDroid too old to say */
+          }
+          if (result.isError) return { entry, status: "online", problem: info.message ?? "device_info failed." };
+          return { entry, status: info.status ?? "online", ...(info.lease ? { lease: info.lease } : {}) };
+        } catch (e) {
+          return { entry, status: "offline", problem: e.message };
+        }
+      }),
+    );
   }
 
   /** The phone a request goes to: the one [device] names, or the only one paired. */

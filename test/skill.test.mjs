@@ -34,7 +34,7 @@ const params = new Set([...[...phone, ...local].flatMap((t) => Object.keys(t.inp
 // ended (`ended`) and what it cost (`credits.status`).
 const replyWords = new Set([
   "stale_node", "not_found", "needs_setup", "bad_args", "screen_changed",
-  "out_of_credits", "update_required", "not_charged",
+  "out_of_credits", "update_required", "not_charged", "in_use", "frees_in_s",
 ]);
 
 for (const name of SKILLS) {

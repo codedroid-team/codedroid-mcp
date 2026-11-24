@@ -21,16 +21,17 @@ line. Every phone signed in to CodeDroid with that account is reached, with noth
 then connects to your phones, and each asks once whether to allow this computer: tap **Allow**. Then
 restart your coding client.
 
-With a phone plugged in (**USB debugging** on), `setup` also installs the CodeDroid app on it if
-needed, turns on its accessibility service, and signs it in with your account, so an emulator or a
-phone with no Google account on it needs no sign-in of its own. Setting up over USB needs
-[adb](https://developer.android.com/tools/releases/platform-tools).
+With phones or tablets plugged in (**USB debugging** on, or Wireless debugging), `setup` also
+installs the CodeDroid app on each if needed, turns on its accessibility service, and signs it in
+with your account, all at once, so a device with no Google account on it needs no sign-in of its own
+and no **Allow** to tap. With several, it lists them and asks once whether to set them all up, or
+lets you pick. Setting up over USB needs [adb](https://developer.android.com/tools/releases/platform-tools).
 
 That is the last command you need: every client launches `@codedroid/mcp@latest`, so a new
 release is with you the next time the client starts, and the running server brings the skills and
 plugin copies on your computer along with it ([details](docs/reference.md#updates)).
 
-Already have the plugin? Ask your agent to "set up my phone" instead: it does the same, and asks
+Already have the plugin? Ask your agent to "set up my phones" instead: it does the same, and asks
 you before installing anything.
 
 ### Or step by step
@@ -129,6 +130,8 @@ Android platform-tools and a USB or wireless debugging connection. See [adb setu
 
 - **MCP tools** to read the screen, take screenshots, tap, type, swipe, open apps, and hand
   CodeDroid's agent a multi-step task, on one phone or [several](docs/reference.md#several-phones).
+  Phones can be shared like a device farm: an agent claims one for its job, and every other agent
+  or computer sees it `in_use` until it is released ([details](docs/reference.md#shared-phones-claims-and-status)).
   See the [tool list](docs/reference.md#tools).
 - **Skills**: `codedroid-phone` teaches the agent to drive the phone one checked step at a time,
   and `test-on-device` walks it through building, installing, and verifying an Android app change.

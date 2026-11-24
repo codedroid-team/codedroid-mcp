@@ -5,17 +5,22 @@
  *   batch               several screen tool calls in one round trip, with the screen held.
  *   record_start/stop   the session's phone tool calls as a Maestro flow (flow.js).
  *   run_flow            a flow replayed on the phone with no model in the loop.
+ *   claim_device        device "any" takes whichever phone says it is available.
  *
  * Each session has its own state (the last screen it read per phone, its recording), so two
  * clients on one computer never see each other's diffs or steps. The screen itself is shared and
  * is held for a whole batch or flow, so another session's tap cannot land in the middle of one.
+ * Across sessions and computers, the phone's lease keeps a job whole (claim_device); a session
+ * that ends lets go of the phones it held (releaseHeld).
  */
 import { createHash } from "crypto";
 import fs from "fs";
 import path from "path";
 import { confinedFile } from "./adb-tool.js";
 import { FlowError, Recorder, parseFlow, runFlow, textOf } from "./flow.js";
+import { describeHost, deviceKey } from "./host.js";
 import { DEVICE_SCHEMA } from "./phones.js";
+import { SESSION_META_KEY } from "./proxy-core.js";
 import { GET_SCREEN_OPTIONS, ScreenOptions } from "./screen-text.js";
 
 /** Tools a batch may hold: they act on or read the screen, and answer within one call. */
@@ -41,11 +46,17 @@ export const BATCH_MAX_STEPS = 20;
 /** Tools Claude Code keeps loaded (code.claude.com/docs/en/mcp.md): the loop, and how to get going. */
 export const ALWAYS_LOADED_TOOLS = new Set(["get_screen", "tap", "type_text", "swipe", "press_key", "open_app", "wait_for", "codedroid_status", "codedroid_devices"]);
 const ALWAYS_LOAD_META = { "anthropic/alwaysLoad": true };
+const ANY_DEVICE = "any";
+const CLAIM_DEVICE_SCHEMA = {
+  type: "string",
+  description: `${DEVICE_SCHEMA.description} "${ANY_DEVICE}" takes whichever phone is available.`,
+};
 
 /** How long run_flow waits in one call before saying it is still running. */
 const FLOW_WAIT_MS = 50_000;
 const KEEP_FLOW_RESULT_MS = 10 * 60_000;
 const STEP_TIMEOUT_MS = 120_000;
+const RELEASE_TIMEOUT_MS = 10_000;
 
 const text = (value) => ({ content: [{ type: "text", text: typeof value === "string" ? value : JSON.stringify(value, null, 2) }] });
 const failure = (message) => ({ ...text(message), isError: true });
@@ -87,23 +98,83 @@ function flowKey(args) {
 export function createSessionTools({ phones, cwd = null, flowJobs = new Map() }) {
   const screens = new ScreenOptions();
   const recorder = new Recorder();
+  /** The phones this session may hold, by the device argument that named them: the _meta it last called with. */
+  const held = new Map();
 
-  /** One phone tool call: the options this computer adds, and the recording. */
-  const handle = async ({ name, args = {}, forward }) => {
-    const deviceKey = args.device ?? "";
+  /**
+   * Remembers what [name] on phone [device] did to this session's hold on it. Acting takes a hold
+   * even when the action then fails, so only a refusal (in_use, an unreachable phone) takes none. A
+   * look the phone answered counts too: the phone is free or this session's, and a hold kept over a
+   * daemon restart is known again only by such calls. device_info answers every caller, so it says
+   * nothing. A call that names no session (the CLI's) is the computer's, which the phone never lets
+   * go for it.
+   */
+  const track = (name, device, meta, result = {}) => {
+    if (!meta?.[SESSION_META_KEY] || name === "device_info") return;
+    if (name === "release_device") {
+      if (!result.isError) held.delete(device ?? "");
+      return;
+    }
+    if (result.isError && (name === "claim_device" || /"in_use"|is not connected|"busy"/.test(textOf(result)))) return;
+    held.set(device ?? "", meta);
+  };
+
+  /** claim_device on whichever phone says it is available, the next one when another caller takes it first. */
+  const claimAny = async (args, forward, meta) => {
+    const statuses = await phones.statuses(meta, { connect: true });
+    // A phone this session already holds first: calling it twice must not tie up a second one.
+    const candidates = [...statuses.filter((s) => s.lease?.yours), ...statuses.filter((s) => s.status === "available")];
+    for (const { entry } of candidates) {
+      const id = String(deviceKey(entry.pairing));
+      const result = await forward({ ...args, device: id });
+      if (!result.isError) {
+        track("claim_device", id, meta, result);
+        const note = `Claimed ${describeHost(entry.pairing)}: pass device "${id}" on every call, and release_device with it when done.`;
+        return { ...result, content: [{ type: "text", text: note }, ...(result.content ?? [])] };
+      }
+      if (!/"in_use"/.test(textOf(result))) return result;
+    }
+    const seen = statuses.map((s) => `${describeHost(s.entry.pairing)}: ${s.status}${s.lease ? ` (${s.lease.holder})` : ""}`);
+    return failure(`No phone is available now. ${seen.length ? seen.join("; ") : "None is paired."} Wait and try again, or name one.`);
+  };
+
+  /** One phone tool call: the options this computer adds, the recording, and the phones it holds. */
+  const handle = async ({ name, args = {}, forward, meta }) => {
+    const screenKey = args.device ?? "";
+    if (name === "claim_device" && String(args.device ?? "").trim().toLowerCase() === ANY_DEVICE) return claimAny(args, forward, meta);
     if (name === "get_screen") {
       const { options, phoneArgs } = ScreenOptions.split(args);
       const result = await forward(phoneArgs);
-      return screens.apply(deviceKey, options, result);
+      track(name, args.device, meta, result);
+      return screens.apply(screenKey, options, result);
     }
-    const lastScreen = screens.last(deviceKey);
+    const lastScreen = screens.last(screenKey);
     const result = await forward(args);
     recorder.observe({ name, args, result, lastScreen });
+    track(name, args.device, meta, result);
     return result;
+  };
+
+  /**
+   * The session ended: let go of every phone it held, so the next agent need not wait out the hold.
+   * Queued behind that phone's screen calls, so it never lands in the middle of a batch or flow.
+   */
+  const releaseHeld = async () => {
+    const phonesHeld = [...held.entries()];
+    held.clear();
+    await Promise.all(
+      phonesHeld.map(([device, meta]) =>
+        phones.withPhone(device || undefined, ({ call }) => call("release_device"), { timeout: RELEASE_TIMEOUT_MS, meta }).catch(() => {}),
+      ),
+    );
   };
 
   const shapeTool = (definition) => {
     let shaped = definition;
+    if (definition.name === "claim_device") {
+      const schema = definition.inputSchema ?? { type: "object" };
+      shaped = { ...definition, inputSchema: { ...schema, properties: { ...schema.properties, device: CLAIM_DEVICE_SCHEMA } } };
+    }
     if (definition.name === "get_screen") {
       const schema = definition.inputSchema ?? { type: "object" };
       shaped = { ...definition, inputSchema: { ...schema, properties: { ...schema.properties, ...GET_SCREEN_OPTIONS } } };
@@ -141,7 +212,7 @@ export function createSessionTools({ phones, cwd = null, flowJobs = new Map() })
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
       _meta: { ...ALWAYS_LOAD_META },
     },
-    async handler({ steps, stop_on_error = true, device } = {}) {
+    async handler({ steps, stop_on_error = true, device } = {}, { meta } = {}) {
       if (!Array.isArray(steps) || !steps.length) return failure("batch: steps must be a list of {tool, arguments}.");
       if (steps.length > BATCH_MAX_STEPS) return failure(`batch: at most ${BATCH_MAX_STEPS} steps; this has ${steps.length}.`);
       for (const [i, step] of steps.entries()) {
@@ -158,7 +229,7 @@ export function createSessionTools({ phones, cwd = null, flowJobs = new Map() })
           async ({ call }) => {
             for (const [i, step] of steps.entries()) {
               const { device: _ignored, ...args } = step.arguments ?? {};
-              const result = await handle({ name: step.tool, args: device !== undefined ? { ...args, device } : args, forward: (phoneArgs) => {
+              const result = await handle({ name: step.tool, args: device !== undefined ? { ...args, device } : args, meta, forward: (phoneArgs) => {
                 const { device: _d, ...sent } = phoneArgs;
                 return call(step.tool, sent);
               } });
@@ -170,7 +241,7 @@ export function createSessionTools({ phones, cwd = null, flowJobs = new Map() })
               }
             }
           },
-          { timeout: STEP_TIMEOUT_MS },
+          { timeout: STEP_TIMEOUT_MS, meta },
         );
       } catch (e) {
         return failure(`batch: ${e.message}`);
@@ -269,7 +340,7 @@ export function createSessionTools({ phones, cwd = null, flowJobs = new Map() })
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
-    async handler(args = {}) {
+    async handler(args = {}, { meta } = {}) {
       const { path: file, yaml, env, screenshot_dir, device } = args;
       if ((file === undefined) === (yaml === undefined)) return failure("run_flow: pass path or yaml, not both and not neither.");
       const key = flowKey(args);
@@ -297,8 +368,9 @@ export function createSessionTools({ phones, cwd = null, flowJobs = new Map() })
         }
         if (!flow.steps.length) return failure(`run_flow: ${resolved ?? "the flow"} has no steps.`);
         job = { key, file: resolved, done: false, finishedAt: null, log: [], startedAt: Date.now() };
+        track("run_flow", device, meta);
         job.promise = phones
-          .withPhone(device, ({ call }) => runFlow(flow, call, { env, baseDir, screenshotDir, log: (line) => job.log.push(line) }), { timeout: STEP_TIMEOUT_MS })
+          .withPhone(device, ({ call }) => runFlow(flow, call, { env, baseDir, screenshotDir, log: (line) => job.log.push(line) }), { timeout: STEP_TIMEOUT_MS, meta })
           .then(
             (result) => ({ result }),
             (error) => ({ error }),
@@ -328,5 +400,5 @@ export function createSessionTools({ phones, cwd = null, flowJobs = new Map() })
     },
   };
 
-  return { shapeTool, interceptCall: handle, localTools: [batch, recordStart, recordStop, runFlowTool] };
+  return { shapeTool, interceptCall: handle, releaseHeld, track, localTools: [batch, recordStart, recordStop, runFlowTool] };
 }

@@ -1,6 +1,7 @@
 /**
- * Takes the phone on this computer's adb from nothing to paired, for `setup` and the
- * codedroid_setup_phone tool:
+ * Takes the phones on this computer's adb from nothing to paired, for `setup` and the
+ * codedroid_setup_phone tool: findPhones lists them, and setUpPhones sets them up side by side, each
+ * as setUpPhone does one:
  *
  *   1. Install CodeDroid from get.codedroid.com if it is missing (checked against the feed's sha256).
  *   2. Turn on what its onboarding asks for (Accessibility, the keyboard, permissions), as
@@ -87,23 +88,93 @@ export function adbRunner({ run = execFileAsync, env = process.env } = {}) {
   };
 }
 
+/** adb's devices as [serial, state]: only `serial<TAB>state` lines, not the header nor "* daemon started successfully". */
+function parseDevices(output) {
+  return [...output.matchAll(/^([^\s*]\S*)\t([^\r\n]+)/gm)].map((m) => [m[1], m[2].trim()]);
+}
+
+/** Why a device adb lists as [state] can't be set up, or null when it can. */
+function stateProblem(state) {
+  if (state === "unauthorized") return "Accept the USB debugging prompt on the phone, then run this again.";
+  if (state.startsWith("no permissions")) {
+    return "adb has no permission to use the phone. On Linux, add its udev rules (https://developer.android.com/studio/run/device), then run this again.";
+  }
+  if (state.split(/\s/)[0] !== "device") return `The phone is ${state.split(/\s/)[0]} on adb: reconnect it, then run this again.`;
+  return null;
+}
+
+/** What a thrown adb call means for the user. */
+function adbFailure(e) {
+  return e?.code === "ENOENT"
+    ? "adb is not installed, so the phone can't be set up over USB. Get it: https://developer.android.com/tools/releases/platform-tools"
+    : `adb failed: ${e.message}`;
+}
+
+/** The phone [serial], CODEDROID_SERIAL or ANDROID_SERIAL names, else every device adb has. */
+function wantedDevices(devicesOutput, env, serial) {
+  const attached = parseDevices(devicesOutput);
+  const wanted = serial || env.CODEDROID_SERIAL || env.ANDROID_SERIAL;
+  const candidates = wanted ? attached.filter(([s]) => s === wanted) : attached;
+  if (!candidates.length) return { problem: wanted ? `${wanted} is not on adb.` : "No phone is on adb." };
+  return { candidates };
+}
+
 /** The one phone to set up: [serial], CODEDROID_SERIAL or ANDROID_SERIAL, else the only device adb has. */
 export function pickPhone(devicesOutput, env = process.env, serial = null) {
-  // Only `serial<TAB>state` lines: not the header, nor "* daemon started successfully".
-  const attached = [...devicesOutput.matchAll(/^([^\s*]\S*)\t([^\r\n]+)/gm)].map((m) => [m[1], m[2].trim()]);
-  const wanted = serial || env.CODEDROID_SERIAL || env.ANDROID_SERIAL;
-  const candidates = wanted ? attached.filter(([serial]) => serial === wanted) : attached;
-  if (!candidates.length) return { problem: wanted ? `${wanted} is not on adb.` : "No phone is on adb." };
+  const { candidates, problem } = wantedDevices(devicesOutput, env, serial);
+  if (problem) return { problem };
   if (candidates.length > 1) {
     return { problem: `Several devices are on adb (${candidates.map(([s]) => s).join(", ")}): name the one to set up with CODEDROID_SERIAL.` };
   }
   const [found, state] = candidates[0];
-  if (state === "unauthorized") return { problem: "Accept the USB debugging prompt on the phone, then run this again." };
-  if (state.startsWith("no permissions")) {
-    return { problem: "adb has no permission to use the phone. On Linux, add its udev rules (https://developer.android.com/studio/run/device), then run this again." };
+  const refused = stateProblem(state);
+  return refused ? { problem: refused } : { serial: found };
+}
+
+/**
+ * The devices to set up: every one on adb, or the one [serial] (else CODEDROID_SERIAL) names. Each
+ * has its serial and a `label` to name it by (its model, with the serial when another has the same
+ * model), then either its `model` and whether CodeDroid is `installed`, or the `problem` that keeps
+ * it from being set up (unauthorized, offline). Resolves `{ problem }` with no device at all.
+ */
+export async function findPhones({ adb = adbRunner(), env = process.env, serial = null } = {}) {
+  let output;
+  try {
+    output = await adb(["devices"]);
+  } catch (e) {
+    return { problem: adbFailure(e) };
   }
-  if (state.split(/\s/)[0] !== "device") return { problem: `The phone is ${state.split(/\s/)[0]} on adb: reconnect it, then run this again.` };
-  return { serial: found };
+  const { candidates, problem } = wantedDevices(output, env, serial);
+  if (problem) return { problem };
+  const phones = await Promise.all(
+    candidates.map(async ([serial, state]) => {
+      const refused = stateProblem(state);
+      if (refused) return { serial, model: null, problem: refused };
+      const shell = (command) => adb(["shell", command], { serial, timeout: 15_000 });
+      try {
+        const user = currentUser(await shell("am get-current-user"));
+        const [model, installed] = await Promise.all([shell("getprop ro.product.model"), shell(`pm path --user ${user} ${APP}`)]);
+        return { serial, model: model.trim() || null, installed: /^package:/m.test(installed) };
+      } catch (e) {
+        return { serial, model: null, problem: adbFailure(e) };
+      }
+    }),
+  );
+  const models = new Map();
+  for (const { model } of phones) if (model) models.set(model, (models.get(model) ?? 0) + 1);
+  return {
+    phones: phones.map((p) => ({ ...p, label: !p.model ? p.serial : models.get(p.model) > 1 ? `${p.model} (${p.serial})` : p.model })),
+  };
+}
+
+/** findPhones' devices as setup lists them, one line each. */
+export function phoneLines(phones) {
+  return phones.map((p) => `  ${p.model ? `${p.model} (${p.serial})` : p.serial}: ${p.problem ?? (p.installed ? "CodeDroid installed" : "CodeDroid not installed")}`);
+}
+
+/** The Android user in front, from `am get-current-user`. */
+function currentUser(output) {
+  return /^\s*(\d+)\s*$/m.exec(output)?.[1] ?? "0";
 }
 
 /** The JSON a `content query` of the app's provider printed (`Row: 0 result={...}`), or null. */
@@ -147,6 +218,7 @@ export async function setUpPhone({
   mintCode = mintSignInCode,
   listDevices = fetchDevices,
   registerWaitMs = REGISTER_WAIT_MS,
+  apk = null,
 } = {}) {
   let serial;
   try {
@@ -154,33 +226,28 @@ export async function setUpPhone({
     if (picked.problem) return { status: "no-phone", detail: picked.problem };
     serial = picked.serial;
   } catch (e) {
-    return {
-      status: "no-phone",
-      detail:
-        e?.code === "ENOENT"
-          ? "adb is not installed, so the phone can't be set up over USB. Get it: https://developer.android.com/tools/releases/platform-tools"
-          : `adb failed: ${e.message}`,
-    };
+    return { status: "no-phone", detail: adbFailure(e) };
   }
   const shell = (command, timeout) => adb(["shell", command], { serial, timeout });
   const turnOn = () => shell(TURN_ON);
 
   try {
-    const user = /^\s*(\d+)\s*$/m.exec(await shell("am get-current-user"))?.[1] ?? "0";
+    const user = currentUser(await shell("am get-current-user"));
     const query = async (uri) => parseProviderRow(await shell(`content query --user ${user} --uri content://${APP}/${uri}`));
     if (!/^package:/m.test(await shell(`pm path --user ${user} ${APP}`))) {
       const model = (await shell("getprop ro.product.model")).trim() || "the phone";
       if (!(await confirmInstall(model))) return { status: "not-installed", detail: `CodeDroid is not on ${model}.`, model };
-      const apk = await downloadApk({ fetch, tmpdir, log });
+      const download = apk ?? apkDownload({ fetch, tmpdir, log });
       try {
+        const file = await download.get();
         log("Installing CodeDroid on the phone. If it offers to scan the app, accept.");
-        const out = await adb(["install", "-r", apk], { serial, timeout: INSTALL_TIMEOUT_MS });
+        const out = await adb(["install", "-r", file], { serial, timeout: INSTALL_TIMEOUT_MS });
         if (!/^Success/m.test(out)) {
           const known = INSTALL_FAILURES.find(([pattern]) => pattern.test(out));
           return { status: "failed", detail: known?.[1] ?? `Installing CodeDroid failed: ${out.trim().split("\n").at(-1)}` };
         }
       } finally {
-        fs.rmSync(path.dirname(apk), { recursive: true, force: true });
+        if (!apk) await download.dispose();
       }
     }
     let status = await query("device/status");
@@ -302,6 +369,80 @@ export async function setUpPhone({
   }
 }
 
+/**
+ * setUpPhone on each of [phones] (findPhones' devices) side by side, sharing one download of
+ * CodeDroid, the account, and its list of phones while they wait to register. A device with a
+ * `problem` is reported as it is. [log] lines name their device when there are several. Resolves
+ * each device with its result, in [phones]' order.
+ */
+export async function setUpPhones({
+  phones,
+  log = () => {},
+  fetch = globalThis.fetch,
+  tmpdir = os.tmpdir(),
+  home = os.homedir(),
+  env = process.env,
+  account = readAccount({ home, env }),
+  listDevices = fetchDevices,
+  pollMs = POLL_MS,
+  ...options
+}) {
+  const apk = apkDownload({ fetch, tmpdir, log });
+  const listShared = sharedFor(listDevices, pollMs);
+  const several = phones.length > 1;
+  try {
+    return await Promise.all(
+      phones.map(async (phone) => {
+        if (phone.problem) return { ...phone, status: "no-phone", detail: phone.problem };
+        const result = await setUpPhone({
+          ...options,
+          serial: phone.serial,
+          fetch,
+          tmpdir,
+          home,
+          env,
+          account,
+          listDevices: listShared,
+          pollMs,
+          apk,
+          log: several ? (line) => log(`${phone.label}: ${line}`) : log,
+        });
+        return { ...phone, ...result };
+      }),
+    );
+  } finally {
+    await apk.dispose();
+  }
+}
+
+/** [fn] shared by its callers: a call within [ms] of the one before gets that one's answer. */
+function sharedFor(fn, ms) {
+  let last = null;
+  let at = 0;
+  return (...args) => {
+    if (!last || Date.now() - at >= ms) {
+      at = Date.now();
+      last = fn(...args);
+    }
+    return last;
+  };
+}
+
+/**
+ * One download of CodeDroid for the phones a setup installs it on: `get` downloads it the first
+ * time it is asked for, and `dispose` deletes it.
+ */
+function apkDownload({ fetch, tmpdir, log }) {
+  let file = null;
+  return {
+    get: () => (file ??= downloadApk({ fetch, tmpdir, log })),
+    async dispose() {
+      const done = await file?.catch(() => null);
+      if (done) fs.rmSync(path.dirname(done), { recursive: true, force: true });
+    },
+  };
+}
+
 /** [read]'s first answer that [done] accepts within [ms], else its last. */
 async function poll(read, done, ms, every) {
   const deadline = Date.now() + ms;
@@ -333,36 +474,58 @@ async function downloadApk({ fetch, tmpdir, log }) {
   return file;
 }
 
-const TOOL_DESCRIPTION =
-  "Set up CodeDroid on the Android phone plugged into this computer (USB or Wireless debugging), then pair " +
-  "this computer with it, with no code to type: installs the app from get.codedroid.com if it is missing (only " +
-  "with install: true), turns on its Accessibility and keyboard over adb, waits for the user to sign in on the " +
-  "phone, and pairs. Call it when codedroid_status says this computer is not paired. If CodeDroid is not on the " +
-  "phone yet, it says so: ask the user before calling again with install: true. A long setup answers \"still " +
-  "working\": call it again to keep waiting. Once paired, the user taps Allow on the phone; then call codedroid_status.";
+/** Every device on adb, or the one [serial] names, set up side by side (setUpPhones); `{ problem }` with none. */
+export async function setUpAdbPhones({ serial = null, adb = adbRunner(), env = process.env, ...options } = {}) {
+  const found = await findPhones({ adb, env, serial });
+  if (found.problem) return { problem: found.problem };
+  return { phones: await setUpPhones({ phones: found.phones, adb, env, ...options }) };
+}
 
-// What the agent does next, by how setup ended.
+const TOOL_DESCRIPTION =
+  "Set up CodeDroid on the Android phones plugged into this computer (USB or Wireless debugging), every device " +
+  "on adb at once, or the one `serial` names, with no code to type: installs the app from get.codedroid.com where " +
+  "it is missing (only with install: true), turns on its Accessibility and keyboard over adb, signs each phone in " +
+  "with this computer's account (or waits for the user to sign in on it), and pairs. Call it when codedroid_status " +
+  "says this computer is not paired, or the user asks to set up the phones or tablets on this computer. If " +
+  "CodeDroid is not on a phone yet, it says so: ask the user before calling again with install: true. A long setup " +
+  'answers "still working": call it again to keep waiting. Then call codedroid_status.';
+
+// What the agent does next, by how setup ended: [phones] ended so, [named] when there were several.
 const NEXT = {
-  paired: "Ask the user to tap Allow on the phone, then call codedroid_status.",
-  "already-paired": "Call codedroid_status to connect.",
-  "signed-out": "Ask the user to sign in to CodeDroid on the phone (tap send, then sign in with Google), then call this again.",
-  "not-installed": "Ask the user whether to install CodeDroid on it. If they agree, call this again with install: true.",
-  "no-phone": `Ask the user to fix that, then call this again. Or they pair by hand: ${PAIR_BY_HAND}`,
+  paired: (phones, named) => `Ask the user to tap Allow on ${named ? "each phone" : "the phone"} if CodeDroid asks, then call codedroid_status.`,
+  "already-paired": () => "Call codedroid_status to connect.",
+  "signed-out": (phones, named) =>
+    `Ask the user to sign in to CodeDroid on ${named ? phones.map((p) => p.label).join(", ") : "the phone"} (tap send, then sign in with Google), then call this again.`,
+  "not-installed": (phones, named) =>
+    `Ask the user whether to install CodeDroid on ${named ? phones.map((p) => p.label).join(", ") : "it"}. If they agree, call this again with install: true.`,
+  "no-phone": () => `Ask the user to fix that, then call this again. Or they pair by hand: ${PAIR_BY_HAND}`,
 };
 
+/** What a setup's [outcome] (setUpAdbPhones') tells the agent, and whether every phone was reached. */
+function report(outcome) {
+  if (outcome.problem) return { ok: false, lines: [outcome.problem, NEXT["no-phone"]()] };
+  const { phones } = outcome;
+  const named = phones.length > 1;
+  const lines = phones.map((p) => (named ? `${p.label}: ${p.detail}` : p.detail));
+  for (const status of new Set(phones.map((p) => p.status))) {
+    lines.push(NEXT[status]?.(phones.filter((p) => p.status === status), named));
+  }
+  return { ok: phones.every((p) => p.status === "paired" || p.status === "already-paired"), lines: lines.filter(Boolean) };
+}
+
 /**
- * codedroid_setup_phone: setUpPhone for the agent. A setup can take minutes (a download, then the
+ * codedroid_setup_phone: setUpAdbPhones for the agent. A setup can take minutes (a download, then the
  * user signing in), longer than a client waits for one call (Codex: 60 s), so it runs as a job on
  * the daemon: a call waits up to [waitMs] and otherwise says it is still working, and the next call
  * joins the same job instead of starting a second install. A result no call picks up within [keepMs]
- * is dropped, since the phone may have changed since.
+ * is dropped, since the phones may have changed since.
  *
  * @param {object} options
  * @param {Map<string, object>} options.jobs setups under way on this daemon, shared by its sessions
  */
 export function createSetupPhoneTool({
   jobs,
-  setUp = setUpPhone,
+  setUp = setUpAdbPhones,
   waitMs = 45_000,
   signInWaitMs = 3 * 60_000,
   keepMs = 2 * 60_000,
@@ -371,22 +534,22 @@ export function createSetupPhoneTool({
   return {
     definition: {
       name: "codedroid_setup_phone",
-      title: "Set up the phone over USB",
+      title: "Set up the phones over USB",
       description: TOOL_DESCRIPTION,
       inputSchema: {
         type: "object",
         properties: {
           install: { type: "boolean", description: "Install CodeDroid if it is missing. Only once the user has agreed." },
-          serial: { type: "string", description: "adb serial of the phone (adb devices), when several devices are on adb" },
+          serial: { type: "string", description: "adb serial of the one phone to set up (adb devices); without it, every device on adb" },
         },
       },
-      annotations: { title: "Set up the phone over USB", readOnlyHint: false, destructiveHint: true, openWorldHint: true },
+      annotations: { title: "Set up the phones over USB", readOnlyHint: false, destructiveHint: true, openWorldHint: true },
     },
     async handler({ install = false, serial } = {}) {
       let job = jobs.get("setup");
       const sameSerial = !serial || job?.serial === serial;
       if (job && job.finishedAt === undefined && !sameSerial) {
-        const text = `Setting up ${job.serial ?? "the phone on adb"} already. Call this again once that is done.`;
+        const text = `Setting up ${job.serial ?? "the phones on adb"} already. Call this again once that is done.`;
         return { content: [{ type: "text", text }], isError: true };
       }
       if (job?.finishedAt !== undefined && (!sameSerial || now() - job.finishedAt > keepMs)) job = null;
@@ -398,7 +561,7 @@ export function createSetupPhoneTool({
           serial,
           signInWaitMs,
         })
-          .catch((e) => ({ status: "failed", detail: e.message }))
+          .catch((e) => ({ problem: e.message }))
           .then((result) => ((started.finishedAt = now()), result));
         jobs.set("setup", (job = started));
       }
@@ -410,9 +573,8 @@ export function createSetupPhoneTool({
         return { content: [{ type: "text", text }], isError: false };
       }
       if (jobs.get("setup") === job) jobs.delete("setup");
-      const text = [...job.progress, result.detail, NEXT[result.status]].filter(Boolean).join("\n");
-      const ok = result.status === "paired" || result.status === "already-paired";
-      return { content: [{ type: "text", text }], isError: !ok };
+      const { ok, lines } = report(result);
+      return { content: [{ type: "text", text: [...job.progress, ...lines].join("\n") }], isError: !ok };
     },
   };
 }

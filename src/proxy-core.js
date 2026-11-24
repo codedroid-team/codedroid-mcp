@@ -54,6 +54,8 @@ export const UNQUEUED_TOOLS = new Set([
   "install_write",
   "install_commit",
   "install_status",
+  "claim_device",
+  "release_device",
 ]);
 
 /**
@@ -64,6 +66,11 @@ export const CLIENT_INFO_META_KEY = "io.modelcontextprotocol/clientInfo";
 export const SESSION_META_KEY = "com.codedroid/session";
 /** The stdio shim as a client of the daemon: it forwards for the real client, and is not one. */
 export const SHIM_CLIENT_NAME = "codedroid-mcp-shim";
+/**
+ * This package's own commands (call, flow run, viewer) as a client of the daemon. Each run is a new
+ * session, so their calls name none: the phone counts them as the whole computer's (its leases).
+ */
+export const CLI_CLIENT_NAME = "codedroid-mcp-cli";
 /** One long-lived client serves many chats: a call after this long idle starts a new session. */
 const SESSION_IDLE_MS = 30 * 60_000;
 
@@ -109,7 +116,7 @@ function toolError(text) {
  *   manager treat real traffic as proof of liveness (fewer health pings).
  * @param {string} options.name
  * @param {string} options.version
- * @param {Array<{definition: object, handler: (args: object) => Promise<object>, instructions?: string}>} [options.localTools]
+ * @param {Array<{definition: object, handler: (args: object, context: {meta: object}) => Promise<object>, instructions?: string}>} [options.localTools]
  *   Tools served entirely by THIS process — never forwarded to the phone.
  *   Merged into tools/list alongside the backend's tools; tools/call for one
  *   of these names short-circuits before touching the phone connection at
@@ -126,7 +133,7 @@ function toolError(text) {
  * @param {(definition: object) => object} [options.shapeTool]
  *   Reshapes each backend tool in tools/list (options this computer adds, loading hints). The
  *   daemon passes it; the shim lists what the daemon shaped.
- * @param {(call: {name: string, args: object, forward: (args: object) => Promise<object>}) => Promise<object>} [options.interceptCall]
+ * @param {(call: {name: string, args: object, forward: (args: object) => Promise<object>, meta: object}) => Promise<object>} [options.interceptCall]
  *   Wraps each backend tool call: it may change the arguments the phone gets and the result the
  *   model sees, by calling forward (once, or not at all). The daemon's session tools use it.
  */
@@ -196,6 +203,7 @@ export async function buildProxyServer({
   let session;
   let lastCallAt = 0;
   const currentSession = () => {
+    if (server.getClientVersion()?.name === CLI_CLIENT_NAME) return undefined;
     const now = Date.now();
     if (now - lastCallAt >= SESSION_IDLE_MS) session = `ses_${randomUUID()}`;
     lastCallAt = now;
@@ -264,18 +272,19 @@ export async function buildProxyServer({
     });
 
     server.setRequestHandler(CallToolRequestSchema, async (request) => {
-      // Local tools never touch the phone connection — no need for the
-      // exclusive queue, which exists only to serialize against the one
-      // physical screen.
-      const local = localToolsByName.get(request.params.name);
-      if (local) return local.handler(request.params.arguments ?? {});
-
       // The first proxy a call passes is the one its real client connected to: a later one keeps its stamp.
+      // A local tool's calls to the phone carry it too: the phone knows the session holding it by it.
       const meta = {
         [CLIENT_INFO_META_KEY]: clientInfo(),
         [SESSION_META_KEY]: currentSession(),
         ...request.params._meta,
       };
+      // Local tools never touch the phone connection — no need for the
+      // exclusive queue, which exists only to serialize against the one
+      // physical screen.
+      const local = localToolsByName.get(request.params.name);
+      if (local) return local.handler(request.params.arguments ?? {}, { meta });
+
       const name = request.params.name;
       const forward = async (args) => {
         const params = { ...request.params, arguments: args, _meta: meta };
@@ -318,7 +327,7 @@ export async function buildProxyServer({
         onBackendAlive();
         return result;
       };
-      return interceptCall({ name, args: request.params.arguments ?? {}, forward });
+      return interceptCall({ name, args: request.params.arguments ?? {}, forward, meta });
     });
   }
   if (backendCaps.prompts) {

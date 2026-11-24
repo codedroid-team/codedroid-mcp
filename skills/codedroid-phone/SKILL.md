@@ -24,11 +24,11 @@ signed in or paired yet, no phone is on the account, the phone is offline or Cod
 on it, the user has not tapped Allow on the phone yet). Tell the user that in their words, and call
 `codedroid_status` again once they have fixed it. If this computer is not signed in, the user runs
 `npx -y @codedroid/mcp login` in a terminal and signs in with the Google account they use in
-CodeDroid: every phone on the account is then reached, with nothing to pair. If a phone is plugged
-in (USB debugging on), call `codedroid_setup_phone`: it turns CodeDroid on, signs the phone in with
-the computer's account when it can, and says what the user has left to do (sign in, tap Allow). If
-CodeDroid is not on the phone yet, it says so: ask the user before calling it again with `install`
-true. If it answers "still working", call it again. Without an account or adb, pairing is theirs to
+CodeDroid: every phone on the account is then reached, with nothing to pair. If phones are plugged
+in (USB debugging on), call `codedroid_setup_phone`: it sets up every device on adb at once (or the
+one `serial` names), turns CodeDroid on, signs each in with the computer's account when it can, and
+says what the user has left to do for each (sign in, tap Allow). If CodeDroid is not on a phone
+yet, it says so: ask the user before calling it again with `install` true. If it answers "still working", call it again. Without an account or adb, pairing is theirs to
 do: on the phone, CodeDroid > Settings > Computers > Pair a computer shows a command to run on this
 computer. Once connected it also returns the phone's `instructions`: read them if your session
 started before the phone connected.
@@ -41,11 +41,12 @@ The first time a computer or client connects, the phone asks the user to allow i
 drive the phone, it shows "<this computer> is using this phone" with a Stop button.
 
 Several phones can be on the account or paired with one computer. `codedroid_devices` lists
-them right away with each one's id, model and link state, without connecting. With more than one, pass `device`
+them right away with each one's id, model, link state and `status`: `available`, `in_use` (its
+`lease` says who holds it, what for, and `frees_in_s`) or `offline`. With more than one, pass `device`
 on every phone tool call. It can be the id, or the model or part of it ("Pixel") when that names
-only one phone. If the user hasn't said which phone, ask them. Each phone has its own screen,
-tasks and task ids, so pass the same `device` to `get_task` as to its `run_task`. A phone that is
-offline doesn't affect the others.
+only one phone. If the user hasn't said which phone, take an available one with `claim_device`
+and `device` "any", or ask them. Each phone has its own screen, tasks and task ids, so pass the
+same `device` to `get_task` as to its `run_task`. A phone that is offline doesn't affect the others.
 
 ## Look, act, check
 
@@ -101,12 +102,13 @@ depend on each other fail with `not_found`.
 | `dismiss_keyboard` | Hide the keyboard when it covers what you need |
 | `open_url` | A web page or a deep link (`myapp://...`), in the app that handles it |
 | `notifications` | What the notification shade holds (it opens and closes it) |
-| `device_info` | Model, Android version, Android user, screen, locked, CodeDroid ready and signed in |
+| `device_info` | Model, Android version, Android user, screen, locked, CodeDroid ready and signed in, and `status` and `lease`: whether it is free |
+| `claim_device`, `release_device` | Hold the phone for your job alone (`purpose`, `idle_minutes` up to 30), and let it go when done. Local bridge: `device` "any" takes a free phone (below) |
 | `run_task`, `get_task`, `answer_task`, `cancel_task` | Hand CodeDroid's own phone agent a whole goal (below) |
-| `codedroid_devices` | The phones: id, model, and whether each is connected |
+| `codedroid_devices` | The phones: id, model, whether each is connected, and whether it is free (`status`) |
 | `install_apk` | Local bridge only: install an APK from this computer, with no cable or shared network |
 | `adb` | Local bridge only: this computer's adb, when the phone is on USB or Wireless debugging. `device` picks the phone as elsewhere; `save_to` keeps binary or very long output in a file |
-| `codedroid_status`, `codedroid_setup_phone` | Local bridge only: the pairing's state and what to fix; set the phone up over USB |
+| `codedroid_status`, `codedroid_setup_phone` | Local bridge only: the pairing's state and what to fix; set the phones on adb up over USB |
 | `batch` | Local bridge only: up to 20 screen steps (`tap`, `type_text`, `wait_for`, `get_screen`...) in one call with the phone held; stops at the first failure (`stop_on_error`). For a sequence you already know, never for exploring |
 | `record_start`, `record_stop`, `run_flow` | Local bridge only: record what you do as a Maestro flow, and replay a flow with no model in the loop (below) |
 
@@ -167,6 +169,9 @@ Lovelace with 555-0100", "turn on dark theme in Settings"). It returns a `task_i
 
 Every failure is JSON with `error`, `message` and `hint`. Do what the hint says.
 
+- `in_use`: another agent or computer holds the phone. Use another one (`codedroid_devices`), or
+  wait and try again later. Never take it over: `force` is only for your own computer's other
+  agent that the hint says may be gone, and only when the user agrees.
 - `busy`: CodeDroid's own agent is running a task. Wait with `get_task`, or `cancel_task` if it
   is yours.
 - `locked`: the phone is locked. Ask the user to unlock it.
@@ -180,11 +185,23 @@ Every failure is JSON with `error`, `message` and `hint`. Do what the hint says.
 
 ## A shared phone
 
-Another person or agent may drive the same phone. Before each tap or type, check that the last
-`after.app` (or a fresh `get_screen`) is the app you mean: an app switch between two calls turns
-your next tap into a real action in another app. If another app is in front, or CodeDroid shows a
-task you did not start, do not tap: wait and look again, and stop and tell the user if it stays.
-Never answer, cancel or act on someone else's task.
+Phones can be shared, like a device farm: other agents on this computer, coworkers' computers,
+CI. The phone keeps one job whole: your first action on a free phone holds it for you for 5 idle
+minutes, and every other caller gets `in_use` until you stop using it.
+
+- For a job of more than a few steps (a test case, a flow, a bug repro), call `claim_device` first
+  with a `purpose` ("checkout e2e, TC-04"), and `idle_minutes` if you will think or wait long
+  between calls. With several phones, `device` "any" takes whichever is available and says its id:
+  pass that id on every call after.
+- Call `release_device` as soon as the job is done, so the next agent need not wait out the hold.
+  A session that ends lets go of its phones by itself.
+- The person at the phone can end any hold with Stop. If a call then answers `in_use` or "Stopped
+  on the phone", the job was interrupted: tell the user, do not fight for the phone.
+
+Before each tap or type, check that the last `after.app` (or a fresh `get_screen`) is the app you
+mean: a person can still pick the phone up. If another app is in front, or CodeDroid shows a task
+you did not start, do not tap: wait and look again, and stop and tell the user if it stays. Never
+answer, cancel or act on someone else's task.
 
 ## Safety
 
