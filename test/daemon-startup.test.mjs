@@ -99,7 +99,7 @@ if (process.argv[2] === "child") {
     await new Promise((resolve) => socket.listen(0, "127.0.0.1", resolve));
     const port = socket.address().port;
     await new Promise((resolve) => socket.close(resolve));
-    await assert.rejects(startDaemon({ port, home: badHome }), /invalid token contents/);
+    await assert.rejects(startDaemon({ port, home: badHome, local: null }), /invalid token contents/);
     // A rejected start must release its port before control returns to the caller.
     await new Promise((resolve, reject) => {
       socket.once("error", reject);
@@ -107,10 +107,10 @@ if (process.argv[2] === "child") {
     });
     await new Promise((resolve) => socket.close(resolve));
 
-    const owner = await startDaemon({ port: 0, home });
+    const owner = await startDaemon({ port: 0, home, local: null });
     try {
       const losingHome = path.join(root, "loser");
-      await assert.rejects(startDaemon({ port: owner.port, home: losingHome }), { code: "EADDRINUSE" });
+      await assert.rejects(startDaemon({ port: owner.port, home: losingHome, local: null }), { code: "EADDRINUSE" });
       assert.equal(readDaemonToken({ home: losingHome }), null, "a bind loser must not create credentials");
     } finally {
       await owner.close();

@@ -248,7 +248,13 @@ export function unpair(selector, { home = os.homedir() } = {}) {
 /** The phone a pairing points at, as status and /health show it. */
 export function pairedDevice(host) {
   return host
-    ? { id: host.device?.id ?? null, model: host.device?.model ?? null, server: host.server, ...(host.account ? { account: true } : {}) }
+    ? {
+        id: host.device?.id ?? null,
+        model: host.device?.model ?? null,
+        server: host.server,
+        ...(host.account ? { account: true } : {}),
+        ...(host.serial ? { adb: host.serial } : {}),
+      }
     : null;
 }
 

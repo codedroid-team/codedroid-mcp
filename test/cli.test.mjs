@@ -26,7 +26,8 @@ const root = fs.mkdtempSync(path.join(os.tmpdir(), "codedroid-cli-"));
 function sandbox(name) {
   const home = path.join(root, name);
   fs.mkdirSync(path.join(home, "tmp"), { recursive: true });
-  const env = { ...process.env, HOME: home, TMPDIR: path.join(home, "tmp") };
+  // No adb unless a test brings its own: a daemon would otherwise reach a real phone on this computer's.
+  const env = { ...process.env, HOME: home, TMPDIR: path.join(home, "tmp"), ADB: path.join(home, "no-adb") };
   for (const key of ["XDG_RUNTIME_DIR", "CODEDROID_MCP_ADB", "CODEDROID_MCP_PORT"]) delete env[key];
   return { home, env };
 }

@@ -187,18 +187,21 @@ function modelMatches(paired, listed) {
 }
 
 /**
- * The adb serial of the paired phone [selector] names, found by its model. Serials are not something
- * an app can read, so two of one model stay for the caller to tell apart with -s.
+ * The adb serial of the paired phone [selector] names: the one adb was seen to hold it on, else found
+ * by its model, where two of one model stay for the caller to tell apart with -s.
  *
  * @returns {Promise<{serial: string} | {problem: string}>}
  */
 async function serialOf(selector, phones, runAdb, opts) {
-  let model;
+  let pairing;
   try {
-    model = phones.select(selector)[0].pairing.device?.model;
+    pairing = phones.select(selector)[0].pairing;
   } catch (e) {
     return { problem: e.message };
   }
+  // Seen on adb by its id (local-transport.js): exact, even with two of one model.
+  if (pairing.serial) return { serial: pairing.serial };
+  const model = pairing.device?.model;
   const { stdout } = await runAdb(["devices", "-l"], opts);
   const attached = stdout.trim().split("\n").slice(1).filter((line) => line.trim());
   const matches = attached.filter((line) => {
