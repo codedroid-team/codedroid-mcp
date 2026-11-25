@@ -91,6 +91,22 @@ carries three lines, read from the handlers in the source, not from the labels:
 - Then run `npx -y @codedroid/mcp e2e report e2e`; it must print no problems before you go on.
   Fix each one it prints as `file:line: message`, and rerun.
 
+## Widen: one requirement per behavior
+
+A first draft groups behaviors into a few broad requirements, and every case written from it
+inherits that breadth. Before the report, go through each feature again with its source open:
+
+- **Split.** A requirement that covers several outcomes ("files can be renamed, moved and
+  removed") becomes one requirement per outcome, each with its own `Caps:`, `Proof:` and `Fails:`.
+- **Every action.** Each item of each menu, sheet, toolbar and multi-select bar, read from the menu
+  and layout files, is in some requirement, or in a Non-goal line with why.
+- **Every setting.** Each setting in the preference files is a requirement for what it changes in
+  the app, not only that its switch moves, with `Proof: kept`.
+- **Every entry point.** An action that starts from more than one place (a row menu, details, a
+  preview, multi-select) gets one requirement per place whose code differs.
+- **Every list behavior.** Sorting, filtering, search, empty states, refresh and paging each get a
+  requirement where the source has them.
+
 ## For a release
 
 Add the checks a release adds, usually manual: a fresh install through first run and sign-in, an

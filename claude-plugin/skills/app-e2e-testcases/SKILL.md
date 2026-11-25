@@ -109,6 +109,28 @@ Steps:
 - Expected lines are outcomes on the screen or in the app, exact words in quotes. Not how it got
   there, and nothing that changes with the screen or the clock.
 
+## Widen: variations and failure paths
+
+A first draft tests each journey once, on the plain path. Before the report, go through it again,
+feature by feature, with the feature's source open:
+
+- **Variations.** For each happy case, list what the user can vary that the code treats
+  differently: the kind of item (file or folder, picture, empty, large, a name with spaces, accents
+  or a leading dot), how many (one, several, all), where the action starts (row menu, details,
+  preview, multi-select, toolbar), where it goes (root, subfolder, the same place), and each
+  setting value that changes the action. Every branch the source takes on one of these gets its own
+  case, or its own step with its own Expected line. Variations that run the same code are one case.
+- **Failure paths.** For each action, find every message its code can show: the error, toast,
+  snackbar and dialog strings its classes use, and the validation it runs (empty, too long,
+  forbidden characters, a name already used, the same place, a size or count limit). Add each one
+  to the PRD as a failure line with its exact words, then give it a negative or edge case that
+  stages it and expects those words, or a Gap line that says why the phone cannot stage it.
+  Also: cancel half-way, leave and come back mid-action, and retry after a failure.
+- **Settings.** Each setting gets a case per value that changes behaviour: it checks the
+  behaviour, not only the switch, and that it is kept after reopening the app.
+
+Most requirements whose source has an error branch end with at least one negative or edge case.
+
 ## Rules that came from cases failing for the wrong reason
 
 | Do | Because |
