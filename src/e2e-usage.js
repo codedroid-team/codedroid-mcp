@@ -7,9 +7,9 @@
  * estimated $ from the prices below, and tool calls. It is appended to <dir>/usage.jsonl and, when the day's
  * report folder <dir>/reports/<YYYY-MM-DD>/ exists, added to its usage.json, which the report page shows.
  * Phone-side credits (run_task) are not counted: get_task does not return them.
- * ponytail: Claude Code writes a response to the transcript only after its tool calls return, so the response
- * that runs `stop` is never counted (about 1% of a step's responses). Finishing records later, from `e2e
- * report`, would close that if it matters.
+ * Claude Code writes a response to the transcript only after its tool calls return, so the response that runs
+ * `stop` is not there yet: stop marks its record `pending`, and finishUsage (run by `e2e report`) counts the
+ * same window again once it is, in usage.jsonl and every reports/<day>/usage.json.
  */
 import fs from "node:fs";
 import os from "node:os";
@@ -145,7 +145,65 @@ export function usageStart({ dir, step, now = Date.now(), session = process.env.
   return { code: 0, lines };
 }
 
-export function usageStop({ dir, now = Date.now(), claudeDir = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), ".claude") }) {
+const defaultClaudeDir = () => process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), ".claude");
+
+/** Fill a record's token fields from the transcript entries of its window. */
+function fill(rec, entries) {
+  const s = summarize(entries, { from: Date.parse(rec.started), to: Date.parse(rec.ended) });
+  Object.assign(rec, { tokens: s.tokens, usd_estimate: s.usd_estimate, tool_calls: s.tool_calls, models: s.models, prices_as_of: PRICES_AS_OF });
+  if (s.unpriced.length) rec.note = `no price for ${s.unpriced.join(", ")}: no $ estimate`;
+  else delete rec.note;
+}
+
+/**
+ * Count pending records again, now that the response that ran stop is in the transcript: usage.jsonl and every
+ * reports/<day>/usage.json under root (a real path). A record whose transcript is gone stays pending; a file it
+ * cannot parse is left as it is. Returns how many records of usage.jsonl it finished; throws when it cannot write.
+ */
+export function finishUsage({ root, claudeDir = defaultClaudeDir() }) {
+  const cache = new Map();
+  const finish = (rec) => {
+    if (rec?.pending !== true || typeof rec.session !== "string" || !SESSION.test(rec.session)) return false;
+    if (!cache.has(rec.session)) {
+      let entries = null;
+      try { const files = transcripts(claudeDir, rec.session); if (files.length) entries = readEntries(files); } catch { /* unreadable: stays pending */ }
+      cache.set(rec.session, entries);
+    }
+    const entries = cache.get(rec.session);
+    if (!entries) return false;
+    fill(rec, entries);
+    delete rec.pending;
+    return true;
+  };
+  let finished = 0;
+  const log = path.join(root, LOG);
+  if (fs.lstatSync(log, { throwIfNoEntry: false })) {
+    let changed = false;
+    const lines = fs.readFileSync(log, "utf8").split("\n").map((l) => {
+      let rec;
+      try { rec = JSON.parse(l); } catch { return l; }
+      if (!finish(rec)) return l;
+      changed = true;
+      finished++;
+      return JSON.stringify(rec);
+    });
+    if (changed) safeWrite(root, log, lines.join("\n"));
+  }
+  const reports = path.join(root, "reports");
+  let days = [];
+  try { if (fs.lstatSync(reports).isDirectory()) days = fs.readdirSync(reports); } catch { /* no reports */ }
+  for (const d of days) {
+    const full = path.join(reports, d, "usage.json");
+    try { if (!fs.lstatSync(full).isFile()) continue; } catch { continue; } // none there, or reports/<d> is a file
+    let doc;
+    try { doc = JSON.parse(fs.readFileSync(full, "utf8")); } catch { continue; }
+    if (!Array.isArray(doc?.runs)) continue;
+    if (doc.runs.map(finish).some(Boolean)) safeWrite(root, full, JSON.stringify(doc, null, 2) + "\n");
+  }
+  return finished;
+}
+
+export function usageStop({ dir, now = Date.now(), claudeDir = defaultClaudeDir() }) {
   const root = folder(dir);
   if (!root) return { code: 2, lines: [`No such folder: ${dir}`] };
   const runFile = path.join(root, RUN);
@@ -158,9 +216,8 @@ export function usageStop({ dir, now = Date.now(), claudeDir = process.env.CLAUD
   if (files.length) {
     let entries;
     try { entries = readEntries(files); } catch (e) { return { code: 2, lines: [`Cannot read the transcript: ${e.code ?? e.message}`] }; }
-    const s = summarize(entries, { from, to: now });
-    Object.assign(rec, { tokens: s.tokens, usd_estimate: s.usd_estimate, tool_calls: s.tool_calls, models: s.models, prices_as_of: PRICES_AS_OF });
-    if (s.unpriced.length) rec.note = `no price for ${s.unpriced.join(", ")}: no $ estimate`;
+    fill(rec, entries);
+    rec.pending = true;
   } else {
     Object.assign(rec, { tokens: null, usd_estimate: null, tool_calls: null, note: session ? `transcript not found for session ${session} under ${claudeDir}` : "no Claude Code session: wall time only" });
   }
@@ -184,5 +241,6 @@ export function usageStop({ dir, now = Date.now(), claudeDir = process.env.CLAUD
     saved.push(`reports/${day}/usage.json`);
   }
   const cost = rec.tokens ? `, ${rec.tool_calls.codedroid} CodeDroid tool calls, ${tokenSum(rec.tokens).toLocaleString("en-US")} tokens, ${rec.usd_estimate === null ? "no $ estimate" : `$${rec.usd_estimate.toFixed(4)} estimated`}` : ` (${rec.note})`;
-  return { code: 0, lines: [`${rec.step}: ${duration(rec.wall_s)}${cost}. Saved to ${saved.join(" and ")}.`] };
+  const later = rec.pending ? " The next e2e report adds the response that ran stop." : "";
+  return { code: 0, lines: [`${rec.step}: ${duration(rec.wall_s)}${cost}. Saved to ${saved.join(" and ")}.${later}`] };
 }

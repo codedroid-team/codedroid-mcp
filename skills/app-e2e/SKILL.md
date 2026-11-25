@@ -82,7 +82,8 @@ Every step records what it cost. As the step's first command (after creating `e2
 not exist yet), run `npx -y @codedroid/mcp e2e usage start <step> e2e`, with the step's name:
 `explore`, `prd`, `cujs`, `testcases`, `verify`, `run` or `rerun`. When the step ends (done,
 stopped at a gate, or given up) run `npx -y @codedroid/mcp e2e usage stop e2e`, before the step's
-last `e2e report`, so the report page shows it. It saves the step's wall time, CodeDroid tool calls,
+last `e2e report`, in its own call: that report adds the response that ran stop (which the
+transcript only has once stop returns) and puts the cost on the report page. It saves the step's wall time, CodeDroid tool calls,
 Claude tokens per model and an estimate in dollars: one line in `e2e/usage.jsonl`, and the run in
 `e2e/reports/<date>/usage.json` when that day's report folder exists. Commit both with the
 documents; `e2e/.usage-run.json` is the open run, and stop removes it. Tokens come from the Claude

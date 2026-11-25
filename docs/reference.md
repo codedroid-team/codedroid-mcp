@@ -461,8 +461,14 @@ timed between start and stop, counts each API response once (by `requestId`), an
 estimate at Anthropic's list prices for the models in its table; a model not in it makes
 `usd_estimate` null and adds a `note`. Without a session or transcript (another client), the record
 has the time only, null token fields and a `note`. Credits a CodeDroid task spends on the phone are
-not counted, nor is the response that runs `stop`: Claude Code writes a response to the transcript
-only after its tool calls return.
+not counted.
+
+Claude Code writes a response to the transcript only after its tool calls return, so the response
+that runs `stop` is not there yet: `stop` marks its record `"pending": true`. The next `e2e report`
+(not `--check`) counts each pending record's window again, in `usage.jsonl` and every
+`reports/*/usage.json`, drops `pending`, says `Finished N usage records with the response that ran
+stop.`, and then builds the pages. A record whose transcript is gone (another computer) stays
+pending; a file it cannot parse is left alone. It refuses to write through a link (exit 2).
 
 The record is appended to `<dir>/usage.jsonl`, and added to `runs` in
 `<dir>/reports/<YYYY-MM-DD>/usage.json` (the local date) when that folder exists. The report page

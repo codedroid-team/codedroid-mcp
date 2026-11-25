@@ -13,6 +13,7 @@ import { summarize, usageStart, usageStop, localDay } from "../src/e2e-usage.js"
 import { readE2e } from "../src/e2e-model.js";
 import { quality } from "../src/e2e-quality.js";
 import { renderPages, stalePages } from "../src/e2e-html.js";
+import { runE2eReport } from "../src/e2e-report.js";
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "e2e-usage-"));
 const fixture = new URL("./fixtures/e2e-sample", import.meta.url).pathname;
@@ -363,6 +364,122 @@ if (process.getuid?.() !== 0) {
     assert.ok(m.problems.some((p) => /usage\.json/.test(p.file) && why.test(p.message)), JSON.stringify(m.problems));
     assert.ok(!html.includes("Cost of this run"));
   }
+}
+
+// --- e2e report finishes pending records: the response that ran stop reaches the transcript only after
+// stop returns, so stop marks its record pending and the next e2e report counts it.
+{
+  const cfg = path.join(tmp, "claude-finish");
+  const sid = "44444444-0000-0000-0000-000000000000";
+  const pdir = path.join(cfg, "projects", "p");
+  fs.mkdirSync(pdir, { recursive: true });
+  const t = path.join(pdir, `${sid}.jsonl`);
+  const dir = fresh();
+  fs.cpSync(fixture, dir, { recursive: true });
+  const T = new Date(2026, 0, 2, 12).getTime(); // local noon on the fixture's newest report day
+  const rdir = path.join(dir, "reports", localDay(T));
+  const atT = (s) => new Date(T + s * 1000).toISOString();
+  const row = (s, req, usage, tools = []) => ({ type: "assistant", timestamp: atT(s), requestId: req, message: { model: "claude-opus-5-5", usage, content: tools.map(([id, name]) => ({ type: "tool_use", id, name })) } });
+  fs.writeFileSync(t, jsonl([row(1, "a", U(100, 10), [["k1", "mcp__codedroid__tap"]])]));
+  usageStart({ dir, step: "run", now: T, session: sid });
+  let r = usageStop({ dir, now: T + 20_000, claudeDir: cfg });
+  assert.equal(r.code, 0, r.lines.join("\n"));
+  assert.match(r.lines[0], /e2e report adds the response that ran stop/);
+  const log = () => fs.readFileSync(path.join(dir, "usage.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+  const day = () => JSON.parse(fs.readFileSync(path.join(rdir, "usage.json"), "utf8")).runs;
+  assert.equal(log()[0].pending, true);
+  assert.equal(day()[0].pending, true);
+  // Now the stop call's own response is on disk (inside the window), and a later one (the next step's) after it.
+  fs.appendFileSync(t, jsonl([row(19, "b", U(1000, 20), [["k2", "Bash"]]), row(25, "c", U(9999, 9999))]));
+  // --check writes nothing.
+  runE2eReport({ dir, check: true, claudeDir: cfg });
+  assert.equal(log()[0].pending, true);
+  r = runE2eReport({ dir, claudeDir: cfg });
+  assert.ok(r.lines.some((l) => /Finished 1 usage record/.test(l)), r.lines.join("\n"));
+  for (const rec of [log()[0], day()[0]]) {
+    assert.equal(rec.pending, undefined);
+    assert.deepEqual(rec.tokens, { input: 1100, output: 30, cache_read: 0, cache_write: 0 });
+    assert.deepEqual(rec.tool_calls, { total: 2, codedroid: 1, by_tool: { tap: 1 } });
+    assert.equal(rec.models["claude-opus-5-5"].requests, 2);
+    assert.equal(rec.wall_s, 20);
+  }
+  const page = fs.readFileSync(path.join(rdir, "REPORT.html"), "utf8");
+  assert.ok(page.includes("1,130"), "the page shows the finished numbers");
+  // A second report finishes nothing and does not touch either file.
+  const files = [path.join(dir, "usage.jsonl"), path.join(rdir, "usage.json")];
+  const past = new Date(2020, 0, 1);
+  for (const f of files) fs.utimesSync(f, past, past);
+  const before = files.map((f) => fs.readFileSync(f, "utf8"));
+  r = runE2eReport({ dir, claudeDir: cfg });
+  assert.ok(!r.lines.some((l) => /Finished/.test(l)));
+  assert.deepEqual(files.map((f) => fs.readFileSync(f, "utf8")), before);
+  for (const f of files) assert.equal(fs.statSync(f).mtimeMs, past.getTime(), `${f} not rewritten`);
+  assert.deepEqual(stalePages(dir), []);
+  // Nothing pending: a usage.jsonl that is a link is only read, so the report does not fail.
+  const linked = path.join(tmp, "linked-done.jsonl");
+  fs.renameSync(files[0], linked);
+  fs.symlinkSync(linked, files[0]);
+  assert.notEqual(runE2eReport({ dir, claudeDir: cfg }).code, 2);
+}
+// A pending record whose transcript is gone stays pending, and the report still runs; lines it cannot parse are kept.
+{
+  const dir = fresh();
+  fs.cpSync(fixture, dir, { recursive: true });
+  const rec = { step: "prd", started: at(0), ended: at(5), wall_s: 5, session: "55555555-0000-0000-0000-000000000000", tokens: { input: 1, output: 1, cache_read: 0, cache_write: 0 }, pending: true };
+  fs.writeFileSync(path.join(dir, "usage.jsonl"), `${JSON.stringify(rec)}\nnot json\n`);
+  const r = runE2eReport({ dir, claudeDir: path.join(tmp, "claude-none") });
+  assert.notEqual(r.code, 2, r.lines.join("\n"));
+  assert.equal(fs.readFileSync(path.join(dir, "usage.jsonl"), "utf8"), `${JSON.stringify(rec)}\nnot json\n`);
+}
+// A report folder's usage.json that is not JSON, or has no runs list, is left alone: the page lists it as a problem.
+{
+  const dir = fresh();
+  fs.cpSync(fixture, dir, { recursive: true });
+  for (const bad of ['{"other":1}', "{nope"]) {
+    fs.writeFileSync(path.join(dir, "reports", "2025-12-01", "usage.json"), bad);
+    const r = runE2eReport({ dir, claudeDir: path.join(tmp, "claude-none") });
+    assert.notEqual(r.code, 2, r.lines.join("\n"));
+    assert.equal(fs.readFileSync(path.join(dir, "reports", "2025-12-01", "usage.json"), "utf8"), bad);
+  }
+}
+// A record pending under an unsafe session, or not pending, is never re-read; a finished unpriced model keeps its note.
+{
+  const dir = fresh();
+  fs.cpSync(fixture, dir, { recursive: true });
+  const cfg = path.join(tmp, "claude-note");
+  const sid = "66666666-0000-0000-0000-000000000000";
+  fs.mkdirSync(path.join(cfg, "projects", "p"), { recursive: true });
+  fs.writeFileSync(path.join(cfg, "projects", "p", `${sid}.jsonl`), jsonl([asst(1, "n", "claude-opus-4-1", U(3, 3)), asst(2, "m", "claude-opus-5-5", U(3, 3))]));
+  const base = { step: "prd", started: at(0), ended: at(5), tokens: { input: 0, output: 0, cache_read: 0, cache_write: 0 } };
+  // A transcript where an unsafe session id would lead (projects/p/../<id>.jsonl): never read.
+  fs.writeFileSync(path.join(cfg, "projects", `${sid}.jsonl`), jsonl([asst(1, "evil", "claude-opus-5-5", U(777, 777))]));
+  const recs = [{ ...base, session: sid, pending: true }, { ...base, session: `../${sid}`, pending: true }, { ...base, session: sid }, { ...base, session: sid, pending: "yes" }];
+  fs.writeFileSync(path.join(dir, "usage.jsonl"), recs.map((x) => JSON.stringify(x)).join("\n") + "\n");
+  const r = runE2eReport({ dir, claudeDir: cfg });
+  assert.ok(r.lines.includes("Finished 1 usage record with the response that ran stop."), r.lines.join("\n"));
+  const out = fs.readFileSync(path.join(dir, "usage.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+  assert.equal(out[0].tokens.input, 6);
+  assert.match(out[0].note, /no price for claude-opus-4-1/);
+  assert.deepEqual(out.slice(1), recs.slice(1));
+  // When a finish leaves every model priced, an old no-price note goes.
+  fs.writeFileSync(path.join(cfg, "projects", "p", `${sid}.jsonl`), jsonl([asst(2, "m", "claude-opus-5-5", U(3, 3))]));
+  fs.writeFileSync(path.join(dir, "usage.jsonl"), JSON.stringify({ ...base, session: sid, pending: true, note: "no price for x" }) + "\n");
+  runE2eReport({ dir, claudeDir: cfg });
+  assert.equal(JSON.parse(fs.readFileSync(path.join(dir, "usage.jsonl"), "utf8")).note, undefined);
+}
+// usage.jsonl that is a link: the report refuses to write through it.
+{
+  const dir = fresh();
+  fs.cpSync(fixture, dir, { recursive: true });
+  const cfg = path.join(tmp, "claude-finish");
+  const outside = path.join(tmp, "outside-finish.jsonl");
+  const rec = { step: "prd", started: new Date(new Date(2026, 0, 2, 12).getTime()).toISOString(), ended: new Date(new Date(2026, 0, 2, 12).getTime() + 20_000).toISOString(), session: "44444444-0000-0000-0000-000000000000", pending: true };
+  fs.writeFileSync(outside, JSON.stringify(rec) + "\n");
+  fs.symlinkSync(outside, path.join(dir, "usage.jsonl"));
+  const r = runE2eReport({ dir, claudeDir: cfg });
+  assert.equal(r.code, 2);
+  assert.match(r.lines[0], /usage\.jsonl/);
+  assert.equal(fs.readFileSync(outside, "utf8"), JSON.stringify(rec) + "\n");
 }
 
 // --- the CLI: start/stop through the real binary, session from CLAUDE_CODE_SESSION_ID, config from CLAUDE_CONFIG_DIR
