@@ -5,6 +5,9 @@ description: Turn an app's approved CUJs into test cases an agent can run on the
 
 # Write the test cases
 
+Cost: first run `npx -y @codedroid/mcp e2e usage start testcases e2e`, and `npx -y @codedroid/mcp e2e usage stop e2e`
+when the step ends, before its last `e2e report` (app-e2e, "Cost").
+
 Input: approved `e2e/CUJs.md`, `e2e/EXPLORE.md`. Output: `e2e/TESTCASES.md`. The app-e2e-run skill
 runs them with CodeDroid's tools.
 

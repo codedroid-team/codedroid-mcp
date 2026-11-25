@@ -24,6 +24,7 @@
  *   codedroid-mcp e2e report [dir] [--check]  quality report and HTML pages for an app's e2e folder
  *   codedroid-mcp e2e verdicts <file> [dir]   record the verifier's verdicts (JSON Lines) in e2e/VERIFY.md
  *   codedroid-mcp e2e verdicts --due [dir]    list the cases due for judging, with their text codes
+ *   codedroid-mcp e2e usage start <step> [dir] | stop [dir]  record what one app-e2e step cost
  *   codedroid-mcp flow run <file>  replay a Maestro flow on the phone, with no model in the loop
  *   codedroid-mcp doctor           check Node, adb, pairing, the daemon, the phones and the clients
  *   codedroid-mcp viewer [phone]   a page showing the phone's screen, where you can take over
@@ -119,6 +120,11 @@ Usage:
   codedroid-mcp e2e verdicts --due [dir]
                                     List the cases due for judging, per feature, each
                                     with the code of its current text; writes nothing
+  codedroid-mcp e2e usage start <step> [dir]
+  codedroid-mcp e2e usage stop [dir]
+                                    Record what one app-e2e step cost (wall time, Claude tokens
+                                    and estimated $, tool calls) in usage.jsonl in the e2e folder
+                                    and the day's reports/<date>/usage.json
   codedroid-mcp flow run <file>     Replay a Maestro flow on the phone with no model in the loop
                                     (--device=<phone>, --env=KEY=VALUE, --screenshots=<dir>);
                                     exit 1 when a step fails. Run it from the project.
@@ -384,6 +390,20 @@ async function main() {
     const flags = sub === "verdicts" ? ["--due"] : ["--check"];
     const unknown = process.argv.slice(2).some((a) => a.startsWith("-") && !flags.includes(a) && a !== "--help");
     const due = sub === "verdicts" && !!args.due;
+    if (sub === "usage") {
+      const act = args._[2];
+      const mod = await import("./e2e-usage.js");
+      const ok = act === "start" ? args._.length >= 4 && args._.length <= 5 : act === "stop" && args._.length <= 4;
+      if (!ok || process.argv.slice(2).some((a) => a.startsWith("-"))) {
+        process.stderr.write("Usage: codedroid-mcp e2e usage start <step> [dir] | codedroid-mcp e2e usage stop [dir]\n");
+        process.exitCode = 2;
+        return;
+      }
+      const { code, lines } = act === "start" ? mod.usageStart({ step: args._[3], dir: args._[4] ?? "e2e" }) : mod.usageStop({ dir: args._[3] ?? "e2e" });
+      process.stdout.write(lines.join("\n") + "\n");
+      process.exitCode = code;
+      return;
+    }
     if ((sub !== "report" && sub !== "verdicts") || unknown || (sub === "report" || due ? args._.length > 3 : args._.length < 3 || args._.length > 4)) {
       process.stderr.write(`${usage}\n`);
       process.exitCode = 2;

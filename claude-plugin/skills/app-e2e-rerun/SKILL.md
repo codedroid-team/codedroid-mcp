@@ -5,6 +5,9 @@ description: Run some of an app's existing e2e test cases on the real phone thro
 
 # Rerun test cases
 
+Cost: first run `npx -y @codedroid/mcp e2e usage start rerun e2e`, and `npx -y @codedroid/mcp e2e usage stop e2e`
+when the step ends, before its last `e2e report` (app-e2e, "Cost").
+
 Input: `e2e/TESTCASES.md` (and `e2e/CUJs.md`, the latest `e2e/reports/<date>/REPORT.md`) in the
 app's repo. Each case is run exactly as the app-e2e-run skill runs one: read its "Before the run",
 "Each case", "Each failure" and "Never" sections first, and follow them, creating this run's own

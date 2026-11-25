@@ -442,6 +442,35 @@ was recorded`. It needs no phone, daemon or network.
 `VERIFY.md` is bookkeeping for honest agents, not an access-control boundary: anyone who edits it by hand can forge a
 row, so review it like any other file in a pull request.
 
+### Record what a step cost
+
+```bash
+npx -y @codedroid/mcp e2e usage start <step> [dir]
+npx -y @codedroid/mcp e2e usage stop [dir]
+```
+
+The app-e2e skills run these around each step (`explore`, `prd`, `cujs`, `testcases`, `verify`,
+`run`, `rerun`). `start` writes `<dir>/.usage-run.json` with the step, the time and the Claude Code
+session from `CLAUDE_CODE_SESSION_ID`; a second `start` replaces an unfinished run and says so.
+`stop` reads that session's transcript and its subagents' under `$CLAUDE_CONFIG_DIR` (default
+`~/.claude`) `projects/*/<session>.jsonl` and `<session>/subagents/*.jsonl`, keeps the entries
+timed between start and stop, counts each API response once (by `requestId`), and saves one record:
+`step`, `started`, `ended`, `wall_s`, `session`, `tokens` (`input`, `output`, `cache_read`,
+`cache_write`), `models` (per model, with the 5-minute and 1-hour cache writes split and `usd`),
+`usd_estimate`, `tool_calls` (`total`, `codedroid`, `by_tool`) and `prices_as_of`. The dollars are an
+estimate at Anthropic's list prices for the models in its table; a model not in it makes
+`usd_estimate` null and adds a `note`. Without a session or transcript (another client), the record
+has the time only, null token fields and a `note`. Credits a CodeDroid task spends on the phone are
+not counted, nor is the response that runs `stop`: Claude Code writes a response to the transcript
+only after its tool calls return.
+
+The record is appended to `<dir>/usage.jsonl`, and added to `runs` in
+`<dir>/reports/<YYYY-MM-DD>/usage.json` (the local date) when that folder exists. The report page
+shows that file as a "Cost of this run" table with a total, and `e2e report --check` calls the page
+stale when it changes. Exit codes: 0 when saved, 2 for a usage error, a folder that does not exist,
+`stop` with no open run, a file it cannot write, or a `usage.json` it cannot read (the run is still
+in `usage.jsonl` then).
+
 ### Standalone Claude Code server
 
 ```bash

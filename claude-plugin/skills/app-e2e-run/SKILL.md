@@ -5,6 +5,9 @@ description: Run an app's approved e2e test cases on the real phone through Code
 
 # Run the cases and report
 
+Cost: first run `npx -y @codedroid/mcp e2e usage start run e2e`, and `npx -y @codedroid/mcp e2e usage stop e2e`
+when the step ends, before its last `e2e report` (app-e2e, "Cost").
+
 Input: approved `e2e/TESTCASES.md`. Output: `e2e/reports/<date>/REPORT.md` with a screenshot per
 case beside it. A case the verifier has not approved may still be run; passing does not approve it.
 

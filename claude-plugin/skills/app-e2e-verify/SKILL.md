@@ -5,6 +5,9 @@ description: Have a fresh agent judge each e2e test case's design before the use
 
 # Verify the test cases
 
+Cost: first run `npx -y @codedroid/mcp e2e usage start verify e2e`, and `npx -y @codedroid/mcp e2e usage stop e2e`
+when the step ends, before its last `e2e report` (app-e2e, "Cost").
+
 A case can pass on a broken app, and its author reads past it. A fresh agent with only the
 documents and the source hunts for that app; its verdicts go into `<dir>/VERIFY.md`, which only the
 `e2e verdicts` command writes (never edit it). Run this before gate 2, and for every case
