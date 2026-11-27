@@ -76,11 +76,28 @@ written or run is not a finding: fix the case, rerun, and say what was wrong wit
 finding, find the root cause in the source, then ask the user before fixing it. A fix goes on its
 own branch, with the failing case as its test.
 
+## Cost
+
+Every step records what it cost. As the step's first command (after creating `e2e/` if it does
+not exist yet), run `npx -y @codedroid/mcp e2e usage start <step> e2e`, with the step's name:
+`explore`, `prd`, `cujs`, `testcases`, `verify`, `run` or `rerun`. When the step ends (done,
+stopped at a gate, or given up) run `npx -y @codedroid/mcp e2e usage stop e2e`, before the step's
+last `e2e report`, in its own call: that report adds the response that ran stop (which the
+transcript only has once stop returns) and puts the cost on the report page. It saves the step's wall time, CodeDroid tool calls,
+Claude tokens per model and an estimate in dollars: one line in `e2e/usage.jsonl`, and the run in
+`e2e/reports/<date>/usage.json` when that day's report folder exists (the first run there also
+brings in the earlier steps, so the report shows the whole chain). Commit both with the
+documents; `e2e/.usage-run.json` is the open run, and stop removes it. Tokens come from the Claude
+Code transcript, so in another client only the time is saved; credits a CodeDroid task spends on
+the phone are not counted. If start prints only a usage line for `e2e report`, the installed
+release predates it: go on without it.
+
 ## Report
 
 End with: the build tested; counts (passed / failed / not run, with why); each finding with its
 evidence and status (fixed, or open); what the cases got wrong and how it was fixed; what is not
-covered (`e2e/QUALITY.html`, manual CUJs); the path of `REPORT.html`. Then the release question
+covered (`e2e/QUALITY.html`, manual CUJs); what each step cost (the `e2e usage stop` lines); the
+path of `REPORT.html`. Then the release question
 the results answer.
 
 ## Never

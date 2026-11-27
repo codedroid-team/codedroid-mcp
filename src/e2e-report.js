@@ -8,11 +8,12 @@ import { readE2e } from "./e2e-model.js";
 import { quality, qualityJson, qualityMd } from "./e2e-quality.js";
 import { renderPages, stalePages } from "./e2e-html.js";
 import { escapesRoot, notRegular } from "./e2e-write.js";
+import { finishUsage } from "./e2e-usage.js";
 
 const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 const DOCS = ["INVENTORY.md", "PRD.md", "CUJs.md", "TESTCASES.md"];
 
-export function runE2eReport({ dir, check = false }) {
+export function runE2eReport({ dir, check = false, claudeDir }) {
   if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) return { code: 2, lines: [`No such folder: ${dir}`] };
   const root = fs.realpathSync(dir);
   // A source the reader cannot open is exit 2, like a folder that does not exist; 1 means the documents have problems.
@@ -23,6 +24,11 @@ export function runE2eReport({ dir, check = false }) {
   let docs;
   try { docs = DOCS.some((n) => fs.lstatSync(path.join(root, n), { throwIfNoEntry: false })); } catch (e) { return cannotRead(e); }
   if (!docs) return { code: 2, lines: [`No e2e documents in ${dir}: expected INVENTORY.md, PRD.md, CUJs.md or TESTCASES.md`] };
+  // First, so the report page shows them: usage records stop left pending get the response that ran stop.
+  let finished = 0;
+  if (!check) {
+    try { finished = finishUsage({ root, claudeDir }); } catch (e) { return { code: 2, lines: [`Cannot finish the usage records: ${e.code ?? e.message}`] }; }
+  }
 
   if (check) {
     let stale;
@@ -94,6 +100,7 @@ export function runE2eReport({ dir, check = false }) {
     if (ps.length > MAX) lines.push(`and ${ps.length - MAX} more: see ${md}`);
   }
   if (q.open.length) lines.push(`${q.open.length} left open: see ${md}`);
+  if (finished) lines.push(`Finished ${count(finished, "usage record", "usage records")} with the response that ran stop.`);
   lines.push(`Open ${path.resolve(dir, "QUALITY.html")}`);
   return { code: q.problems.length ? 1 : 0, lines };
 }

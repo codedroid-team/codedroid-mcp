@@ -5,6 +5,9 @@ description: Write an Android app's critical user journeys (CUJs) for end-to-end
 
 # Write the CUJs
 
+Cost: first run `npx -y @codedroid/mcp e2e usage start cujs e2e`, and `npx -y @codedroid/mcp e2e usage stop e2e`
+when the step ends, before its last `e2e report` (app-e2e, "Cost").
+
 Input: `e2e/PRD.md`, `e2e/EXPLORE.md`. Output: `e2e/CUJs.md`. Then stop for the user's review:
 they approve or edit before any test case is written.
 

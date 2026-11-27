@@ -5,6 +5,9 @@ description: Write the test PRD for testing an Android app end to end with CodeD
 
 # Write the test PRD
 
+Cost: first run `npx -y @codedroid/mcp e2e usage start prd e2e`, and `npx -y @codedroid/mcp e2e usage stop e2e`
+when the step ends, before its last `e2e report` (app-e2e, "Cost").
+
 Input: `e2e/EXPLORE.md`, `e2e/INVENTORY.md` and the app's docs. Output: `e2e/PRD.md`. It is a PRD
 for the test effort, not for the app. Keep it short: names and numbers over adjectives.
 

@@ -8,6 +8,7 @@ import { readE2e } from "./e2e-model.js";
 import { modes, pct, quality } from "./e2e-quality.js";
 import { CSS } from "./e2e-html-style.js";
 import { esc, inline, md } from "./e2e-markdown.js";
+import { duration, tokenSum } from "./e2e-usage.js";
 
 const PRD = "PRD.html", CUJS = "CUJs.html", TCS = "TESTCASES.html", QUAL = "QUALITY.html";
 const chip = (t, kind = "") => `<span class="chip ${kind}">${esc(t)}</span>`;
@@ -39,6 +40,36 @@ function screenshots(model) {
   return out;
 }
 const shotSources = (model, shots) => shots.map(({ name, buf }) => [`${path.dirname(model.results.report)}/${name}`, crypto.createHash("sha256").update(buf).digest("hex")]);
+/** The usage.json beside the used report ({ runs, buf }), or null when there is none. A link is never read; one it cannot parse is a problem. Only for a report page. */
+function usageOf(model) {
+  const full = path.join(path.dirname(model.files[model.results.report].path), "usage.json");
+  const rel = `${path.dirname(model.results.report)}/usage.json`;
+  if (!fs.lstatSync(full, { throwIfNoEntry: false })?.isFile()) return null;
+  const buf = fs.readFileSync(full);
+  try {
+    const runs = JSON.parse(buf.toString("utf8")).runs;
+    if (!Array.isArray(runs)) throw new Error("no runs list");
+    return { runs: runs.filter((r) => r && typeof r === "object"), buf };
+  } catch (e) {
+    model.problems.push({ file: rel, line: 0, message: `${rel} is not readable: ${e.message}` });
+    return { runs: [], buf };
+  }
+}
+const usageSources = (model, u) => (u ? [[`${path.dirname(model.results.report)}/usage.json`, crypto.createHash("sha256").update(u.buf).digest("hex")]] : []);
+const num = (n) => (Number.isFinite(n) ? n : 0);
+const usd = (v) => (typeof v === "number" ? `$${v.toFixed(4)}` : '<span class="muted">not priced</span>');
+/** The report page's cost table: one row per recorded run that day, and a total. */
+function usageSection(u) {
+  if (!u?.runs.length) return "";
+  const row = (step, wall, calls, tokens, cost) => tr([step, esc(duration(wall)), esc(String(calls)), esc(tokens.toLocaleString("en-US")), cost]);
+  const rows = u.runs.map((r) => row(esc(String(r.step ?? "")), num(r.wall_s), num(r.tool_calls?.codedroid), tokenSum(r.tokens ?? null), usd(r.usd_estimate)));
+  const priced = u.runs.every((r) => typeof r.usd_estimate === "number");
+  const total = u.runs.reduce((a, r) => a + (typeof r.usd_estimate === "number" ? r.usd_estimate : 0), 0);
+  rows.push(row("<strong>Total</strong>", u.runs.reduce((a, r) => a + num(r.wall_s), 0), u.runs.reduce((a, r) => a + num(r.tool_calls?.codedroid), 0), u.runs.reduce((a, r) => a + tokenSum(r.tokens ?? null), 0), priced ? usd(total) : `${usd(total)} <span class="muted">(some runs not priced)</span>`));
+  return `<h2>Cost of this run</h2>
+<p class="muted">The agent's side, from the Claude Code transcript: wall time, CodeDroid tool calls, tokens (input, output and cache) and an estimate in dollars at list prices. Credits a CodeDroid task spent on the phone are not counted.</p>
+${table(["Step", "Wall time", "CodeDroid tool calls", "Tokens", "Estimated $"], rows)}`;
+}
 const pagePaths = (model) => [PRD, CUJS, TCS, QUAL, ...(reportPage(model) ? [reportPage(model)] : [])];
 
 /** The lines under a heading (line is the heading's 1-based number) up to the next heading, labels set off. */
@@ -143,6 +174,7 @@ function loose(model, name, items) {
 
 export function renderPages(model, q) {
   const found = reportPage(model) ? screenshots(model) : []; // first: one it cannot read is a problem every page shows
+  const usage = reportPage(model) ? usageOf(model) : null;
   const byCase = model.results.byCase;
   const hasReport = !!model.results.report;
   const caps = new Map(model.capabilities.map((c) => [c.id, c]));
@@ -408,8 +440,9 @@ ${inventory}`;
 ${failed.length ? `<section class="card problems"><h2>Failed cases</h2><ul class="plain">${failed.map((c) => `<li>${link(c.id)} ${esc(c.title)} ${result(c.id)}</li>`).join("")}</ul></section>` : ""}
 <section class="prose">${md(f.text, { base: 1 })}</section>
 <h2>Screenshots</h2>
-${figs ? `<p class="muted">Click a screenshot to show it full size, click again to shrink it.</p><div class="gallery">${figs}</div>` : '<p class="muted">No screenshots beside REPORT.md.</p>'}`;
-    }, shotSources(model, found));
+${figs ? `<p class="muted">Click a screenshot to show it full size, click again to shrink it.</p><div class="gallery">${figs}</div>` : '<p class="muted">No screenshots beside REPORT.md.</p>'}
+${usageSection(usage)}`;
+    }, [...shotSources(model, found), ...usageSources(model, usage)]);
   }
   return pages;
 }
@@ -418,7 +451,7 @@ ${figs ? `<p class="muted">Click a screenshot to show it full size, click again 
 export function stalePages(dir) {
   const model = readE2e(dir);
   const rp = reportPage(model);
-  const wants = (rel) => `<meta name="e2e-sources" content="${sources(model, rel === rp ? shotSources(model, screenshots(model)) : [])}">`;
+  const wants = (rel) => `<meta name="e2e-sources" content="${sources(model, rel === rp ? [...shotSources(model, screenshots(model)), ...usageSources(model, usageOf(model))] : [])}">`;
   return pagePaths(model).filter((rel) => {
     try { return !fs.lstatSync(path.join(dir, rel)).isFile() || !fs.readFileSync(path.join(dir, rel), "utf8").includes(wants(rel)); } catch { return true; }
   });

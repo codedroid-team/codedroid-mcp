@@ -5,6 +5,9 @@ description: Explore an Android app before testing it end to end with CodeDroid 
 
 # Explore the app
 
+Cost: first run `npx -y @codedroid/mcp e2e usage start explore e2e`, and `npx -y @codedroid/mcp e2e usage stop e2e`
+when the step ends, before its last `e2e report` (app-e2e, "Cost").
+
 Output: `e2e/EXPLORE.md` and `e2e/INVENTORY.md` in the app's repo. Change nothing on the phone in
 this step beyond navigating, with one exception: a screen that needs data to exist (a subscription,
 a deck, a queue) may get one item named `e2e-...`, removed before the walk ends. Opening content to
