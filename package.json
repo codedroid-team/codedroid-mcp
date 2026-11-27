@@ -41,7 +41,7 @@
     "codex",
     "codedroid"
   ],
-  "homepage": "https://get.codedroid.com",
+  "homepage": "https://play.google.com/store/apps/details?id=com.codedroid.agent",
   "scripts": {
     "test": "for f in src/*.js; do node --check \"$f\" || exit 1; done && for t in test/*.test.mjs; do node \"$t\" || exit 1; done",
     "set-version": "node scripts/set-version.mjs"

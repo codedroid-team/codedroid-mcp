@@ -4,9 +4,9 @@
   "description": "Drive your Android phone through CodeDroid, with MCP tools and device testing skills.",
   "author": {
     "name": "CodeDroid",
-    "url": "https://get.codedroid.com"
+    "url": "https://play.google.com/store/apps/details?id=com.codedroid.agent"
   },
-  "homepage": "https://get.codedroid.com",
+  "homepage": "https://play.google.com/store/apps/details?id=com.codedroid.agent",
   "repository": "https://github.com/codedroid-team/codedroid-mcp",
   "license": "MIT",
   "keywords": [
@@ -29,7 +29,7 @@
       "Read",
       "Write"
     ],
-    "websiteURL": "https://get.codedroid.com",
+    "websiteURL": "https://play.google.com/store/apps/details?id=com.codedroid.agent",
     "privacyPolicyURL": "https://www.codedroid.com/privacy",
     "termsOfServiceURL": "https://www.codedroid.com/terms",
     "defaultPrompt": [

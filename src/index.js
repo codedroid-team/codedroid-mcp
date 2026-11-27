@@ -129,10 +129,9 @@ Usage:
                                     (--interval=<seconds>, default 3)
 
 Sign in first: run setup (or login) and sign in with the Google account you use in CodeDroid, and
-every phone signed in with it is reached. Or pair one phone at a time: plug it in with USB
-debugging on and run setup, or on the phone, open CodeDroid > Settings > Computers > Pair a
-computer, and run the command it shows here. A phone needs CodeDroid signed in, online, with its
-accessibility service on. The adb tool, alone, needs the phone on this computer's adb. With several
+every phone signed in with it is reached. Or set up one phone at a time: plug it in with USB
+debugging on and run setup, which pairs it when it is on another account. A phone needs CodeDroid
+signed in, online, with its accessibility service on. The adb tool, alone, needs the phone on this computer's adb. With several
 phones, tools take a device argument naming one.
 
 Options:
@@ -301,7 +300,7 @@ async function waitForAccountPhone(say) {
   const { readAccount } = await import("./host.js");
   const account = readAccount();
   say(
-    `No phone is on ${account.email ?? "your account"} yet. On the phone, get CodeDroid from https://get.codedroid.com, ` +
+    `No phone is on ${account.email ?? "your account"} yet. On the phone, get CodeDroid from Google Play (https://play.google.com/store/apps/details?id=com.codedroid.agent), ` +
       "sign in with that Google account and turn on Accessibility. Waiting for it here (Ctrl-C to stop)...",
   );
   const deadline = Date.now() + ACCOUNT_PHONE_WAIT_MS;
@@ -522,7 +521,7 @@ async function main() {
     }
     command = "pair";
     if (args._.length === 1) {
-      const { describeHost, PAIR_BY_HAND, LOGIN_STEP, readAccount, readHosts } = await import("./host.js");
+      const { describeHost, LOGIN_STEP, USB_STEP, readAccount, readHosts } = await import("./host.js");
       const { findPhones, phoneLines, setUpPhones } = await import("./phone-setup.js");
       const say = (line) => process.stdout.write(`${line}\n`);
       // Signing in reaches every phone on the account: first, unless asked not to, or there is
@@ -581,13 +580,13 @@ async function main() {
           say(
             readAccount()
               ? "No phone is on the account yet: open CodeDroid on the phone and sign in with the same Google account, or plug it in with USB debugging on and run this again."
-              : `To reach a phone: ${LOGIN_STEP} Or plug the phone in with USB debugging on and run this again, or pair by hand. ${PAIR_BY_HAND}`,
+              : `To reach a phone: ${LOGIN_STEP} ${USB_STEP}`,
           );
           return;
         }
       } else {
-        if (results.some((r) => r.status === "failed") && !readHosts().length && !results.some((r) => r.detail.includes(PAIR_BY_HAND))) {
-          say(`To pair by hand: ${PAIR_BY_HAND}`);
+        if (results.some((r) => r.status === "failed") && !readHosts().length && !readAccount() && !results.some((r) => r.detail.includes(LOGIN_STEP))) {
+          say(`To reach a phone without adb: ${LOGIN_STEP}`);
         }
         return;
       }
@@ -644,7 +643,7 @@ async function main() {
 
   if (command === "pair") {
     const code = args._.slice(1).join(" ");
-    if (!code && !paired) fatal("Usage: codedroid-mcp pair <code> [--server=<url>]. The phone shows the command: CodeDroid > Settings > Computers > Pair a computer.");
+    if (!code && !paired) fatal("Usage: codedroid-mcp pair <code> [--server=<url>]. setup pairs a phone over adb by itself; to reach your account's phones, run login.");
     const { DEFAULT_SERVER, deviceKey, pair } = await import("./host.js");
     const hosts = paired ?? [await pair(code, { server: args.server ?? DEFAULT_SERVER })];
     if (!paired && !hosts[0].account) log(`Paired with ${hosts[0].device.model ?? "the phone"} through ${hosts[0].server}.`);

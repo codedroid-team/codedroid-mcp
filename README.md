@@ -2,7 +2,7 @@
 
 Let Claude Code, Codex, Antigravity, or any MCP client use your Android phone.
 Read the screen, interact with apps, take screenshots, and test what you build
-through [CodeDroid](https://get.codedroid.com). Your phone and computer can be on different networks.
+through [CodeDroid](https://play.google.com/store/apps/details?id=com.codedroid.agent). Your phone and computer can be on different networks.
 
 ## Get started
 
@@ -94,9 +94,9 @@ Restart your coding client after installing.
 
 Using another client? See [manual MCP setup](docs/reference.md#mcp-configuration).
 
-#### 2. Sign in, or pair your phone
+#### 2. Sign in
 
-1. Install CodeDroid from [get.codedroid.com](https://get.codedroid.com), sign in, and turn on its
+1. Install CodeDroid from [Google Play](https://play.google.com/store/apps/details?id=com.codedroid.agent), sign in, and turn on its
    accessibility service when it asks.
 2. On your computer, run:
 
@@ -108,10 +108,9 @@ Using another client? See [manual MCP setup](docs/reference.md#mcp-configuration
    is reached. Check that the page shows the code the terminal printed.
 3. Tap **Allow** on your phone when prompted.
 
-Without a browser, or for one phone that is not on your account, pair instead: open **CodeDroid →
-Settings → Computers → Pair a computer** on the phone and run the command shown there, for example
-`npx -y @codedroid/mcp pair ABCD-EFGH`, exactly as shown. Pairing codes expire after 10 minutes and
-work once.
+With no browser on this computer, open the link `login` prints on any device, the phone too. For a
+phone signed in with another Google account, plug it in with USB debugging on and run
+`npx -y @codedroid/mcp setup`: CodeDroid hands the pairing code to adb, so there is none to type.
 
 ### Ask your agent
 

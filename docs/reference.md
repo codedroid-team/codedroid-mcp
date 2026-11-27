@@ -264,13 +264,13 @@ device in what it says, with its serial when another device is the same model. A
 set up (an unaccepted USB debugging prompt, offline) is reported with what to do, and the others are
 set up anyway. Then it connects to every phone it reached. `CODEDROID_SERIAL` sets up the one device
 it names. With no phone on adb, or no adb, `setup` connects to the account's phones, or says how to
-pair by hand. Signed in with no
+sign in. Signed in with no
 phone on the account yet, it waits up to ten minutes in a terminal for one to come online (CodeDroid
 installed and signed in on it) and connects to it. Connecting is when a phone asks, the first time,
 whether to allow this computer: `setup` names the phones to tap **Allow** on, then says which
 connected. It succeeds when one did, and names any old pairing that did not. If the phone removed
 this computer, `setup` pairs it again. Signing in and pairing over USB need a CodeDroid version that
-has them; older ones are told to update or pair.
+has them; older ones are told to update.
 `setup` exits with 1 when a phone on adb isn't set up (signed out, declined outside a terminal,
 failed, or a device it couldn't use).
 
@@ -577,7 +577,7 @@ needs fixing. `flow run` replays a [flow](#flows-record-and-replay); `viewer` op
 
 Every phone signed in to CodeDroid with your account is there once you `login`. Phones plugged in to
 this computer are set up together, from nothing, by one `setup` ([setup command](#setup-command)).
-For a phone that is not on your account, run `pair` on it. Pairing another phone keeps the earlier ones. Pairing the same phone again
+A phone signed in with another account is paired when `setup` sets it up over adb (or with `pair` and a code from an older CodeDroid). Pairing another phone keeps the earlier ones. Pairing the same phone again
 replaces its old pairing. Reinstalling CodeDroid or clearing its data gives the phone a new id, so
 its old pairing stays until you `unpair` it; a phone on the account is reached by its new id by
 itself. The running daemon picks up `login`, `pair` and `unpair` on its next request, so clients
@@ -665,7 +665,7 @@ phones, or call `codedroid_status` from your agent to diagnose a connection prob
 
 | Problem | Action |
 | --- | --- |
-| Computer is not signed in or paired, or the login or pairing was removed | Run `npx -y @codedroid/mcp login`, or plug the phone in with USB debugging on and run `npx -y @codedroid/mcp setup`, or create a new code in **Settings → Computers → Pair a computer** and run the displayed command. |
+| Computer is not signed in or paired, or the login or pairing was removed | Run `npx -y @codedroid/mcp login`, or plug the phone in with USB debugging on and run `npx -y @codedroid/mcp setup`. |
 | Signed in, but no phone is listed | On the phone, open CodeDroid signed in with the same Google account, online. The daemon lists the account's phones again within five minutes; `codedroid_devices` and `status` list them at once. |
 | `setup` waits for sign-in | On the phone, tap send in CodeDroid and sign in with Google. |
 | `setup` says the phone blocked installing over USB | Turn on **Install via USB** in Developer options (some Xiaomi and Oppo phones), then run it again. |
