@@ -34,6 +34,7 @@ read progress, or `cancel_task` to stop the task.
 | `batch` | Run up to 20 screen tool calls in one round trip with the phone held; stops at the first failure. |
 | `record_start`, `record_stop` | Record the session's phone actions as a Maestro flow and write the YAML. See [Flows](#flows-record-and-replay). |
 | `run_flow` | Replay a Maestro flow (a file or inline YAML) on the phone with no model in the loop. |
+| `screencast` | Stream the phone's screen live (hardware H.264, up to 30 fps) to a page on this computer, for a person to watch; the phone must be on this computer's adb. `action` start, stop or status. See [Screencast](#screencast-live-video-over-adb). Offered with the `adb` tool. |
 | `codedroid_setup_phone` | Set up every phone on this computer's adb at once, or the one `serial` names: install CodeDroid (only with `install` set, after the user agrees), turn on its accessibility service, and sign it in or pair with no code to type. It says each phone's outcome. A long setup answers "still working": call it again. Offered with the `adb` tool. |
 
 `get_screen` takes three options the local bridge applies on your computer: `interactive_only`
@@ -41,6 +42,8 @@ read progress, or `cancel_task` to stop the task.
 nesting) and `diff` (only what changed since the session's last read, one line when nothing did). Node numbers stay the phone's,
 so a tap by node after a filtered read still lands. `batch`, the recording tools and `run_flow`
 are the local bridge's; the remote server has the phone tools alone.
+
+The `screencast` tool is the local bridge's too, with the `adb` tool.
 
 The local bridge marks the tools of the look-act-check loop (`get_screen`, `tap`, `type_text`,
 `swipe`, `press_key`, `open_app`, `wait_for`, `batch`, `codedroid_status`, `codedroid_devices`) with
@@ -85,6 +88,35 @@ know would say "passed" about what it never checked. A flow with no `codedroidTa
 on an emulator too (`maestro test <file>`).
 
 The phone is held for the whole run or batch: another client's call waits, it does not interleave.
+
+## Screencast: live video over adb
+
+```bash
+npx -y @codedroid/mcp screencast
+npx -y @codedroid/mcp screencast "Pixel 9" --max-fps=60 --open
+```
+
+Or the `screencast` tool, from any client: the agent starts it and tells you the URL. The page
+plays the phone's screen as video, within a frame or two of the phone, in Chrome, Edge, Safari or
+Firefox on this computer. It is a view for people; the agent keeps reading the screen with
+`get_screen`.
+
+The phone must be on this computer's adb (USB debugging, Wireless debugging, or an emulator), as
+the `adb` tool needs. The daemon pushes [scrcpy](https://github.com/Genymobile/scrcpy)'s server
+(Apache-2.0, version pinned, downloaded once from its GitHub release into `~/.codedroid` and
+checked against its hash; `CODEDROID_SCRCPY_SERVER` names a file to use instead) and runs it on
+the phone, where it captures the display into the phone's hardware H.264 encoder. The daemon
+relays the stream to the page's WebSocket without decoding it, so the agent's calls never wait for
+it and the phone spends no screenshots on it. One stream per phone serves every viewer; `device`
+names the phone as other tools do, or by its adb serial, so an emulator with no CodeDroid on it
+works too. `max_fps` (1-60, default 30) and `max_size` (longest edge in pixels, 480-2160, default
+1280) shape a new stream; the bit rate is 4 Mbps.
+
+A stream nobody watches for two minutes stops by itself, as does one stopped with `action: "stop"`
+or Ctrl+C in the command. Secure windows (banking apps, some password fields) show black, as in
+`take_screenshot`. The page lives at `http://127.0.0.1:<port>/cast/<token>/` on the daemon: the
+token is random and the daemon answers loopback only, so nothing else on the computer or the
+network can watch.
 
 ## Live view: the viewer
 
@@ -562,6 +594,7 @@ npx -y @codedroid/mcp call get_screen
 npx -y @codedroid/mcp call tap '{"text": "Display"}'
 npx -y @codedroid/mcp flow run e2e/flows/TC-12a.yaml
 npx -y @codedroid/mcp viewer
+npx -y @codedroid/mcp screencast
 npx -y @codedroid/mcp unpair "Pixel 9"
 npx -y @codedroid/mcp stop
 ```
@@ -571,7 +604,7 @@ npx -y @codedroid/mcp stop
 `doctor` checks Node, adb, this computer's pairing and token, the daemon, each phone's link and
 which coding clients have CodeDroid, one line each with what to fix, and exits 1 when something
 needs fixing. `flow run` replays a [flow](#flows-record-and-replay); `viewer` opens the
-[live view](#live-view-the-viewer).
+[live view](#live-view-the-viewer), and `screencast` the [video one](#screencast-live-video-over-adb).
 
 ### Several phones
 
@@ -617,7 +650,7 @@ keeps each job whole, so another caller's tap never lands in the middle of yours
 - **Who is who.** The holder is the computer, as the relay knows it from its login or pairing, and
   on the local bridge the agent session within it, so two agents on one computer are kept apart too.
   `force` takes a hold over from another session of the same computer only (an agent that crashed);
-  nothing takes it from another computer. The CLI's commands (`call`, `flow run`, `viewer`) are the
+  nothing takes it from another computer. The CLI's commands (`call`, `flow run`, `viewer`, `screencast`) are the
   computer itself: they run under its agents' holds but never renew, replace or release them, and a
   viewer left open never keeps a phone held.
 - **Letting go by itself.** A hold lapses after its idle time with no call. A client that ends its

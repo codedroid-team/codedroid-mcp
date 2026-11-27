@@ -97,7 +97,7 @@ try {
   // ── One list of tools, each taking the phone to run on ──────────────
   assert.match(client.getInstructions(), /^PHONE RULES\n\nSeveral phones are paired: pass `device`/);
   const tools = (await client.listTools()).tools;
-  assert.deepEqual(tools.map((t) => t.name), ["tap", "get_task", "codedroid_devices", "codedroid_status", "install_apk", "batch", "record_start", "record_stop", "run_flow", "adb", "codedroid_setup_phone"], "a tool every phone has is listed once");
+  assert.deepEqual(tools.map((t) => t.name), ["tap", "get_task", "codedroid_devices", "codedroid_status", "install_apk", "batch", "record_start", "record_stop", "run_flow", "adb", "codedroid_setup_phone", "screencast"], "a tool every phone has is listed once");
   for (const tool of tools.filter((t) => !["codedroid_devices", "adb", "codedroid_setup_phone", "record_stop"].includes(t.name))) {
     assert.equal(tool.inputSchema.properties.device.type, "string", `${tool.name} takes device`);
   }
@@ -194,7 +194,7 @@ try {
   assert.match(partial.problem, /^Pixel 9 \(9a1e7c00.*\): Pixel 9 is not online\. A phone this computer no longer uses stays paired until you forget it: npx -y @codedroid\/mcp unpair <its id>\.$/);
   const offlineOne = await status(client, { device: "Pixel 9" });
   assert.equal(offlineOne.problem, "Pixel 9 is not online.", "asked about one phone: nothing about the others");
-  assert.deepEqual((await client.listTools()).tools.map((t) => t.name), ["tap", "get_task", "codedroid_devices", "codedroid_status", "install_apk", "batch", "record_start", "record_stop", "run_flow", "adb", "codedroid_setup_phone"], "a phone down hides no tools");
+  assert.deepEqual((await client.listTools()).tools.map((t) => t.name), ["tap", "get_task", "codedroid_devices", "codedroid_status", "install_apk", "batch", "record_start", "record_stop", "run_flow", "adb", "codedroid_setup_phone", "screencast"], "a phone down hides no tools");
 
   // ── Unpaired while the daemon runs: that phone is gone, the rest stay ──
   paired = [XPS];
