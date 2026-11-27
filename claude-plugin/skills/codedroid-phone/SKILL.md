@@ -28,10 +28,9 @@ CodeDroid: every phone on the account is then reached, with nothing to pair. If 
 in (USB debugging on), call `codedroid_setup_phone`: it sets up every device on adb at once (or the
 one `serial` names), turns CodeDroid on, signs each in with the computer's account when it can, and
 says what the user has left to do for each (sign in, tap Allow). If CodeDroid is not on a phone
-yet, it says so: ask the user before calling it again with `install` true. If it answers "still working", call it again. Without an account or adb, pairing is theirs to
-do: on the phone, CodeDroid > Settings > Computers > Pair a computer shows a command to run on this
-computer. Once connected it also returns the phone's `instructions`: read them if your session
-started before the phone connected.
+yet, it says so: ask the user before calling it again with `install` true. If it answers "still working", call it again. A phone on another Google account than this
+computer's is reached only over adb: `codedroid_setup_phone` pairs it. Once connected it also
+returns the phone's `instructions`: read them if your session started before the phone connected.
 
 With the remote connector there is no pairing: call `codedroid_devices`. A phone that is
 `disconnected` needs the user to open CodeDroid on it, signed in with the same Google account and

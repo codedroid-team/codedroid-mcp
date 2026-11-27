@@ -23,7 +23,7 @@ import path from "path";
 import { promisify } from "util";
 import { fetchDevices, mintSignInCode } from "./account.js";
 import { adbLocations } from "./adb-tool.js";
-import { DEFAULT_SERVER, PAIR_BY_HAND, accountHost, normalizeServer, pair, readAccount, readPairings } from "./host.js";
+import { DEFAULT_SERVER, LOGIN_STEP, accountHost, normalizeServer, pair, readAccount, readPairings } from "./host.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -351,7 +351,7 @@ export async function setUpPhone({
       }
       const error = answer?.error ?? "no answer";
       if (/^Unknown endpoint/.test(error)) {
-        return { status: "failed", detail: `This CodeDroid can't pair over USB: update it (Settings > About > Version), or pair by hand. ${PAIR_BY_HAND}` };
+        return { status: "failed", detail: `This CodeDroid can't pair over USB: update it (Settings > About > Version), then run this again. Or sign this computer in instead. ${LOGIN_STEP}` };
       }
       if (error === "disabled") return { status: "failed", detail: "Turn on Allow computers to connect in CodeDroid > Settings > Computers, then run this again." };
       if (error === "accessibility_off") await turnOn();
@@ -498,7 +498,7 @@ const NEXT = {
     `Ask the user to sign in to CodeDroid on ${named ? phones.map((p) => p.label).join(", ") : "the phone"} (tap send, then sign in with Google), then call this again.`,
   "not-installed": (phones, named) =>
     `Ask the user whether to install CodeDroid on ${named ? phones.map((p) => p.label).join(", ") : "it"}. If they agree, call this again with install: true.`,
-  "no-phone": () => `Ask the user to fix that, then call this again. Or they pair by hand: ${PAIR_BY_HAND}`,
+  "no-phone": () => `Ask the user to fix that, then call this again. Or they sign this computer in: ${LOGIN_STEP}`,
 };
 
 /** What a setup's [outcome] (setUpAdbPhones') tells the agent, and whether every phone was reached. */

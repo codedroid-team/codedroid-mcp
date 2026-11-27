@@ -166,7 +166,7 @@ const pairing = (server) => () => ({
 for (const status of [401, 403]) {
   const relay = await fakeRelay(status);
   const transport = new RelayPhoneTransport({ host: pairing(relay.url), env: {} });
-  await assert.rejects(transport.start(), (e) => e instanceof PhoneUnavailableError && /pairing was removed.*Pair a computer/.test(e.message));
+  await assert.rejects(transport.start(), (e) => e instanceof PhoneUnavailableError && /pairing was removed.*login/.test(e.message));
   await relay.close();
 }
 
@@ -190,7 +190,7 @@ assert.equal(connectUrl("http://127.0.0.1:8000/base"), "ws://127.0.0.1:8000/base
 // ── Not paired: nothing is dialed, and the steps are given ────────────
 {
   const transport = new RelayPhoneTransport({ host: () => null, env: {} });
-  await assert.rejects(transport.start(), (e) => e instanceof PhoneUnavailableError && /not paired.*npx -y @codedroid\/mcp pair/.test(e.message));
+  await assert.rejects(transport.start(), (e) => e instanceof PhoneUnavailableError && /not paired.*npx -y @codedroid\/mcp login/.test(e.message));
 }
 
 // ── Nobody taps Allow: it gives up, saying what to do ─────────────────

@@ -98,7 +98,7 @@ export class RelayPhoneTransport {
     const lapsed = host.account
       ? "This computer's CodeDroid sign-in is no longer valid: it was removed on the phone (Settings > Computers) " +
         "or signed out. Run npx -y @codedroid/mcp login to sign in again."
-      : `This computer's pairing was removed or is no longer valid. Pair it again. ${PAIRING_STEPS}`;
+      : `This computer's pairing was removed or is no longer valid. ${PAIRING_STEPS}`;
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(connectUrl(host.server, host.account ? host.device?.id : undefined), {
         headers: {

@@ -2,7 +2,7 @@
   "$schema": "https://antigravity.google/schemas/v1/plugin.json",
   "name": "codedroid",
   "displayName": "CodeDroid",
-  "version": "0.1.23",
+  "version": "0.1.24",
   "description": "Your Android phone, through CodeDroid: read the screen, tap and type, hand CodeDroid a whole task, run adb, and verify app changes on the device.",
   "logo": "assets/icon.png",
   "suggestedPrompts": [
@@ -12,9 +12,9 @@
   ],
   "author": {
     "name": "CodeDroid",
-    "url": "https://get.codedroid.com"
+    "url": "https://play.google.com/store/apps/details?id=com.codedroid.agent"
   },
-  "homepage": "https://get.codedroid.com",
+  "homepage": "https://play.google.com/store/apps/details?id=com.codedroid.agent",
   "repository": "https://github.com/codedroid-team/codedroid-mcp",
   "license": "MIT",
   "keywords": [

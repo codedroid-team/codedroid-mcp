@@ -2,14 +2,14 @@
 
 Let Claude use your Android phone. Read the screen, tap and type, open apps, take screenshots,
 hand CodeDroid's own phone agent a whole task, and verify the Android app you are building on a
-real device, through [CodeDroid](https://get.codedroid.com).
+real device, through [CodeDroid](https://play.google.com/store/apps/details?id=com.codedroid.agent).
 
 This plugin connects Claude to CodeDroid's server over HTTPS. Nothing is installed or run on
 your computer. Your phone and computer can be on different networks.
 
 ## Get started
 
-1. Install CodeDroid on your phone from [get.codedroid.com](https://get.codedroid.com), sign in
+1. Install CodeDroid on your phone from [Google Play](https://play.google.com/store/apps/details?id=com.codedroid.agent), sign in
    with Google, and turn on its accessibility service when it asks.
 2. Install this plugin. The first time Claude uses it, sign in with the same Google account.
 3. On the phone, tap **Allow** when CodeDroid asks whether Claude may use it.

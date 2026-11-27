@@ -95,7 +95,7 @@ try {
     const before = fs.readFileSync(hostFilePath(home), "utf8");
     await assert.rejects(
       pair("ZZZZ-ZZZZ", { fetch: fakeFetch(404, { detail: "Unknown or expired code" }), home }),
-      /ZZZZ-ZZZZ is not valid: codes work once, for 10 minutes.*Pair a computer/,
+      /ZZZZ-ZZZZ is not valid: codes work once, for 10 minutes.*setup/,
     );
     assert.equal(fs.readFileSync(hostFilePath(home), "utf8"), before);
   }

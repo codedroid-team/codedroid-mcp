@@ -6,10 +6,10 @@
  *
  * The account is this computer signed in with the user's Google account (`login`, account.js):
  * every phone signed in to CodeDroid with that account is reached, with no pairing. A pairing is
- * the older way, one phone at a time: the phone shows a one-time code (Settings > Computers > Pair
- * a computer) that `pair` redeems at the CodeDroid server for a host token. Either credential is
- * the key to the relay: anyone holding it reaches the phones (still behind their Allow sheet), so
- * the file is the user's alone. A file from before several phones holds one pairing at its top
+ * one phone at a time: the phone hands adb a one-time code (`setup`, phone-setup.js; older versions
+ * of CodeDroid showed it in Settings) that `pair` redeems at the CodeDroid server for a host token.
+ * Either credential is the key to the relay: anyone holding it reaches the phones (still behind
+ * their Allow sheet), so the file is the user's alone. A file from before several phones holds one pairing at its top
  * level, and is read as a list of one; the latest pairing is kept there too, so an older
  * codedroid-mcp still finds a phone.
  *
@@ -27,13 +27,11 @@ export const LOGIN_STEP =
   "Run npx -y @codedroid/mcp login and sign in with the Google account you use in CodeDroid: every phone " +
   "signed in to CodeDroid with it is reached, with nothing to pair.";
 
-export const PAIR_BY_HAND =
-  "On the phone, open CodeDroid > Settings > Computers > Pair a computer, then run the command it shows " +
-  "on this computer (npx -y @codedroid/mcp pair XXXX-XXXX).";
+export const USB_STEP =
+  "Or plug the phone into this computer with USB debugging on and run npx -y @codedroid/mcp setup: " +
+  "it installs CodeDroid if needed and signs the phone in.";
 
-export const PAIRING_STEPS =
-  `${LOGIN_STEP} Or plug the phone into this computer with USB debugging on and run npx -y @codedroid/mcp setup: ` +
-  `it installs CodeDroid if needed and signs the phone in. Or pair by hand. ${PAIR_BY_HAND}`;
+export const PAIRING_STEPS = `${LOGIN_STEP} ${USB_STEP}`;
 
 /** What to do when the account has no phone: the one problem signing in does not solve. */
 export const NO_ACCOUNT_PHONE =
@@ -287,7 +285,7 @@ export function normalizeServer(server) {
   return url.href.replace(/\/+$/, "");
 }
 
-const NEW_CODE = "On the phone, open CodeDroid > Settings > Computers > Pair a computer for a new one.";
+const NEW_CODE = "Plug the phone in with USB debugging on and run npx -y @codedroid/mcp setup for a new one, or sign in instead.";
 
 /**
  * Redeems [code] at [server] and adds the pairing to the saved ones, replacing an earlier pairing

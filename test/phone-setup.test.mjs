@@ -399,7 +399,7 @@ try {
     }
   }
 
-  // ── No adb, or no phone on it: pair by hand ─────────────────────────
+  // ── No adb, or no phone on it: sign in instead ────────────────────────
   {
     const missing = Object.assign(new Error("spawn adb ENOENT"), { code: "ENOENT" });
     let result = await setUpPhone({ adb: async () => Promise.reject(missing), home: newHome() });
