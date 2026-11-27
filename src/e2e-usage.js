@@ -46,6 +46,14 @@ export function summarize(entries, { from, to }) {
   const seen = new Set();
   const tools = new Map();
   const unpriced = new Set();
+  const missing = new Set(); // calls the client refused because no such tool exists: not tool calls
+  for (const e of entries) {
+    if (e?.type !== "user" || !Array.isArray(e.message?.content)) continue;
+    for (const c of e.message.content) {
+      const text = typeof c?.content === "string" ? c.content : Array.isArray(c?.content) ? c.content.map((x) => x?.text ?? "").join("") : "";
+      if (c?.type === "tool_result" && c.is_error && text.includes("No such tool available")) missing.add(c.tool_use_id);
+    }
+  }
   for (const e of entries) {
     if (e?.type !== "assistant" || !e.message) continue;
     const t = Date.parse(e.timestamp);
@@ -75,6 +83,7 @@ export function summarize(entries, { from, to }) {
   const sum = (k) => all.reduce((a, m) => a + m[k], 0);
   const byTool = {};
   let codedroid = 0;
+  for (const id of missing) tools.delete(id);
   for (const name of tools.values()) {
     const parts = name.split("__");
     if (parts[0] !== "mcp" || parts.length < 3 || !/codedroid/i.test(parts[1])) continue;
@@ -203,6 +212,26 @@ export function finishUsage({ root, claudeDir = defaultClaudeDir() }) {
   return finished;
 }
 
+/**
+ * The records of usage.jsonl other than `rec` (its last line) that no reports/<day>/usage.json holds yet: a new
+ * day's usage.json starts with them, so its page shows the steps that ran before the report folder existed.
+ */
+function unreported(root, rec) {
+  const key = (r) => `${r?.step}@${r?.started}`;
+  const held = new Set([key(rec)]);
+  const reports = path.join(root, "reports");
+  for (const d of fs.readdirSync(reports)) {
+    try { for (const r of JSON.parse(fs.readFileSync(path.join(reports, d, "usage.json"), "utf8")).runs ?? []) held.add(key(r)); } catch { /* none or unreadable */ }
+  }
+  const out = [];
+  for (const l of fs.readFileSync(path.join(root, LOG), "utf8").split("\n")) {
+    let r;
+    try { r = JSON.parse(l); } catch { continue; }
+    if (!held.has(key(r))) out.push(r);
+  }
+  return out;
+}
+
 export function usageStop({ dir, now = Date.now(), claudeDir = defaultClaudeDir() }) {
   const root = folder(dir);
   if (!root) return { code: 2, lines: [`No such folder: ${dir}`] };
@@ -222,25 +251,25 @@ export function usageStop({ dir, now = Date.now(), claudeDir = defaultClaudeDir(
     Object.assign(rec, { tokens: null, usd_estimate: null, tool_calls: null, note: session ? `transcript not found for session ${session} under ${claudeDir}` : "no Claude Code session: wall time only" });
   }
 
-  const saved = [`${path.basename(dir)}/${LOG}`];
+  const saved = [path.join(dir, LOG)];
   try { safeWrite(root, path.join(root, LOG), JSON.stringify(rec) + "\n", { append: true }); } catch (e) { return { code: 2, lines: [`Cannot write ${LOG}: ${e.code ?? e.message}`] }; }
   fs.rmSync(runFile, { force: true });
   const day = localDay(now);
   const dayDir = path.join(root, "reports", day);
   if (fs.existsSync(dayDir) && fs.statSync(dayDir).isDirectory()) {
     const full = path.join(dayDir, "usage.json");
-    let doc = { runs: [] };
+    let doc;
     try {
-      if (fs.existsSync(full)) doc = JSON.parse(fs.readFileSync(full, "utf8"));
+      doc = fs.existsSync(full) ? JSON.parse(fs.readFileSync(full, "utf8")) : { runs: unreported(root, rec) };
       if (!Array.isArray(doc?.runs)) throw new Error("it has no runs list");
     } catch (e) {
       return { code: 2, lines: [`Saved to ${saved[0]}, but reports/${day}/usage.json is not readable (${e.message}): fix or remove it, then add this run from the last line of ${LOG}.`] };
     }
     doc.runs.push(rec);
     try { safeWrite(root, full, JSON.stringify(doc, null, 2) + "\n"); } catch (e) { return { code: 2, lines: [`Saved to ${saved[0]}, but cannot write reports/${day}/usage.json: ${e.code ?? e.message}`] }; }
-    saved.push(`reports/${day}/usage.json`);
+    saved.push(path.join(dir, "reports", day, "usage.json"));
   }
-  const cost = rec.tokens ? `, ${rec.tool_calls.codedroid} CodeDroid tool calls, ${tokenSum(rec.tokens).toLocaleString("en-US")} tokens, ${rec.usd_estimate === null ? "no $ estimate" : `$${rec.usd_estimate.toFixed(4)} estimated`}` : ` (${rec.note})`;
+  const cost = rec.tokens ? `, ${rec.tool_calls.codedroid} CodeDroid tool calls, ${tokenSum(rec.tokens).toLocaleString("en-US")} tokens${rec.tokens.cache_read ? ` (${rec.tokens.cache_read.toLocaleString("en-US")} of them cache reads)` : ""}, ${rec.usd_estimate === null ? "no $ estimate" : `$${rec.usd_estimate.toFixed(4)} estimated`}` : ` (${rec.note})`;
   const later = rec.pending ? " The next e2e report adds the response that ran stop." : "";
   return { code: 0, lines: [`${rec.step}: ${duration(rec.wall_s)}${cost}. Saved to ${saved.join(" and ")}.${later}`] };
 }

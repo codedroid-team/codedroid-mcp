@@ -508,5 +508,65 @@ if (process.getuid?.() !== 0) {
   assert.equal(JSON.parse(fs.readFileSync(path.join(d2, "usage.jsonl"), "utf8")).client, "claude-code");
 }
 
+// A call to a tool that does not exist (the client answers "No such tool available") is not a tool call; a
+// call to a real tool that failed still is.
+{
+  const res = (id, text) => ({ type: "user", timestamp: at(2), message: { content: [{ type: "tool_result", tool_use_id: id, is_error: true, content: text }] } });
+  const s = summarize([
+    asst(1, "r1", "claude-opus-5-5", U(1, 1), [["g1", "mcp__plugin_codedroid_codedroid__find_x"], ["g2", "mcp__codedroid__tap"], ["g3", "Bash"]]),
+    res("g1", "<tool_use_error>Error: No such tool available: mcp__plugin_codedroid_codedroid__find_x</tool_use_error>"),
+    res("g2", "Error: nothing to tap at 10,10"),
+    res("g3", [{ type: "text", text: "Error: No such tool available: Bash" }]),
+    res("g2", undefined), // a result without content is not a refusal
+    asst(3, "r2", "claude-opus-5-5", U(1, 1), [["g4", "Bash"], ["g5", "Grep"]]),
+    { type: "user", timestamp: at(4), message: { content: [{ type: "tool_result", tool_use_id: "g4", content: "log: No such tool available" }] } }, // output, not an error
+    { type: "assistant", timestamp: at(4), message: { content: [{ type: "tool_result", tool_use_id: "g5", is_error: true, content: "No such tool available" }] } }, // not a user entry
+  ], { from: T0, to: T0 + 60_000 });
+  assert.deepEqual(s.tool_calls, { total: 3, codedroid: 1, by_tool: { tap: 1 } });
+}
+
+// The first stop that writes a day's usage.json brings in the earlier steps of usage.jsonl that no report's
+// usage.json holds yet, so the report page shows the whole chain, not only the step that ran last.
+{
+  const dir = fresh();
+  usageStart({ dir, step: "old", now: T0 - 86_400_000 * 3, session: SID });
+  const oldDay = localDay(T0 - 86_400_000 * 2);
+  fs.mkdirSync(path.join(dir, "reports", oldDay), { recursive: true });
+  usageStop({ dir, now: T0 - 86_400_000 * 2, claudeDir }); // in the old report already
+  for (const step of ["explore", "prd"]) {
+    usageStart({ dir, step, now: T0, session: SID });
+    usageStop({ dir, now: T0 + 5_000, claudeDir });
+  }
+  const day = localDay(T0 + 30_000);
+  fs.mkdirSync(path.join(dir, "reports", day), { recursive: true });
+  fs.mkdirSync(path.join(dir, "reports", "2020-01-01"));
+  fs.writeFileSync(path.join(dir, "reports", "2020-01-01", "usage.json"), "{}"); // no runs list: holds nothing
+  fs.appendFileSync(path.join(dir, "usage.jsonl"), "cut off\n");
+  usageStart({ dir, step: "run", now: T0, session: SID });
+  usageStop({ dir, now: T0 + 30_000, claudeDir });
+  const runs = () => JSON.parse(fs.readFileSync(path.join(dir, "reports", day, "usage.json"), "utf8")).runs.map((r) => r.step);
+  assert.deepEqual(runs(), ["explore", "prd", "run"]);
+  usageStart({ dir, step: "rerun", now: T0, session: SID });
+  usageStop({ dir, now: T0 + 40_000, claudeDir });
+  assert.deepEqual(runs(), ["explore", "prd", "run", "rerun"], "a later stop adds only itself");
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dir, "reports", oldDay, "usage.json"), "utf8")).runs.map((r) => r.step), ["old"]);
+}
+
+// The stop line names the files under the folder it was given, and says how many tokens were cache reads.
+{
+  const base = path.join(tmp, `case${n++}`);
+  const dir = path.join(base, "CodeDroid-app", "e2e");
+  fs.mkdirSync(path.join(dir, "reports", localDay(T0 + 1_000)), { recursive: true });
+  const cfg = path.join(tmp, "cfg-cache");
+  fs.mkdirSync(path.join(cfg, "projects", "p"), { recursive: true });
+  fs.writeFileSync(path.join(cfg, "projects", "p", `${SID}.jsonl`), jsonl([asst(0.5, "c1", "claude-opus-5-5", U(100, 10, 2000))]));
+  usageStart({ dir, step: "prd", now: T0, session: SID });
+  const r = usageStop({ dir, now: T0 + 1_000, claudeDir: cfg });
+  assert.match(r.lines[0], /2,110 tokens \(2,000 of them cache reads\)/);
+  assert.ok(r.lines[0].includes(`Saved to ${path.join(dir, "usage.jsonl")} and ${path.join(dir, "reports", localDay(T0 + 1_000), "usage.json")}.`), r.lines[0]);
+  usageStart({ dir, step: "prd", now: T0, session: SID });
+  assert.doesNotMatch(usageStop({ dir, now: T0 + 1_000, claudeDir }).lines[0], /cache reads/, "no cache reads, no note");
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log("e2e-usage: all passed");

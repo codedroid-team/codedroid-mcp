@@ -457,7 +457,8 @@ session from `CLAUDE_CODE_SESSION_ID`; a second `start` replaces an unfinished r
 timed between start and stop, counts each API response once (by `requestId`), and saves one record:
 `step`, `started`, `ended`, `wall_s`, `session`, `tokens` (`input`, `output`, `cache_read`,
 `cache_write`), `models` (per model, with the 5-minute and 1-hour cache writes split and `usd`),
-`usd_estimate`, `tool_calls` (`total`, `codedroid`, `by_tool`) and `prices_as_of`. The dollars are an
+`usd_estimate`, `tool_calls` (`total`, `codedroid`, `by_tool`; a call the client refused with "No
+such tool available" is not counted) and `prices_as_of`. The dollars are an
 estimate at Anthropic's list prices for the models in its table; a model not in it makes
 `usd_estimate` null and adds a `note`. Without a session or transcript (another client), the record
 has the time only, null token fields and a `note`. Credits a CodeDroid task spends on the phone are
@@ -471,7 +472,9 @@ stop.`, and then builds the pages. A record whose transcript is gone (another co
 pending; a file it cannot parse is left alone. It refuses to write through a link (exit 2).
 
 The record is appended to `<dir>/usage.jsonl`, and added to `runs` in
-`<dir>/reports/<YYYY-MM-DD>/usage.json` (the local date) when that folder exists. The report page
+`<dir>/reports/<YYYY-MM-DD>/usage.json` (the local date) when that folder exists. The stop that
+creates a day's `usage.json` starts it with the records of `usage.jsonl` that no report's
+`usage.json` holds yet (the steps that ran before the report folder existed). The report page
 shows that file as a "Cost of this run" table with a total, and `e2e report --check` calls the page
 stale when it changes. Exit codes: 0 when saved, 2 for a usage error, a folder that does not exist,
 `stop` with no open run, a file it cannot write, or a `usage.json` it cannot read (the run is still

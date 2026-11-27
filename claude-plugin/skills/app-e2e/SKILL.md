@@ -85,7 +85,8 @@ stopped at a gate, or given up) run `npx -y @codedroid/mcp e2e usage stop e2e`, 
 last `e2e report`, in its own call: that report adds the response that ran stop (which the
 transcript only has once stop returns) and puts the cost on the report page. It saves the step's wall time, CodeDroid tool calls,
 Claude tokens per model and an estimate in dollars: one line in `e2e/usage.jsonl`, and the run in
-`e2e/reports/<date>/usage.json` when that day's report folder exists. Commit both with the
+`e2e/reports/<date>/usage.json` when that day's report folder exists (the first run there also
+brings in the earlier steps, so the report shows the whole chain). Commit both with the
 documents; `e2e/.usage-run.json` is the open run, and stop removes it. Tokens come from the Claude
 Code transcript, so in another client only the time is saved; credits a CodeDroid task spends on
 the phone are not counted. If start prints only a usage line for `e2e report`, the installed
