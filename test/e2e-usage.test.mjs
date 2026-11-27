@@ -516,7 +516,7 @@ if (process.getuid?.() !== 0) {
     asst(1, "r1", "claude-opus-5-5", U(1, 1), [["g1", "mcp__plugin_codedroid_codedroid__find_x"], ["g2", "mcp__codedroid__tap"], ["g3", "Bash"]]),
     res("g1", "<tool_use_error>Error: No such tool available: mcp__plugin_codedroid_codedroid__find_x</tool_use_error>"),
     res("g2", "Error: nothing to tap at 10,10"),
-    res("g3", [{ type: "text", text: "Error: No such tool available: Bash" }]),
+    res("g3", [{ type: "image" }, { type: "text", text: "Error: No such tool available: Bash" }]),
     res("g2", undefined), // a result without content is not a refusal
     asst(3, "r2", "claude-opus-5-5", U(1, 1), [["g4", "Bash"], ["g5", "Grep"]]),
     { type: "user", timestamp: at(4), message: { content: [{ type: "tool_result", tool_use_id: "g4", content: "log: No such tool available" }] } }, // output, not an error
