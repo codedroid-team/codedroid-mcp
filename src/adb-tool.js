@@ -180,7 +180,7 @@ function refusal({ globals, subcommand, rest }, project) {
 }
 
 /** Whether [listed], from `adb devices -l`, is the [paired] model: adb writes underscores and leaves out the maker. */
-function modelMatches(paired, listed) {
+export function modelMatches(paired, listed) {
   const normalized = (model) => model.toLowerCase().replace(/[^a-z0-9]+/g, "_");
   const [full, short] = [normalized(paired), normalized(listed)];
   return full === short || full.endsWith(`_${short}`);

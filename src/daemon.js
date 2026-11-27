@@ -17,6 +17,7 @@
  *   POST/GET/DELETE /mcp   Streamable HTTP MCP (per-session) — needs the daemon token
  *   POST /shutdown         stop the daemon — needs the token
  *   GET /health            {ok, version, pid, authentication, phone, phones, sessions, adbToolEnabled, adbPerClient} — unauthenticated
+ *   GET /cast/<token>/     a screencast's page and WebSocket (screencast.js) — the token in the path is its credential
  */
 import http from "http";
 import os from "os";
@@ -34,6 +35,7 @@ import { createSetupPhoneTool } from "./phone-setup.js";
 import { Phones } from "./phones.js";
 import { buildProxyServer, broadcastNotification } from "./proxy-core.js";
 import { PhoneDeniedError, RelayPhoneTransport } from "./relay-transport.js";
+import { ScreencastHub, createScreencastTool } from "./screencast.js";
 import { createSessionTools } from "./session-tools.js";
 import { createDevicesTool, createStatusTool } from "./status-tool.js";
 import { cachedUpdate } from "./update-check.js";
@@ -326,6 +328,7 @@ function jsonRpcError(res, status, id, code, message) {
  * @param {() => object | null} [options.update]  A newer release on npm, for codedroid_status; the cache by default.
  * @param {LocalPhones | null} [options.local]  The phones on this computer's adb, reached over adb. Off
  *   with phoneTransportFactory, which chooses every transport, or without the adb tool (--no-adb).
+ * @param {ScreencastHub | null} [options.screencasts]  The live views of the phones (screencast.js); off without the adb tool.
  * @returns {Promise<{port: number, authToken: string, close: () => Promise<void>, phones: Phones}>}
  *   authToken is this user's daemon token (host.js ensureDaemonToken), which /mcp and /shutdown require.
  */
@@ -345,6 +348,7 @@ export async function startDaemon({
   accountStartupWaitMs = ACCOUNT_STARTUP_WAIT_MS,
   update = () => cachedUpdate({ home }),
   local = phoneTransportFactory || !enableAdbTool ? null : new LocalPhones({ log }),
+  screencasts,
 } = {}) {
   /** Set once the port is ours (below); no request is handled before that. */
   let authToken = null;
@@ -421,6 +425,8 @@ export async function startDaemon({
   });
   /** sessionId → { transport, server, session } */
   const sessions = new Map();
+  /** The live views: one scrcpy-server per phone on adb, shared by every client's viewers. */
+  const casts = screencasts === undefined && enableAdbTool ? new ScreencastHub({ phones, adb: local?.adb, log }) : screencasts ?? null;
   /** Set while the daemon itself closes its sessions: their phones stay held, as their clients come back. */
   let shuttingDown = false;
   /** Installs under way: a new session can pick one up. */
@@ -467,6 +473,9 @@ export async function startDaemon({
         });
         return;
       }
+
+      // A screencast's page: its credential is the unguessable token in its path, since a browser sends no header.
+      if (casts?.handleRequest(req, res, url)) return;
 
       // Everything past here drives the phone or the host adb tool: it needs this user's token.
       if (!hasValidToken(req, authToken)) {
@@ -531,7 +540,7 @@ export async function startDaemon({
                 heldBy(session, createInstallTool({ phones, cwd: clientCwd(req), jobs: installJobs })),
                 ...session.localTools,
                 ...(enableAdbTool && req.headers[CLIENT_ADB_HEADER] !== "off"
-                  ? [createAdbTool({ cwd: clientCwd(req), phones }), createSetupPhoneTool({ jobs: setupJobs })]
+                  ? [createAdbTool({ cwd: clientCwd(req), phones }), createSetupPhoneTool({ jobs: setupJobs }), ...(casts ? [createScreencastTool(casts)] : [])]
                   : []),
               ],
               shapeTool: session.shapeTool,
@@ -600,11 +609,17 @@ export async function startDaemon({
     }
   });
 
+  httpServer.on("upgrade", (req, socket, head) => {
+    if (casts?.handleUpgrade(req, socket, head)) return;
+    socket.write("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n");
+    socket.destroy();
+  });
   await new Promise((resolve, reject) => {
     httpServer.once("error", reject);
     httpServer.listen(port, host, resolve);
   });
   const boundPort = httpServer.address().port;
+  if (casts) casts.baseUrl = `http://${host}:${boundPort}`;
   // A loser of the port bind never creates credentials. If token setup fails, release the port
   // before rejecting startup; callers must not be left with an unusable listener they cannot close.
   try {
@@ -636,6 +651,7 @@ export async function startDaemon({
       }
     }
     sessions.clear();
+    await casts?.close();
     await phones.close();
     await new Promise((resolve) => httpServer.close(resolve));
   };

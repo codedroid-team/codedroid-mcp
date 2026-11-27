@@ -78,7 +78,7 @@ if (process.argv[2] === "child") {
       const client = new Client({ name: "startup-test", version: "0" });
       try {
         await client.connect(daemonTransport(port, token));
-        assert.deepEqual((await client.listTools()).tools.map((tool) => tool.name).sort(), ["adb", "batch", "codedroid_devices", "codedroid_setup_phone", "codedroid_status", "install_apk", "record_start", "record_stop", "run_flow"],
+        assert.deepEqual((await client.listTools()).tools.map((tool) => tool.name).sort(), ["adb", "batch", "codedroid_devices", "codedroid_setup_phone", "codedroid_status", "install_apk", "record_start", "record_stop", "run_flow", "screencast"],
           "adb must be present by default");
         const result = await client.callTool({ name: "codedroid_status", arguments: {} });
         assert.equal(JSON.parse(result.content[0].text).connected, false);

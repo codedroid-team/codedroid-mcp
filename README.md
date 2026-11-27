@@ -149,12 +149,14 @@ Android platform-tools and a USB or wireless debugging connection. See [adb setu
   (`record_start`, `record_stop`), and `run_flow` or `npx -y @codedroid/mcp flow run <file>` replays
   it on the phone with no model in the loop, from a terminal or CI. A flow written for Maestro runs
   too. `batch` runs several known steps in one call. See [flows](docs/reference.md#flows-record-and-replay).
-- **A live view**: `npx -y @codedroid/mcp viewer` shows the phone's screen in your browser while the
-  agent drives it, and lets you tap, type and press Back or Home yourself.
+- **A screencast**: the `screencast` tool, or `npx -y @codedroid/mcp screencast`, streams the phone's
+  screen as live video to your browser while the agent drives it (the phone on adb). `viewer` is the
+  slower page where you can also tap, type and press Back or Home yourself. See
+  [screencast](docs/reference.md#screencast-live-video-over-adb).
 - **`install_apk`** to install a build from your computer, with no cable or shared network.
 - **An `adb` tool** that runs adb commands on your computer, to read logs and run tests. You can [turn it off](docs/reference.md#adb-setup).
 
-The flows, the viewer and the last two run on your computer, so they come with the local install only. The directory's
+The flows, the screencast, the viewer and the last two run on your computer, so they come with the local install only. The directory's
 plugin has the phone tools and the skills; the connector, and adding the server by URL, have the
 phone tools alone. `claude-plugin/` in this repository is what the directory lists.
 

@@ -27,6 +27,7 @@
  *   codedroid-mcp flow run <file>  replay a Maestro flow on the phone, with no model in the loop
  *   codedroid-mcp doctor           check Node, adb, pairing, the daemon, the phones and the clients
  *   codedroid-mcp viewer [phone]   a page showing the phone's screen, where you can take over
+ *   codedroid-mcp screencast [phone]  a live video of the phone's screen, over adb
  *
  * Options: --port=<n> (or CODEDROID_MCP_PORT), default 4826. --server=<url> for pair. --no-adb (or
  * CODEDROID_MCP_ADB=0) leaves out the host-side adb tool. CODEDROID_SERIAL picks its device.
@@ -127,6 +128,9 @@ Usage:
   codedroid-mcp viewer [phone]      Open a page that shows the phone's screen while an agent drives
                                     it, where you can tap, type and press Back or Home
                                     (--interval=<seconds>, default 3)
+  codedroid-mcp screencast [phone]  Stream the phone's screen live (H.264 over adb) to a page on
+                                    this computer; the phone must be on adb (--max-fps=<n>,
+                                    --max-size=<px>, --open to open the browser)
 
 Sign in first: run setup (or login) and sign in with the Google account you use in CodeDroid, and
 every phone signed in with it is reached. Or pair one phone at a time: plug it in with USB
@@ -485,6 +489,35 @@ async function main() {
     process.stdout.write(`Open ${viewer.url}\nIt shows the phone every ${seconds} s while the tab is visible. Press Ctrl+C to stop.\n`);
     const stop = async () => {
       await viewer.close();
+      await client.close();
+      process.exit(0);
+    };
+    process.on("SIGINT", stop);
+    process.on("SIGTERM", stop);
+    return;
+  }
+
+  if (command === "screencast") {
+    const device = args._.slice(1).join(" ") || undefined;
+    const toolArgs = { action: "start", ...(device ? { device } : {}) };
+    if (args["max-fps"]) toolArgs.max_fps = Number(args["max-fps"]);
+    if (args["max-size"]) toolArgs.max_size = Number(args["max-size"]);
+    const client = await daemonClient(port, true);
+    const started = await client.callTool({ name: "screencast", arguments: toolArgs }, undefined, { timeout: 90_000 });
+    const message = started.content?.[0]?.text ?? "";
+    if (started.isError) {
+      await client.close();
+      fatal(message);
+    }
+    process.stdout.write(`${message}\nPress Ctrl+C to stop it.\n`);
+    const url = /https?:\/\/\S+/.exec(message)?.[0];
+    if (args.open && url) {
+      const { spawn } = await import("child_process");
+      const opener = process.platform === "darwin" ? ["open", url] : process.platform === "win32" ? ["cmd", "/c", "start", "", url] : ["xdg-open", url];
+      spawn(opener[0], opener.slice(1), { stdio: "ignore", detached: true }).on("error", () => {}).unref();
+    }
+    const stop = async () => {
+      await client.callTool({ name: "screencast", arguments: { action: "stop", ...(device ? { device } : {}) } }, undefined, { timeout: 30_000 }).catch(() => {});
       await client.close();
       process.exit(0);
     };
